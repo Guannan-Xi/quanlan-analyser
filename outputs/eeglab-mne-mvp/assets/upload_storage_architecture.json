@@ -1,0 +1,80 @@
+{
+  "goal": "High-throughput, resumable EEG upload and lifecycle storage for EDF/BDF/SET/FIF/BrainVision/BIDS datasets",
+  "principles": [
+    "Upload raw bytes directly from browser to object storage with pre-signed multipart URLs; never relay large EEG files through the application API.",
+    "Keep metadata, event tables, QC summaries, and analysis manifests in PostgreSQL; keep raw and derivative binary payloads in S3-compatible object storage.",
+    "Use content-addressed checksums for instant upload, deduplication, integrity verification, and reproducible analysis provenance.",
+    "Optimize for interrupted lab networks: resumable chunks, local checkpoints, adaptive concurrency, exponential retry, and server-side multipart completion.",
+    "Separate storage tiers: hot raw data for active projects, warm derivatives for recent analyses, cold/archive tier for completed publications."
+  ],
+  "client_upload": {
+    "preflight": [
+      "Read file header locally to identify format, sampling rate, channels, and approximate recording duration.",
+      "Validate event TSV/annotations before uploading all raw bytes.",
+      "Estimate billable EEG hours and storage footprint before task submission."
+    ],
+    "chunking": {
+      "default_chunk_mb": 64,
+      "min_chunk_mb": 16,
+      "max_chunk_mb": 128,
+      "adaptive_rule": "Increase chunk size when network is stable and RTT is low; decrease when retries exceed 2 per minute."
+    },
+    "parallelism": {
+      "default_concurrency": 4,
+      "min_concurrency": 2,
+      "max_concurrency": 8,
+      "adaptive_rule": "Target 80-90% link utilization without increasing retry rate or UI latency."
+    },
+    "integrity": [
+      "SHA-256 per chunk",
+      "SHA-256 whole file",
+      "object ETag validation",
+      "manifest-level checksum lock before analysis"
+    ],
+    "resume": [
+      "Persist upload session id, completed parts, chunk hashes, and file fingerprint in IndexedDB.",
+      "Resume from the last verified chunk after browser close, network loss, or machine sleep.",
+      "Support instant upload when whole-file hash already exists in project or organization storage."
+    ]
+  },
+  "backend": {
+    "api": [
+      "POST /uploads/initiate creates upload session and pre-signed multipart URLs.",
+      "PATCH /uploads/{id}/parts records completed chunks and validates hashes.",
+      "POST /uploads/{id}/complete commits object storage multipart upload and writes BIDS asset metadata.",
+      "POST /uploads/{id}/abort releases partial storage and upload locks."
+    ],
+    "state": {
+      "redis": "short-lived upload sessions, locks, progress, retry counters",
+      "postgresql": "dataset metadata, file manifests, BIDS index, billing duration, project ACL",
+      "object_storage": "raw files, derivatives, figures, reports, publication packages"
+    },
+    "workers": [
+      "metadata extraction",
+      "BIDS validation",
+      "EDF/SET/FIF duration indexing",
+      "QC preview generation",
+      "storage lifecycle migration"
+    ]
+  },
+  "storage_layout": {
+    "raw": "s3://bucket/org/{org_id}/project/{project_id}/sourcedata/{sha256}/{filename}",
+    "bids": "s3://bucket/org/{org_id}/project/{project_id}/bids/sub-*/ses-*",
+    "derivatives": "s3://bucket/org/{org_id}/project/{project_id}/derivatives/{pipeline_version}/",
+    "publication": "s3://bucket/org/{org_id}/project/{project_id}/publication/{analysis_id}/"
+  },
+  "lifecycle": {
+    "hot_days": 30,
+    "warm_days": 180,
+    "cold_after_days": 180,
+    "delete_partial_upload_after_hours": 24,
+    "retain_publication_package": "until project owner deletes or retention policy expires"
+  },
+  "performance_targets": {
+    "metadata_preflight": "< 5 seconds for ordinary EDF/SET files",
+    "upload_link_utilization": "80-90% of measured uplink",
+    "resume_loss": "0 completed chunks lost after interruption",
+    "integrity": "100% checksum verification before analysis",
+    "api_backend_large_file_bandwidth": "near zero because file bytes bypass API server"
+  }
+}

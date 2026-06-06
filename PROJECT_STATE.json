@@ -1,0 +1,53 @@
+{
+  "project": "NeuroCloud EEG MVP",
+  "updated": "2026-06-06",
+  "root": "C:\\Users\\XGN\\Documents\\Codex\\2026-06-06\\eeglab-mne-1",
+  "frontend": "outputs\\eeglab-mne-mvp",
+  "local_url": "http://127.0.0.1:4173/",
+  "run_server": "C:\\Users\\XGN\\miniconda3\\envs\\mineru\\python.exe -m http.server 4173 --bind 127.0.0.1",
+  "roles": {
+    "customer": {
+      "default_view": "journey",
+      "views": [
+        "journey",
+        "dashboard",
+        "analysis",
+        "workflow",
+        "paradigms",
+        "statistics",
+        "publication",
+        "upload",
+        "storage",
+        "billing",
+        "invoice"
+      ],
+      "principle": "Beginner-first UI; do not expose internal testing, high concurrency, MVP, merchant authorization, or engineering details."
+    },
+    "admin": {
+      "default_view": "adminDashboard",
+      "views": [
+        "adminDashboard",
+        "adminOperations",
+        "adminFinance",
+        "adminSystem"
+      ],
+      "principle": "Operations dashboard for customer records, spending, invoices, analysis jobs, storage, and system status."
+    }
+  },
+  "current_user_request": {
+    "customer_flow": "Recharge 1000 RMB, analyze 5 generated Oddball EEG files with ERP/P300 workflow, prepare results for 399467826@qq.com.",
+    "operator_flow": "Verify customer registration, spending, and analysis results in admin backend.",
+    "email_constraint": "No SMTP credentials found. Do not claim email sent unless actual SMTP send succeeds."
+  },
+  "scripts": {
+    "general_assets": "work\\generate_mne_assets.py",
+    "paradigm_benchmark": "work\\generate_paradigm_benchmarks.py",
+    "customer_oddball_case": "work\\generate_customer_oddball_case.py"
+  },
+  "validation": [
+    "node --check outputs\\eeglab-mne-mvp\\app.js",
+    "resource reference check",
+    "mojibake scan",
+    "browser role navigation check"
+  ]
+}
