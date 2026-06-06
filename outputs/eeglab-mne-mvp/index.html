@@ -17,13 +17,38 @@
         </div>
       </div>
       <div class="login-panel">
-        <p class="eyebrow">请选择入口</p>
+        <p class="eyebrow">安全登录</p>
         <h1>从上传脑电到生成投稿图，一步一步带你完成</h1>
-        <p>客户入口提供傻瓜式教程、默认分析方案、图表导出和开票；后台入口用于运营人员管理订单、任务、数据和系统状态。</p>
-        <div class="login-actions">
-          <button class="primary-btn" data-login-role="customer"><i data-lucide="graduation-cap"></i><span>客户登录</span></button>
-          <button class="ghost-btn" data-login-role="admin"><i data-lucide="shield-check"></i><span>后台管理登录</span></button>
+        <p>客户账号用于上传数据、查看结果、充值和开票；后台账号用于运营人员管理客户、订单、任务和系统状态。</p>
+
+        <div class="login-tabs" role="tablist" aria-label="登录类型">
+          <button class="active" type="button" data-login-tab="customerLogin">客户登录</button>
+          <button type="button" data-login-tab="customerRegister">客户注册</button>
+          <button type="button" data-login-tab="adminLogin">后台登录</button>
         </div>
+
+        <form class="login-form active" id="customerLoginForm">
+          <label><span>邮箱</span><input id="customerEmail" type="email" value="399467826@qq.com" autocomplete="email" /></label>
+          <label><span>密码</span><input id="customerPassword" type="password" autocomplete="current-password" /></label>
+          <label class="checkline"><input id="rememberCustomer" type="checkbox" checked /> 记住登录状态</label>
+          <button class="primary-btn full" type="submit"><i data-lucide="log-in"></i><span>进入客户工作台</span></button>
+        </form>
+
+        <form class="login-form" id="customerRegisterForm">
+          <label><span>姓名</span><input id="registerName" value="Oddball 小白用户" autocomplete="name" /></label>
+          <label><span>邮箱</span><input id="registerEmail" type="email" value="399467826@qq.com" autocomplete="email" /></label>
+          <label><span>单位 / 团队</span><input id="registerOrg" value="认知神经科学实验室" /></label>
+          <label><span>设置密码</span><input id="registerPassword" type="password" autocomplete="new-password" /></label>
+          <button class="primary-btn full" type="submit"><i data-lucide="user-plus"></i><span>注册并进入教程</span></button>
+        </form>
+
+        <form class="login-form" id="adminLoginForm">
+          <label><span>管理员账号</span><input id="adminEmail" type="email" value="ops@neurocloud.cn" autocomplete="username" /></label>
+          <label><span>管理员密码</span><input id="adminPassword" type="password" value="admin123456" autocomplete="current-password" /></label>
+          <button class="ghost-btn full" type="submit"><i data-lucide="shield-check"></i><span>进入后台管理</span></button>
+        </form>
+
+        <div class="login-message" id="loginMessage" role="status" aria-live="polite"></div>
       </div>
     </section>
 
@@ -61,7 +86,7 @@
       <main class="main">
         <header class="topbar">
           <div>
-            <p class="eyebrow" id="topEyebrow">项目：P300 oddball pilot / 10 份 EEG</p>
+            <p class="eyebrow" id="topEyebrow">项目：客户 Oddball ERP / 5 份 EEG</p>
             <h1 id="viewTitle">脑电数据分析总览</h1>
           </div>
           <div class="top-actions">
@@ -74,10 +99,10 @@
 
         <section class="view active" id="dashboard">
           <div class="metric-grid">
-            <article class="metric"><span>本次预算</span><strong>￥1000</strong><small>可覆盖 1000 h 原始 EEG</small></article>
-            <article class="metric"><span>本次数据</span><strong>10 份</strong><small>每份 1.5 h，合计 15 h</small></article>
-            <article class="metric"><span>预计扣费</span><strong>￥15</strong><small>按每小时脑电数据 1 元</small></article>
-            <article class="metric"><span>输出级别</span><strong>投稿包</strong><small>300 dpi 图 + CSV + manifest</small></article>
+            <article class="metric"><span>充值金额</span><strong>￥1000</strong><small>账户余额充足</small></article>
+            <article class="metric"><span>本次数据</span><strong>5 份</strong><small>每份 1 h，合计 5 h</small></article>
+            <article class="metric"><span>已扣费用</span><strong>￥5</strong><small>余额 ￥995</small></article>
+            <article class="metric"><span>结果状态</span><strong>已生成</strong><small>图、表和方法说明可下载</small></article>
           </div>
 
           <div class="work-grid">
@@ -93,7 +118,7 @@
               <div class="checklist">
                 <label><input type="checkbox" checked /> 不知道分析方法时，先让系统按事件标签和范式推荐。</label>
                 <label><input type="checkbox" checked /> 只在 subject-level 指标表上做组统计。</label>
-                <label><input type="checkbox" checked /> 每张图绑定参数、软件版本、统计表和复现 manifest。</label>
+                <label><input type="checkbox" checked /> 每张图绑定参数、软件版本、统计表和复现记录。</label>
                 <label><input type="checkbox" checked /> 下载包里会自动包含图、表、方法说明和复现记录。</label>
               </div>
             </section>
@@ -106,15 +131,16 @@
               <button type="button" data-view-jump="analysis"><i data-lucide="scissors-line-dashed"></i><span>分段</span><b>相对时间 / 事件</b></button>
               <button type="button" data-view-jump="analysis"><i data-lucide="sliders-horizontal"></i><span>预处理</span><b>滤波 / ICA / QC</b></button>
               <button type="button" data-view-jump="statistics"><i data-lucide="sigma"></i><span>统计</span><b>t / FDR / Cluster</b></button>
-              <button type="button" data-view-jump="publication"><i data-lucide="file-output"></i><span>发表</span><b>PNG / CSV / Manifest</b></button>
+              <button type="button" data-view-jump="publication"><i data-lucide="file-output"></i><span>发表</span><b>PNG / CSV / 复现记录</b></button>
             </div>
           </section>
+
         </section>
 
         <section class="view" id="journey">
           <div class="metric-grid">
-            <article class="metric"><span>账户余额</span><strong>￥1000</strong><small>够完成本次分析</small></article>
-            <article class="metric"><span>准备数据</span><strong>10 份</strong><small>支持 EDF / SET / FIF</small></article>
+            <article class="metric"><span>账户余额</span><strong>￥995</strong><small>已完成 5 元扣费</small></article>
+            <article class="metric"><span>准备数据</span><strong>5 份</strong><small>Oddball EDF + Events</small></article>
             <article class="metric"><span>研究问题</span><strong>Oddball</strong><small>不知道方法也可以继续</small></article>
             <article class="metric"><span>最终拿到</span><strong>图 + 表</strong><small>可投稿、可复核、可开票</small></article>
           </div>
@@ -125,9 +151,9 @@
               <button class="ghost-btn" data-view-jump="analysis"><i data-lucide="arrow-right"></i><span>直接开始</span></button>
             </div>
             <div class="journey-grid">
-              <article class="journey-card active" role="button" tabindex="0" data-journey-step="0"><b>1</b><h3>先建项目</h3><p>给这次分析取一个名字，比如 P300 oddball pilot。不会填也没关系，系统会给你示例。</p><small>点哪里：进入“开始分析”，先确认项目名和数据数量。</small></article>
+              <article class="journey-card active" role="button" tabindex="0" data-journey-step="0"><b>1</b><h3>先建项目</h3><p>给这次分析取一个名字，比如客户 Oddball ERP。不会填也没关系，系统会给你示例。</p><small>点哪里：进入“开始分析”，先确认项目名和数据数量。</small></article>
               <article class="journey-card" role="button" tabindex="0" data-journey-step="1"><b>2</b><h3>上传脑电</h3><p>把 EDF、SET 或 FIF 文件拖进去。系统会自动读取通道、采样率和事件标签。</p><small>默认怎么选：直接保留自动识别结果。</small></article>
-              <article class="journey-card" role="button" tabindex="0" data-journey-step="2"><b>3</b><h3>看懂费用</h3><p>平台按脑电记录时长计费。10 份数据，每份 1.5 小时，就是 15 小时，费用 15 元。</p><small>点哪里：确认费用后点击“提交分析”。</small></article>
+              <article class="journey-card" role="button" tabindex="0" data-journey-step="2"><b>3</b><h3>看懂费用</h3><p>平台按脑电记录时长计费。5 份数据，每份 1 小时，就是 5 小时，费用 5 元。</p><small>点哪里：确认费用后点击“提交分析”。</small></article>
               <article class="journey-card important" role="button" tabindex="0" data-journey-step="3"><b>4</b><h3>不会选方法</h3><p>选择“我不知道分析方法”。系统会看你的范式和事件标签，自动推荐 ERP/P300。</p><small>小白重点：不要自己硬猜算法。</small></article>
               <article class="journey-card" role="button" tabindex="0" data-journey-step="4"><b>5</b><h3>使用默认参数</h3><p>系统会给出适合新手的默认窗口、基线和通道。你可以先不改高级参数。</p><small>默认建议：epoch -0.2 到 0.8 秒。</small></article>
               <article class="journey-card" role="button" tabindex="0" data-journey-step="5"><b>6</b><h3>查看质控</h3><p>系统会告诉你有没有坏道、坏段、眨眼伪迹和试次数不足。</p><small>出错怎么办：看到红色提示时，先下载质控报告。</small></article>
@@ -162,7 +188,7 @@
                 <label><input type="checkbox" checked /> 图有坐标轴、单位、图例、panel 标记和 300 dpi。</label>
                 <label><input type="checkbox" checked /> 统计基于每位被试指标，含效应量和校正。</label>
                 <label><input type="checkbox" checked /> 方法段落说明滤波、epoch、baseline、窗口、软件版本。</label>
-                <label><input type="checkbox" checked /> CSV、manifest、caption 和 QC 报告随包提供。</label>
+                <label><input type="checkbox" checked /> 统计表、复现记录、图注和 QC 报告随包提供。</label>
               </div>
             </section>
           </div>
@@ -220,28 +246,49 @@
 
             <section class="panel preview-panel span-2">
               <div class="panel-head">
-                <div><h2>分析结果预览</h2><p id="previewCaption">选择不同分析模板，先看看最终图表会长什么样。</p></div>
-                <button class="ghost-btn" id="cyclePreviewBtn"><i data-lucide="refresh-cw"></i><span>切换图</span></button>
+                <div><h2>原始脑电预览</h2><p id="previewCaption">读取 EDF 数据后可缩放、平移、调节增益，并核对事件标签和伪迹片段。</p></div>
+                <div class="preview-actions">
+                  <select id="eegSourceSelect" aria-label="预览数据源">
+                    <option value="./assets/synthetic_8ch_120s.edf|./assets/synthetic_8ch_120s_events.tsv">示例 8 通道 EDF</option>
+                    <option value="./assets/customer_oddball_case/sub-001_oddball.edf|./assets/customer_oddball_case/sub-001_events.tsv">客户 Oddball sub-001</option>
+                    <option value="./assets/customer_oddball_case/sub-002_oddball.edf|./assets/customer_oddball_case/sub-002_events.tsv">客户 Oddball sub-002</option>
+                  </select>
+                  <button class="ghost-btn" id="loadEegBtn"><i data-lucide="activity"></i><span>加载波形</span></button>
+                </div>
               </div>
-              <figure class="analysis-preview">
-                <img id="analysisPreview" src="./assets/analysis-erp.png" alt="MNE 分析示例图" />
-              </figure>
+              <div class="eeg-toolbar">
+                <button class="icon-btn" id="eegPrevBtn" title="向前"><i data-lucide="chevron-left"></i></button>
+                <button class="icon-btn" id="eegZoomOutBtn" title="缩小时间窗"><i data-lucide="zoom-out"></i></button>
+                <button class="icon-btn" id="eegZoomInBtn" title="放大时间窗"><i data-lucide="zoom-in"></i></button>
+                <button class="icon-btn" id="eegNextBtn" title="向后"><i data-lucide="chevron-right"></i></button>
+                <button class="ghost-btn" id="eegResetBtn"><i data-lucide="rotate-ccw"></i><span>复位</span></button>
+                <label><span>起点</span><input id="eegStartInput" type="number" value="0" min="0" step="0.5" /><em>s</em></label>
+                <label><span>时间窗</span><input id="eegWindowInput" type="range" min="2" max="30" step="1" value="10" /><b id="eegWindowLabel">10 s</b></label>
+                <label><span>增益</span><input id="eegGainInput" type="range" min="0.5" max="8" step="0.5" value="2" /><b id="eegGainLabel">2x</b></label>
+                <label><span>通道</span><input id="eegChannelInput" type="range" min="4" max="12" step="1" value="8" /><b id="eegChannelLabel">8</b></label>
+              </div>
+              <div class="eeg-viewer">
+                <canvas id="eegCanvas" width="1280" height="520" aria-label="脑电波形预览"></canvas>
+                <div class="eeg-empty" id="eegEmpty">正在等待加载 EDF 数据。</div>
+              </div>
+              <div class="eeg-meta" id="eegMeta"></div>
+              <div class="eeg-events" id="eegEvents"></div>
               <div class="preview-strip" id="previewStrip"></div>
             </section>
 
             <section class="panel">
               <div class="panel-head compact"><h2>提交任务</h2></div>
               <div class="form-grid">
-                <label><span>被试数</span><input id="subjectsInput" type="number" value="10" min="1" /></label>
-                <label><span>每份时长</span><div class="with-unit"><input id="hoursInput" type="number" value="1.5" min="0.1" step="0.1" /><em>小时</em></div></label>
+                <label><span>被试数</span><input id="subjectsInput" type="number" value="5" min="1" /></label>
+                <label><span>每份时长</span><div class="with-unit"><input id="hoursInput" type="number" value="1" min="0.1" step="0.1" /><em>小时</em></div></label>
               </div>
               <div class="cost-card">
                 <span>计费时长</span>
-                <strong id="totalHours">15.0 h</strong>
+                <strong id="totalHours">5.0 h</strong>
                 <small>单价 ￥1 / 小时 EEG 数据</small>
               </div>
-              <div class="cost-row"><span>分析费用</span><b id="analysisCost">￥15.00</b></div>
-              <div class="cost-row total"><span>冻结费用</span><b id="totalCost">￥15.00</b></div>
+              <div class="cost-row"><span>分析费用</span><b id="analysisCost">￥5.00</b></div>
+              <div class="cost-row total"><span>冻结费用</span><b id="totalCost">￥5.00</b></div>
               <button class="primary-btn" id="createTaskBtn"><i data-lucide="rocket"></i><span>冻结费用并建任务</span></button>
             </section>
           </div>
@@ -253,7 +300,7 @@
             <article class="step-card"><b>2</b><h3>分段</h3><p>连续数据按时间窗，任务数据按事件 epoch。</p><small>操作者：选择时间窗或事件标记。</small></article>
             <article class="step-card"><b>3</b><h3>预处理</h3><p>滤波、参考、坏道、ICA、伪迹拒绝和 QC 报告。</p><small>知识点：预处理参数必须进入方法段。</small></article>
             <article class="step-card"><b>4</b><h3>统计</h3><p>从每位被试导出指标，再做组统计和多重比较校正。</p><small>操作者：查看效应量和置信区间。</small></article>
-            <article class="step-card"><b>5</b><h3>发表包</h3><p>导出图、表、caption、methods、manifest。</p><small>结果：编辑可复核。</small></article>
+            <article class="step-card"><b>5</b><h3>发表包</h3><p>导出图、表、方法说明、图注和复现记录。</p><small>结果：编辑可复核。</small></article>
           </div>
           <section class="panel">
             <div class="panel-head"><div><h2>新手不知道选哪种分析时</h2><p>平台先问范式和事件标签，再把方法收敛到少数可解释选项。</p></div></div>
@@ -287,6 +334,27 @@
             <figure><img src="./assets/publication-bandpower-statistics.png" alt="Bandpower statistics" /><figcaption>频段功率统计：subject-level 汇总。</figcaption></figure>
             <figure><img src="./assets/publication-qc-dashboard.png" alt="QC dashboard" /><figcaption>QC 面板：坏段、坏道、ICA 和试次数。</figcaption></figure>
           </div>
+          <section class="panel customer-case-panel">
+            <div class="panel-head">
+              <div><h2>Oddball ERP 分析结果</h2><p>已生成 5 份 Oddball EEG 的被试级 P300 指标、组统计、Pz 波形和 340 ms 地形图。</p></div>
+              <span class="badge">5 份 EEG / 已完成</span>
+            </div>
+            <div class="customer-case-grid">
+              <figure><img src="./assets/customer_oddball_case/customer_oddball_erp_pz.png" alt="Customer Oddball ERP at Pz" /><figcaption>Pz 通道 target 与 standard 的 ERP 对比。</figcaption></figure>
+              <figure><img src="./assets/customer_oddball_case/customer_oddball_p300_topomap.png" alt="Customer Oddball P300 topomap" /><figcaption>Target - Standard P300，340 ms 头皮地形图。</figcaption></figure>
+              <div class="case-summary">
+                <div><span>分析范式</span><strong>Oddball ERP / P300</strong></div>
+                <div><span>统计窗口</span><strong>280-420 ms, P3/P4/Pz</strong></div>
+                <div><span>结果状态</span><strong class="ok">图表和统计文件已生成</strong></div>
+                <div><span>交付内容</span><strong>结果包、方法说明、图注和复现记录</strong></div>
+              </div>
+            </div>
+            <div class="download-grid">
+              <a class="ghost-link" href="./assets/customer_oddball_case/customer_subject_level_metrics.csv" download><i data-lucide="table"></i><strong>被试指标表</strong><span>customer_subject_level_metrics.csv</span></a>
+              <a class="ghost-link" href="./assets/customer_oddball_case/customer_statistics_summary.csv" download><i data-lucide="sigma"></i><strong>统计摘要</strong><span>customer_statistics_summary.csv</span></a>
+              <a class="ghost-link" href="./assets/customer_oddball_case/customer_analysis_manifest.json" download><i data-lucide="file-json"></i><strong>复现记录</strong><span>分析参数、软件版本和输出清单</span></a>
+            </div>
+          </section>
           <section class="panel">
             <div class="panel-head"><div><h2>待统计数据与统计摘要</h2><p>平台导出每位被试指标，不用 trial-level 数据虚增自由度。</p></div></div>
             <div class="download-grid">
@@ -298,9 +366,22 @@
         </section>
 
         <section class="view" id="publication">
+          <section class="panel customer-delivery-panel">
+            <div class="panel-head">
+              <div><h2>结果下载</h2><p>5 份 Oddball EEG 的图、表、方法说明和复现记录已准备好，可直接下载和复核。</p></div>
+              <span class="badge">已完成</span>
+            </div>
+            <div class="delivery-grid">
+              <a class="ghost-link" href="./assets/customer_oddball_case/customer_oddball_erp_package.zip" download><i data-lucide="archive"></i><strong>下载客户结果包</strong><span>图、表、方法说明、复现记录和 EDF 事件表</span></a>
+              <a class="ghost-link" href="./assets/customer_oddball_case/customer_methods.txt" download><i data-lucide="file-text"></i><strong>Methods 文本</strong><span>epoch、baseline、窗口和统计方法</span></a>
+              <a class="ghost-link" href="./assets/customer_oddball_case/customer_figure_caption.txt" download><i data-lucide="captions"></i><strong>Figure caption</strong><span>ERP 图注和统计说明</span></a>
+              <a class="ghost-link" href="./assets/customer_oddball_case/customer_analysis_manifest.json" download><i data-lucide="file-json"></i><strong>复现记录</strong><span>分析参数、软件版本和输出清单</span></a>
+            </div>
+            <div class="notice"><i data-lucide="info"></i><span>建议先检查 ERP 波形、统计摘要和方法说明，再用于汇报或投稿。</span></div>
+          </section>
           <section class="panel pub-preview-panel">
             <div class="panel-head">
-              <div><h2>发表级主图</h2><p>由真实 MNE 示例结果后处理为投稿图，绑定统计表和 manifest。</p></div>
+              <div><h2>发表级主图</h2><p>由分析结果后处理为投稿图，绑定统计表和复现记录。</p></div>
               <a class="ghost-link" href="./assets/publication_package.zip" download><i data-lucide="archive"></i>下载投稿包</a>
             </div>
             <figure class="pub-preview"><img src="./assets/publication-main-figure.png" alt="Publication main figure" /></figure>
@@ -313,10 +394,10 @@
               <label><span>字体</span><select id="fontSelect"><option selected>Arial 8 pt</option><option>Helvetica 9 pt</option></select></label>
               <button class="primary-btn" id="publishBtn"><i data-lucide="wand-sparkles"></i><span>应用</span></button>
             </div>
-            <div class="publication-status" id="publicationStatus">当前输出：300 dpi、色盲友好、Arial 8 pt，已绑定统计 CSV 和 manifest。</div>
+            <div class="publication-status" id="publicationStatus">当前输出：300 dpi、色盲友好、Arial 8 pt，已绑定统计表和复现记录。</div>
             <a class="inline-download" href="./assets/methods_snippet.txt" download>Methods 文本</a>
             <a class="inline-download" href="./assets/figure_caption.txt" download>Figure caption</a>
-            <a class="inline-download" href="./assets/analysis_manifest.json" download>Analysis manifest</a>
+            <a class="inline-download" href="./assets/analysis_manifest.json" download>复现记录</a>
           </section>
         </section>
 
@@ -348,7 +429,7 @@
                 <div class="table-row"><span>raw/sub-001.edf</span><span>Hot Object Store</span><span class="ok">可用</span><span>PI</span></div>
                 <div class="table-row"><span>derivatives/erp.csv</span><span>Warm Versioned</span><span class="ok">已索引</span><span>团队</span></div>
                 <div class="table-row"><span>figures/main.png</span><span>Warm CDN</span><span class="run">可下载</span><span>团队</span></div>
-                <div class="table-row"><span>audit/manifest.json</span><span>Immutable</span><span class="ok">锁定</span><span>管理员</span></div>
+                <div class="table-row"><span>records/reproducibility.json</span><span>归档记录</span><span class="ok">锁定</span><span>管理员</span></div>
               </div>
             </section>
             <section class="panel">
@@ -381,9 +462,10 @@
             </section>
             <section class="panel">
               <div class="panel-head compact"><h2>本次费用</h2></div>
-              <div class="cost-row"><span>10 份 x 1.5 h</span><b>15 h</b></div>
+              <div class="cost-row"><span>5 份 x 1 h</span><b>5 h</b></div>
               <div class="cost-row"><span>单价</span><b>￥1 / h</b></div>
-              <div class="cost-row total"><span>应扣</span><b>￥15.00</b></div>
+              <div class="cost-row total"><span>已扣</span><b>￥5.00</b></div>
+              <div class="cost-row"><span>充值后余额</span><b>￥995.00</b></div>
               <div class="notice"><i data-lucide="info"></i><span>费用按脑电原始记录时长计算，提交分析前会先展示预计扣费。</span></div>
             </section>
           </div>
@@ -396,8 +478,8 @@
               <div class="invoice-form">
                 <label><span>发票抬头</span><input value="某某大学认知神经科学实验室" /></label>
                 <label><span>税号</span><input value="91310000MA1EEG2026" /></label>
-                <label><span>开票金额</span><div class="with-unit"><input value="15.00" /><em>元</em></div></label>
-                <label><span>邮箱</span><input value="pi@example.edu.cn" /></label>
+                <label><span>开票金额</span><div class="with-unit"><input value="5.00" /><em>元</em></div></label>
+                <label><span>邮箱</span><input value="399467826@qq.com" /></label>
               </div>
               <button class="primary-btn" id="invoiceBtn"><i data-lucide="send"></i><span>提交开票申请</span></button>
               <div class="notice" id="invoiceNotice"><i data-lucide="badge-check"></i><span>等待提交。</span></div>
@@ -418,8 +500,8 @@
           <div class="metric-grid">
             <article class="metric"><span>今日项目</span><strong>128</strong><small>新增 34 个分析项目</small></article>
             <article class="metric"><span>待处理任务</span><strong>42</strong><small>队列运行正常</small></article>
-            <article class="metric"><span>本月收入</span><strong>￥18,420</strong><small>按记录时长计费</small></article>
-            <article class="metric"><span>开票申请</span><strong>16</strong><small>4 个待审核</small></article>
+            <article class="metric"><span>本次扣费</span><strong>￥5</strong><small>1000 充值，995 余额</small></article>
+            <article class="metric"><span>结果通知</span><strong>待确认</strong><small>等待运营确认交付</small></article>
           </div>
           <div class="work-grid">
             <section class="panel span-2">
@@ -433,10 +515,19 @@
             <section class="panel">
               <div class="panel-head compact"><h2>管理提醒</h2></div>
               <div class="checklist">
-                <label><input type="checkbox" checked /> 今日任务队列正常</label>
-                <label><input type="checkbox" checked /> 存储生命周期正常</label>
-                <label><input type="checkbox" /> 4 个发票抬头待审核</label>
-                <label><input type="checkbox" /> 2 个项目质控需人工复核</label>
+                <label><input type="checkbox" checked /> 客户 399467826@qq.com 已注册。</label>
+                <label><input type="checkbox" checked /> 充值 1000 元和 5 元扣费已展示。</label>
+                <label><input type="checkbox" checked /> 5 份 Oddball ERP/P300 结果已生成。</label>
+                <label><input type="checkbox" /> 结果通知等待运营确认。</label>
+              </div>
+            </section>
+            <section class="panel">
+              <div class="panel-head compact"><h2>最新注册客户</h2></div>
+              <div class="profile-card">
+                <div><span>姓名</span><strong id="adminCustomerName">Oddball 小白用户</strong></div>
+                <div><span>邮箱</span><strong id="adminCustomerEmail">399467826@qq.com</strong></div>
+                <div><span>单位</span><strong id="adminCustomerOrg">认知神经科学实验室</strong></div>
+                <div><span>注册时间</span><strong id="adminCustomerRegisteredAt">2026-06-06 09:00</strong></div>
               </div>
             </section>
           </div>
@@ -447,7 +538,7 @@
             <div class="panel-head"><div><h2>任务运营</h2><p>查看上传、预处理、统计、出图和导出任务状态。</p></div></div>
             <div class="storage-table">
               <div class="table-row head"><span>任务</span><span>客户</span><span>状态</span><span>操作</span></div>
-              <div class="table-row"><span>ERP-P300-2401</span><span>认知实验室</span><span class="run">运行中</span><span>查看</span></div>
+              <div class="table-row"><span>ERP-P300-2401</span><span>399467826@qq.com</span><span class="ok">已完成</span><span><a href="./assets/customer_oddball_case/customer_analysis_manifest.json" download>复现记录</a></span></div>
               <div class="table-row"><span>REST-PSD-2398</span><span>睡眠中心</span><span class="ok">已完成</span><span>导出</span></div>
               <div class="table-row"><span>MI-ERD-2390</span><span>康复团队</span><span class="warn">待复核</span><span>质控</span></div>
               <div class="table-row"><span>N400-2384</span><span>语言课题组</span><span class="ok">已完成</span><span>归档</span></div>
@@ -461,16 +552,18 @@
               <div class="panel-head"><div><h2>订单与开票管理</h2><p>管理员审核充值、扣费、订单和电子发票申请。</p></div></div>
               <div class="storage-table">
                 <div class="table-row head"><span>订单</span><span>金额</span><span>状态</span><span>开票</span></div>
-                <div class="table-row"><span>NC-202606-001</span><span>￥15.00</span><span class="ok">已支付</span><span>待开票</span></div>
-                <div class="table-row"><span>NC-202606-002</span><span>￥326.00</span><span class="ok">已支付</span><span>已发送</span></div>
+                <div class="table-row"><span>NC-202606-RECHARGE</span><span>￥1000.00</span><span class="ok">已充值</span><span>无需开票</span></div>
+                <div class="table-row"><span>NC-202606-001</span><span>￥5.00</span><span class="ok">已扣费</span><span>待开票</span></div>
+                <div class="table-row"><span>NC-202606-002</span><span>￥326.00</span><span class="ok">已支付</span><span>已开票</span></div>
                 <div class="table-row"><span>NC-202606-003</span><span>￥88.00</span><span class="warn">待审核</span><span>待审核</span></div>
               </div>
             </section>
             <section class="panel">
               <div class="panel-head compact"><h2>财务摘要</h2></div>
-              <div class="cost-row"><span>本月计费时长</span><b>18,420 h</b></div>
-              <div class="cost-row"><span>本月收入</span><b>￥18,420</b></div>
-              <div class="cost-row"><span>待开发票</span><b>￥2,118</b></div>
+              <div class="cost-row"><span>客户充值</span><b>￥1000.00</b></div>
+              <div class="cost-row"><span>Oddball 扣费</span><b>￥5.00</b></div>
+              <div class="cost-row"><span>账户余额</span><b>￥995.00</b></div>
+              <div class="cost-row"><span>结果通知</span><b class="warn">待确认</b></div>
             </section>
           </div>
         </section>

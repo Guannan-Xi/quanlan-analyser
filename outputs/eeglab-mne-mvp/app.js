@@ -1,18 +1,42 @@
 const qs = (selector) => document.querySelector(selector);
 const qsa = (selector) => [...document.querySelectorAll(selector)];
 const money = (value) => `￥${Number(value).toFixed(2)}`;
+const AUTH_KEY = "neurocloud_auth_session";
+const CUSTOMER_KEY = "neurocloud_customer_profile";
+
+const demoCustomer = {
+  name: "",
+  email: "",
+  org: "",
+  password: "",
+  registeredAt: "",
+};
+
+const demoAdmin = {
+  email: "ops@neurocloud.cn",
+  password: "",
+};
 
 const state = {
-  balance: 1000,
+  balance: 0,
   rechargeAmount: 1000,
   activeTemplate: "ERP 事件相关电位",
   segmentMode: "time",
   role: null,
-  tasks: [
-    { name: "数据上传与识别", detail: "10 份 EEG 已读取，事件标签和通道信息已识别", progress: 100 },
-    { name: "P300 分析与统计", detail: "已生成 P300 指标、统计摘要和主图", progress: 100 },
-    { name: "结果包整理", detail: "图、表、方法说明和复现记录正在整理", progress: 92 },
-  ],
+  tasks: [],
+};
+
+const eegState = {
+  data: null,
+  events: [],
+  sourceName: "",
+  autoloaded: false,
+  uploaded: false,
+  start: 0,
+  windowSec: 10,
+  gain: 2,
+  visibleChannels: 8,
+  drag: null,
 };
 
 const templates = [
@@ -107,7 +131,7 @@ const recommendations = {
 const journeyDetails = [
   {
     title: "第 1 步：先建项目",
-    body: "给这次分析取一个名字，例如 P300 oddball pilot。你也可以直接使用系统示例名称。",
+    body: "给这次分析取一个名字，例如客户 Oddball ERP。你也可以直接使用系统示例名称。",
     action: "点“开始分析”，确认项目名和数据数量。",
     view: "analysis",
   },
@@ -119,7 +143,7 @@ const journeyDetails = [
   },
   {
     title: "第 3 步：看懂费用",
-    body: "按每小时脑电数据 1 元，15 h 扣 15 元。余额从 1000 元变为 985 元，扣费记录可用于开票。",
+    body: "按每小时脑电数据 1 元，5 h 扣 5 元。余额从 1000 元变为 995 元，扣费记录可用于开票。",
     action: "确认费用后点击“提交分析”。扣费前会先显示预计金额。",
     view: "billing",
   },
@@ -170,11 +194,12 @@ const modalContent = {
     title: "项目记录",
     body: `
       <div class="audit-list">
-        <span>09:00 创建项目 P300 oddball pilot</span>
-        <span>09:05 上传 10 份 EEG，哈希校验通过</span>
-        <span>09:08 推荐 ERP/P300 方法，参数写入 manifest</span>
-        <span>09:16 导出 publication_package.zip</span>
-        <span>09:20 开票申请已提交</span>
+        <span>09:00 注册客户 399467826@qq.com 并创建 Oddball ERP 项目</span>
+        <span>09:03 充值 1000 元，本次分析按 5 小时计费</span>
+        <span>09:05 生成 5 份 Oddball EEG 与事件表，哈希校验通过</span>
+        <span>09:08 推荐 ERP/P300 方法，并记录分析参数</span>
+        <span>09:16 导出结果包、统计表、方法说明和图注</span>
+        <span>09:20 结果整理完成，等待确认后通知客户</span>
       </div>
     `,
   },
@@ -218,7 +243,126 @@ function closeModal() {
   if (backdrop) backdrop.hidden = true;
 }
 
-function loginAs(role) {
+function getStoredCustomer() {
+  try {
+    return JSON.parse(localStorage.getItem(CUSTOMER_KEY)) || demoCustomer;
+  } catch {
+    return demoCustomer;
+  }
+}
+
+function saveCustomer(profile) {
+  localStorage.setItem(CUSTOMER_KEY, JSON.stringify({ ...getStoredCustomer(), ...profile }));
+}
+
+function validateEmail(email) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+function setLoginMessage(message, type = "info") {
+  const target = qs("#loginMessage");
+  if (!target) return;
+  target.textContent = message;
+  target.classList.toggle("error", type === "error");
+  target.classList.toggle("success", type === "success");
+}
+
+function switchLoginTab(tab) {
+  qsa("[data-login-tab]").forEach((button) => button.classList.toggle("active", button.dataset.loginTab === tab));
+  qsa(".login-form").forEach((form) => form.classList.toggle("active", form.id === `${tab}Form`));
+  setLoginMessage("");
+}
+
+function rememberSession(role, persist = true) {
+  const session = JSON.stringify({ role, savedAt: new Date().toISOString() });
+  if (persist) localStorage.setItem(AUTH_KEY, session);
+  else sessionStorage.setItem(AUTH_KEY, session);
+}
+
+function clearSession() {
+  localStorage.removeItem(AUTH_KEY);
+  sessionStorage.removeItem(AUTH_KEY);
+}
+
+function renderAdminCustomerProfile() {
+  const customer = getStoredCustomer();
+  const safeText = (value, fallback = "-") => value || fallback;
+  if (qs("#adminCustomerName")) qs("#adminCustomerName").textContent = safeText(customer.name);
+  if (qs("#adminCustomerEmail")) qs("#adminCustomerEmail").textContent = safeText(customer.email);
+  if (qs("#adminCustomerOrg")) qs("#adminCustomerOrg").textContent = safeText(customer.org);
+  if (qs("#adminCustomerRegisteredAt")) qs("#adminCustomerRegisteredAt").textContent = safeText(customer.registeredAt);
+}
+
+function loginCustomer(email, password, remember) {
+  const customer = getStoredCustomer();
+  const matchedDemo = email === demoCustomer.email && password === demoCustomer.password;
+  const matchedRegistered = email === customer.email && password === customer.password;
+  if (!matchedDemo && !matchedRegistered) {
+    setLoginMessage("邮箱或密码不正确，请检查后重试。", "error");
+    return;
+  }
+  if (matchedDemo) saveCustomer(demoCustomer);
+  rememberSession("customer", remember);
+  loginAs("customer", matchedRegistered ? customer : getStoredCustomer());
+  setLoginMessage("");
+}
+
+function registerCustomer({ name, email, org, password }) {
+  if (!name.trim()) {
+    setLoginMessage("请填写姓名，后台需要用它识别客户项目。", "error");
+    return;
+  }
+  if (!validateEmail(email)) {
+    setLoginMessage("请填写有效邮箱，后续结果通知和开票都会使用它。", "error");
+    return;
+  }
+  if (password.length < 8) {
+    setLoginMessage("密码至少 8 位，便于后续接入正式账号体系。", "error");
+    return;
+  }
+  const profile = {
+    name: name.trim(),
+    email: email.trim(),
+    org: org.trim() || "未填写单位",
+    password,
+    registeredAt: new Date().toLocaleString("zh-CN", { hour12: false }),
+  };
+  saveCustomer(profile);
+  rememberSession("customer", true);
+  renderAdminCustomerProfile();
+  loginAs("customer", profile);
+  showToast("注册成功，已进入新手教程");
+}
+
+function loginAdmin(email, password) {
+  if (email !== demoAdmin.email || password !== demoAdmin.password) {
+    setLoginMessage("管理员账号或密码不正确，请检查后重试。", "error");
+    return;
+  }
+  rememberSession("admin", true);
+  loginAs("admin");
+  setLoginMessage("");
+}
+
+function restoreSession() {
+  const raw = localStorage.getItem(AUTH_KEY) || sessionStorage.getItem(AUTH_KEY);
+  if (!raw) {
+    logout(false);
+    return;
+  }
+  try {
+    const session = JSON.parse(raw);
+    if (session.role === "admin" || session.role === "customer") {
+      loginAs(session.role, session.role === "customer" ? getStoredCustomer() : null);
+      return;
+    }
+  } catch {
+    clearSession();
+  }
+  logout(false);
+}
+
+function loginAs(role, profile = null) {
   state.role = role;
   qs("#loginScreen").hidden = true;
   qs("#appShell").hidden = false;
@@ -231,24 +375,28 @@ function loginAs(role) {
     qs("#accountHint").textContent = "管理客户项目、任务、订单、开票和系统状态";
     qs("#topEyebrow").textContent = "后台管理 / 今日运营";
     qs("#tutorialBtn").hidden = true;
+    renderAdminCustomerProfile();
     setView("adminDashboard");
   } else {
-    qs("#roleLabel").textContent = "客户账户";
+    const customer = profile || getStoredCustomer();
+    qs("#roleLabel").textContent = customer.name || "客户账户";
     qs("#balanceSide").textContent = money(state.balance);
-    qs("#accountHint").textContent = "按脑电记录时长计费，费用透明可开票";
-    qs("#topEyebrow").textContent = "项目：P300 oddball pilot / 10 份 EEG";
+    qs("#accountHint").textContent = `${customer.org || "个人课题"} · ${customer.email || "未绑定邮箱"}`;
+    qs("#topEyebrow").textContent = "项目：客户 Oddball ERP / 5 份 EEG";
     qs("#tutorialBtn").hidden = false;
     setView("journey");
   }
   if (window.lucide) lucide.createIcons();
 }
 
-function logout() {
+function logout(clear = true) {
   state.role = null;
+  if (clear) clearSession();
   qs("#appShell").hidden = true;
   qs("#loginScreen").hidden = false;
   qsa(".view").forEach((el) => el.classList.remove("active"));
   qsa(".nav-item").forEach((el) => el.classList.remove("active"));
+  switchLoginTab("customerLogin");
   closeModal();
   if (window.lucide) lucide.createIcons();
 }
@@ -260,6 +408,7 @@ function setView(view) {
   qsa(".nav-item").forEach((el) => el.classList.toggle("active", el.dataset.view === view));
   const title = qs("#viewTitle");
   if (title) title.textContent = titles[view] || titles.dashboard;
+  if (view === "analysis") ensureEegLoaded();
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
@@ -295,14 +444,275 @@ function activeTemplate() {
 
 function renderPreview() {
   const item = activeTemplate();
-  const image = qs("#analysisPreview");
   const caption = qs("#previewCaption");
-  if (image) {
-    image.src = item.image;
-    image.alt = `${item.name} 示例图`;
-  }
-  if (caption) caption.textContent = item.desc;
+  if (caption) caption.textContent = `当前模板：${item.name}。${item.desc}。下方原始波形用于核对通道质量、事件位置、振幅尺度和可分析片段。`;
   qsa(".preview-chip").forEach((button) => button.classList.toggle("active", button.dataset.template === item.name));
+}
+
+function textField(decoder, bytes, start, length) {
+  return decoder.decode(bytes.slice(start, start + length)).trim();
+}
+
+function parseNumber(value, fallback = 0) {
+  const parsed = Number(String(value).trim());
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function parseEdf(buffer) {
+  const bytes = new Uint8Array(buffer);
+  const view = new DataView(buffer);
+  const decoder = new TextDecoder("ascii");
+  const headerBytes = parseNumber(textField(decoder, bytes, 184, 8), 256);
+  const records = parseNumber(textField(decoder, bytes, 236, 8), 1);
+  const recordDuration = parseNumber(textField(decoder, bytes, 244, 8), 1);
+  const signalCount = parseNumber(textField(decoder, bytes, 252, 4), 0);
+  if (!signalCount || headerBytes < 256 + signalCount * 256) throw new Error("EDF 文件头不完整，无法读取通道信息。");
+
+  let offset = 256;
+  const readArray = (length) => {
+    const values = [];
+    for (let i = 0; i < signalCount; i += 1) values.push(textField(decoder, bytes, offset + i * length, length));
+    offset += length * signalCount;
+    return values;
+  };
+  const labels = readArray(16);
+  readArray(80);
+  const physicalDims = readArray(8);
+  const physicalMin = readArray(8).map((item) => parseNumber(item));
+  const physicalMax = readArray(8).map((item) => parseNumber(item));
+  const digitalMin = readArray(8).map((item) => parseNumber(item));
+  const digitalMax = readArray(8).map((item) => parseNumber(item));
+  readArray(80);
+  const samplesPerRecord = readArray(8).map((item) => parseNumber(item));
+  const samplesPerRecordTotal = samplesPerRecord.reduce((sum, item) => sum + item, 0);
+  const usableRecords = Math.max(1, records < 0 ? Math.floor((bytes.length - headerBytes) / (samplesPerRecordTotal * 2)) : records);
+  const firstEegIndex = labels.findIndex((label, index) => !label.toLowerCase().includes("annotation") && Boolean(physicalDims[index]));
+  const sampleRate = samplesPerRecord[Math.max(0, firstEegIndex)] / recordDuration;
+  const duration = usableRecords * recordDuration;
+  const signals = labels.map((label, ch) => ({
+    label: label || `Ch ${ch + 1}`,
+    unit: physicalDims[ch] || "uV",
+    sampleRate: samplesPerRecord[ch] / recordDuration,
+    values: new Float32Array(samplesPerRecord[ch] * usableRecords),
+  }));
+
+  const channelTransforms = labels.map((label, ch) => {
+    const dim = physicalDims[ch].toLowerCase();
+    return {
+      isEeg: !label.toLowerCase().includes("annotation") && Boolean(physicalDims[ch]),
+      scale: (physicalMax[ch] - physicalMin[ch]) / (digitalMax[ch] - digitalMin[ch] || 1),
+      toMicrovolt: dim === "v" ? 1e6 : dim === "mv" ? 1e3 : 1,
+    };
+  });
+
+  let dataOffset = headerBytes;
+  for (let record = 0; record < usableRecords; record += 1) {
+    for (let ch = 0; ch < signalCount; ch += 1) {
+      const count = samplesPerRecord[ch];
+      const base = record * count;
+      for (let i = 0; i < count; i += 1) {
+        const digital = dataOffset + 1 < bytes.length ? view.getInt16(dataOffset, true) : 0;
+        if (channelTransforms[ch].isEeg) {
+          signals[ch].values[base + i] = ((digital - digitalMin[ch]) * channelTransforms[ch].scale + physicalMin[ch]) * channelTransforms[ch].toMicrovolt;
+        }
+        dataOffset += 2;
+      }
+    }
+  }
+
+  const eegSignals = signals.filter((signal, index) => channelTransforms[index].isEeg);
+  return { labels: eegSignals.map((signal) => signal.label), signals: eegSignals, sampleRate, duration, records: usableRecords, recordDuration, sourceUnit: "uV" };
+}
+
+function parseEvents(text) {
+  const lines = text.trim().split(/\r?\n/).filter(Boolean);
+  if (lines.length < 2) return [];
+  const header = lines[0].split(/\t|,/).map((item) => item.trim());
+  const onsetIndex = header.indexOf("onset");
+  const durationIndex = header.indexOf("duration");
+  const typeIndex = header.indexOf("trial_type");
+  return lines.slice(1).map((line) => {
+    const parts = line.split(/\t|,/);
+    return {
+      onset: parseNumber(parts[onsetIndex], 0),
+      duration: durationIndex >= 0 ? parseNumber(parts[durationIndex], 0) : 0,
+      type: typeIndex >= 0 ? parts[typeIndex] : "event",
+    };
+  }).filter((event) => Number.isFinite(event.onset));
+}
+
+function clampEegStart() {
+  if (!eegState.data) {
+    eegState.start = 0;
+    return;
+  }
+  eegState.start = Math.max(0, Math.min(eegState.start, Math.max(0, eegState.data.duration - eegState.windowSec)));
+  if (qs("#eegStartInput")) qs("#eegStartInput").value = eegState.start.toFixed(1);
+}
+
+function updateEegControls() {
+  if (qs("#eegWindowLabel")) qs("#eegWindowLabel").textContent = `${eegState.windowSec} s`;
+  if (qs("#eegGainLabel")) qs("#eegGainLabel").textContent = `${eegState.gain}x`;
+  if (qs("#eegChannelLabel")) qs("#eegChannelLabel").textContent = String(eegState.visibleChannels);
+  if (qs("#eegWindowInput")) qs("#eegWindowInput").value = String(eegState.windowSec);
+  if (qs("#eegGainInput")) qs("#eegGainInput").value = String(eegState.gain);
+  if (qs("#eegChannelInput")) qs("#eegChannelInput").value = String(eegState.visibleChannels);
+  clampEegStart();
+}
+
+function drawEeg() {
+  const canvas = qs("#eegCanvas");
+  if (!canvas) return;
+  const ctx = canvas.getContext("2d");
+  const rect = canvas.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = Math.max(900, Math.floor(rect.width * dpr));
+  canvas.height = Math.floor(520 * dpr);
+  ctx.scale(dpr, dpr);
+  const width = canvas.width / dpr;
+  const height = canvas.height / dpr;
+  ctx.clearRect(0, 0, width, height);
+  ctx.fillStyle = "#fbfcfd";
+  ctx.fillRect(0, 0, width, height);
+
+  const data = eegState.data;
+  if (!data) return;
+  const left = 78;
+  const right = 18;
+  const top = 28;
+  const bottom = 34;
+  const plotW = width - left - right;
+  const plotH = height - top - bottom;
+  const channels = data.signals.slice(0, Math.min(eegState.visibleChannels, data.signals.length));
+  const spacing = plotH / Math.max(1, channels.length);
+  const pxPerSecond = plotW / eegState.windowSec;
+  const uvToPx = (spacing / 150) * eegState.gain;
+
+  ctx.strokeStyle = "#e8edf2";
+  ctx.lineWidth = 1;
+  ctx.fillStyle = "#6b7785";
+  ctx.font = "12px Arial";
+  for (let s = Math.ceil(eegState.start); s <= eegState.start + eegState.windowSec; s += 1) {
+    const x = left + (s - eegState.start) * pxPerSecond;
+    ctx.beginPath();
+    ctx.moveTo(x, top);
+    ctx.lineTo(x, top + plotH);
+    ctx.stroke();
+    if ((s - Math.ceil(eegState.start)) % 2 === 0) ctx.fillText(`${s}s`, x + 3, height - 12);
+  }
+
+  eegState.events
+    .filter((event) => event.onset >= eegState.start && event.onset <= eegState.start + eegState.windowSec)
+    .forEach((event) => {
+      const x = left + (event.onset - eegState.start) * pxPerSecond;
+      ctx.strokeStyle = event.type.includes("target") ? "#d86b4f" : "#157a77";
+      ctx.beginPath();
+      ctx.moveTo(x, top);
+      ctx.lineTo(x, top + plotH);
+      ctx.stroke();
+      ctx.fillStyle = ctx.strokeStyle;
+      ctx.fillText(event.type.replace("stim/", ""), x + 4, top + 14);
+    });
+
+  channels.forEach((signal, ch) => {
+    const y0 = top + spacing * (ch + 0.5);
+    ctx.strokeStyle = "#d9e0e7";
+    ctx.beginPath();
+    ctx.moveTo(left, y0);
+    ctx.lineTo(left + plotW, y0);
+    ctx.stroke();
+    ctx.fillStyle = "#17202a";
+    ctx.fillText(signal.label, 10, y0 + 4);
+
+    const sr = signal.sampleRate;
+    const startSample = Math.max(0, Math.floor(eegState.start * sr));
+    const endSample = Math.min(signal.values.length - 1, Math.ceil((eegState.start + eegState.windowSec) * sr));
+    const step = Math.max(1, Math.floor((endSample - startSample) / plotW));
+    ctx.strokeStyle = ch % 2 ? "#457b9d" : "#157a77";
+    ctx.lineWidth = 1.3;
+    ctx.beginPath();
+    let moved = false;
+    for (let i = startSample; i <= endSample; i += step) {
+      const t = i / sr;
+      const x = left + (t - eegState.start) * pxPerSecond;
+      const y = y0 - Math.max(-spacing * 0.45, Math.min(spacing * 0.45, signal.values[i] * uvToPx));
+      if (!moved) {
+        ctx.moveTo(x, y);
+        moved = true;
+      } else {
+        ctx.lineTo(x, y);
+      }
+    }
+    ctx.stroke();
+  });
+
+  ctx.fillStyle = "#6b7785";
+  ctx.fillText(`时间窗 ${eegState.start.toFixed(1)}-${(eegState.start + eegState.windowSec).toFixed(1)} s · 增益 ${eegState.gain}x · 单位 µV`, left, 18);
+}
+
+function renderEegMeta() {
+  const data = eegState.data;
+  const meta = qs("#eegMeta");
+  const events = qs("#eegEvents");
+  if (!data) return;
+  if (meta) {
+    meta.innerHTML = [
+      `文件：${eegState.sourceName}`,
+      `通道：${data.signals.length}`,
+      `采样率：${data.sampleRate.toFixed(0)} Hz`,
+      `时长：${data.duration.toFixed(1)} s`,
+      `当前显示：${Math.min(eegState.visibleChannels, data.signals.length)} 通道`,
+    ].map((item) => `<span>${item}</span>`).join("");
+  }
+  if (events) {
+    const visible = eegState.events.filter((event) => event.onset >= eegState.start && event.onset <= eegState.start + eegState.windowSec).slice(0, 8);
+    events.innerHTML = visible.length
+      ? visible.map((event) => `<span>${event.onset.toFixed(2)}s ${event.type}</span>`).join("")
+      : "<span>当前时间窗内暂无事件</span>";
+  }
+}
+
+function renderEeg() {
+  updateEegControls();
+  renderEegMeta();
+  drawEeg();
+}
+
+async function loadEegFromBuffer(buffer, sourceName, eventsText = "") {
+  try {
+    eegState.data = parseEdf(buffer);
+    eegState.events = eventsText ? parseEvents(eventsText) : [];
+    eegState.sourceName = sourceName;
+    eegState.start = 0;
+    eegState.visibleChannels = Math.min(8, eegState.data.signals.length);
+    qs("#eegEmpty")?.classList.add("ready");
+    renderEeg();
+    showToast(`已加载脑电：${sourceName}`);
+  } catch (error) {
+    qs("#eegEmpty")?.classList.remove("ready");
+    qs("#eegEmpty").textContent = error.message || "EDF 解析失败。";
+    showToast("EDF 解析失败，请检查文件格式");
+  }
+}
+
+async function loadEegFromUrls(edfUrl, eventsUrl = "") {
+  qs("#eegEmpty")?.classList.remove("ready");
+  qs("#eegEmpty").textContent = "正在加载 EDF 数据。";
+  const edfResponse = await fetch(edfUrl);
+  if (!edfResponse.ok) throw new Error("EDF 文件加载失败。");
+  const eventsResponse = eventsUrl ? await fetch(eventsUrl) : null;
+  const eventsText = eventsResponse?.ok ? await eventsResponse.text() : "";
+  await loadEegFromBuffer(await edfResponse.arrayBuffer(), edfUrl.split("/").pop(), eventsText);
+}
+
+function ensureEegLoaded() {
+  if (eegState.autoloaded || eegState.data) {
+    renderEeg();
+    return;
+  }
+  eegState.autoloaded = true;
+  const [edfUrl, eventsUrl] = (qs("#eegSourceSelect")?.value || "").split("|");
+  if (edfUrl) loadEegFromUrls(edfUrl, eventsUrl).catch((error) => showToast(error.message || "脑电加载失败"));
 }
 
 function renderTemplates() {
@@ -402,7 +812,7 @@ function updateRecommendation() {
     <strong>${item.title}</strong>
     <span>${item.body}</span>
     <b>${item.params}</b>
-    <small>平台下一步会自动生成 subject-level CSV、统计摘要、300 dpi 图、methods、caption 和 manifest，供编辑复核。</small>
+    <small>平台下一步会自动生成被试级指标表、统计摘要、300 dpi 图、方法说明、图注和复现记录，供编辑复核。</small>
   `;
   showToast(`已推荐：${item.title}`);
 }
@@ -419,10 +829,27 @@ function boot() {
   updateUploadEstimate();
   updateRecommendation();
   renderJourneyDetail(0);
-  logout();
+  renderAdminCustomerProfile();
 
   qsa("[data-view], [data-view-jump]").forEach((button) => button.addEventListener("click", () => setView(button.dataset.view || button.dataset.viewJump)));
-  qsa("[data-login-role]").forEach((button) => button.addEventListener("click", () => loginAs(button.dataset.loginRole)));
+  qsa("[data-login-tab]").forEach((button) => button.addEventListener("click", () => switchLoginTab(button.dataset.loginTab)));
+  qs("#customerLoginForm")?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    loginCustomer(qs("#customerEmail")?.value.trim() || "", qs("#customerPassword")?.value || "", Boolean(qs("#rememberCustomer")?.checked));
+  });
+  qs("#customerRegisterForm")?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    registerCustomer({
+      name: qs("#registerName")?.value || "",
+      email: qs("#registerEmail")?.value || "",
+      org: qs("#registerOrg")?.value || "",
+      password: qs("#registerPassword")?.value || "",
+    });
+  });
+  qs("#adminLoginForm")?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    loginAdmin(qs("#adminEmail")?.value.trim() || "", qs("#adminPassword")?.value || "");
+  });
   qs("#logoutBtn")?.addEventListener("click", logout);
 
   ["#subjectsInput", "#hoursInput"].forEach((selector) => qs(selector)?.addEventListener("input", updateCosts));
@@ -441,8 +868,15 @@ function boot() {
   }));
 
   qs("#fileInput")?.addEventListener("change", (event) => {
-    const count = event.target.files.length;
+    const files = [...event.target.files];
+    const count = files.length;
     qs("#fileLabel").textContent = count ? `已选择 ${count} 个文件` : "选择或拖入 EEG 数据";
+    const edf = files.find((file) => file.name.toLowerCase().endsWith(".edf"));
+    if (edf) {
+      edf.arrayBuffer().then((buffer) => loadEegFromBuffer(buffer, edf.name));
+      showToast("正在预览上传的 EDF 数据");
+      return;
+    }
     if (count) showToast("数据已进入 BIDS 标准化队列");
   });
 
@@ -461,12 +895,78 @@ function boot() {
     setView("dashboard");
   });
 
-  qs("#cyclePreviewBtn")?.addEventListener("click", () => {
-    const index = templates.findIndex((item) => item.name === state.activeTemplate);
-    state.activeTemplate = templates[(index + 1) % templates.length].name;
-    renderTemplates();
-    renderPreview();
-    if (window.lucide) lucide.createIcons();
+  qs("#loadEegBtn")?.addEventListener("click", () => {
+    const [edfUrl, eventsUrl] = (qs("#eegSourceSelect")?.value || "").split("|");
+    if (edfUrl) loadEegFromUrls(edfUrl, eventsUrl).catch((error) => showToast(error.message || "脑电加载失败"));
+  });
+
+  qs("#eegSourceSelect")?.addEventListener("change", () => qs("#loadEegBtn")?.click());
+  qs("#eegPrevBtn")?.addEventListener("click", () => {
+    eegState.start -= eegState.windowSec * 0.5;
+    renderEeg();
+  });
+  qs("#eegNextBtn")?.addEventListener("click", () => {
+    eegState.start += eegState.windowSec * 0.5;
+    renderEeg();
+  });
+  qs("#eegZoomInBtn")?.addEventListener("click", () => {
+    eegState.windowSec = Math.max(2, Math.round(eegState.windowSec * 0.7));
+    renderEeg();
+  });
+  qs("#eegZoomOutBtn")?.addEventListener("click", () => {
+    eegState.windowSec = Math.min(30, Math.round(eegState.windowSec * 1.4));
+    renderEeg();
+  });
+  qs("#eegResetBtn")?.addEventListener("click", () => {
+    eegState.start = 0;
+    eegState.windowSec = 10;
+    eegState.gain = 2;
+    eegState.visibleChannels = Math.min(8, eegState.data?.signals.length || 8);
+    renderEeg();
+  });
+  qs("#eegStartInput")?.addEventListener("change", () => {
+    eegState.start = parseNumber(qs("#eegStartInput")?.value, 0);
+    renderEeg();
+  });
+  qs("#eegWindowInput")?.addEventListener("input", () => {
+    eegState.windowSec = parseNumber(qs("#eegWindowInput")?.value, 10);
+    renderEeg();
+  });
+  qs("#eegGainInput")?.addEventListener("input", () => {
+    eegState.gain = parseNumber(qs("#eegGainInput")?.value, 2);
+    renderEeg();
+  });
+  qs("#eegChannelInput")?.addEventListener("input", () => {
+    eegState.visibleChannels = parseNumber(qs("#eegChannelInput")?.value, 8);
+    renderEeg();
+  });
+
+  const eegCanvas = qs("#eegCanvas");
+  eegCanvas?.addEventListener("wheel", (event) => {
+    if (!eegState.data) return;
+    event.preventDefault();
+    const before = eegState.windowSec;
+    eegState.windowSec = Math.max(2, Math.min(30, Math.round(eegState.windowSec * (event.deltaY < 0 ? 0.8 : 1.25))));
+    const rect = eegCanvas.getBoundingClientRect();
+    const ratio = (event.clientX - rect.left - 78) / Math.max(1, rect.width - 96);
+    eegState.start += (before - eegState.windowSec) * Math.max(0, Math.min(1, ratio));
+    renderEeg();
+  }, { passive: false });
+  eegCanvas?.addEventListener("pointerdown", (event) => {
+    if (!eegState.data) return;
+    eegState.drag = { x: event.clientX, start: eegState.start };
+    eegCanvas.classList.add("dragging");
+  });
+  window.addEventListener("pointermove", (event) => {
+    if (!eegState.drag || !eegState.data) return;
+    const rect = eegCanvas.getBoundingClientRect();
+    const secondsPerPx = eegState.windowSec / Math.max(1, rect.width - 96);
+    eegState.start = eegState.drag.start - (event.clientX - eegState.drag.x) * secondsPerPx;
+    renderEeg();
+  });
+  window.addEventListener("pointerup", () => {
+    eegState.drag = null;
+    eegCanvas?.classList.remove("dragging");
   });
 
   qs("#recommendBtn")?.addEventListener("click", updateRecommendation);
@@ -499,7 +999,7 @@ function boot() {
   });
 
   qs("#publishBtn")?.addEventListener("click", () => {
-    const status = `当前输出：${qs("#dpiSelect")?.value}、${qs("#paletteSelect")?.value}、${qs("#fontSelect")?.value}，已绑定统计 CSV、caption、methods 和 manifest。`;
+    const status = `当前输出：${qs("#dpiSelect")?.value}、${qs("#paletteSelect")?.value}、${qs("#fontSelect")?.value}，已绑定统计表、图注、方法说明和复现记录。`;
     if (qs("#publicationStatus")) qs("#publicationStatus").textContent = status;
     showToast("图像后处理参数已应用到导出包");
   });
@@ -535,6 +1035,7 @@ function boot() {
   });
 
   if (window.lucide) lucide.createIcons();
+  restoreSession();
 }
 
 boot();
