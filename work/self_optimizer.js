@@ -1,5 +1,6 @@
 const fs = require("fs");
 const path = require("path");
+const https = require("https");
 const { spawn } = require("child_process");
 const crypto = require("crypto");
 
@@ -13,6 +14,7 @@ const issuesFile = path.join(optimizerDir, "self_optimizer_issues.jsonl");
 const memoryFile = path.join(optimizerDir, "self_optimizer_memory.json");
 const patchPlanFile = path.join(optimizerDir, "self_optimizer_patch_plan.json");
 const roleplayDetailFile = path.join(optimizerDir, "self_optimizer_roleplay_detail.jsonl");
+const externalResearchFile = path.join(optimizerDir, "self_optimizer_external_code_research.json");
 const emailTool = process.env.QL_SELF_OPTIMIZER_EMAIL_TOOL || "C:\\Users\\XGN\\.codex\\skills\\quanlan-email-delivery\\scripts\\email_tool.py";
 const emailPython = process.env.QL_SELF_OPTIMIZER_EMAIL_PYTHON || "C:\\Users\\XGN\\miniconda3\\python.exe";
 const emailProject = process.env.QL_SELF_OPTIMIZER_EMAIL_PROJECT || "D:\\Quanlan\\Codes\\Python\\xgn-assistant\\modes\\culture";
@@ -21,7 +23,9 @@ const emailOutDir = path.join(optimizerDir, "email_reports");
 const intervalMs = Number(process.env.QL_SELF_OPTIMIZER_INTERVAL_MS || 300_000);
 const idleUpdateMinMs = Number(process.env.QL_SELF_OPTIMIZER_IDLE_UPDATE_MIN_MS || 3_600_000);
 const roleplayUpdateMinMs = Number(process.env.QL_SELF_OPTIMIZER_ROLEPLAY_UPDATE_MIN_MS || 3_600_000);
+const externalResearchMinMs = Number(process.env.QL_SELF_OPTIMIZER_EXTERNAL_RESEARCH_MIN_MS || 86_400_000);
 const bugPattern = /(error|failed|failure|exception|traceback|timeout|fatal|crash|bug|报错|错误|失败|卡住|卡主)/i;
+const externalLearningPattern = /(你去学学别人的代码|学学别人的代码|学习.*别人.*代码|参考.*github|github.*参考|借鉴.*开源|开源.*借鉴|看看.*github|外部代码|别人.*工程|常见.*脑电.*方法|常见.*脑电.*工作流)/i;
 
 function nowIso() {
   return new Date().toISOString();
@@ -124,7 +128,9 @@ function writePatchPlan(state, issues, roleReviews) {
       "MNE official tutorials",
       "EEG preprocessing papers",
       "OpenNeuro/EEGDash/MOABB datasets",
+      "GitHub public EEG/MNE/EEGLAB workflow repositories",
     ],
+    external_code_research_file: externalResearchFile,
     safe_actions: [
       "refresh realtime optimizer seed queue",
       "generate role-play review matrix",
@@ -425,6 +431,36 @@ function writeJson(file, value) {
   fs.writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 }
 
+function httpJson(url, timeoutMs = 30_000) {
+  return new Promise((resolve, reject) => {
+    const req = https.get(url, {
+      headers: {
+        "User-Agent": "QL-EEG-self-optimizer",
+        "Accept": "application/vnd.github+json",
+      },
+    }, (res) => {
+      let body = "";
+      res.setEncoding("utf8");
+      res.on("data", (chunk) => { body += chunk; });
+      res.on("end", () => {
+        if (res.statusCode < 200 || res.statusCode >= 300) {
+          reject(new Error(`GET ${url} failed ${res.statusCode}: ${body.slice(0, 300)}`));
+          return;
+        }
+        try {
+          resolve(JSON.parse(body));
+        } catch (err) {
+          reject(err);
+        }
+      });
+    });
+    req.setTimeout(timeoutMs, () => {
+      req.destroy(new Error(`timeout: ${url}`));
+    });
+    req.on("error", reject);
+  });
+}
+
 function run(command, args, options = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, {
@@ -527,10 +563,94 @@ function addFeedback(text, source = "user-feedback") {
   const issue = recordIssue(state, { type: source === "add-bug" ? "bug" : "feedback", source, summary: text, evidence: text, next_action: "classify-and-convert-to-eeg-workflow-test" });
   const item = { type: source, status: "pending", text: String(text || "").trim(), issue_id: issue.id };
   appendJsonl(queueFile, item);
+  if (externalLearningPattern.test(item.text)) {
+    state.external_code_learning_requested_at = nowIso();
+    state.external_code_learning_requested_by = source;
+    recordEvolutionEvent(state, { stage: "external_research", event: "external-code-learning-requested", source, text, issue_id: issue.id, area: "research", severity: "medium" });
+  }
   recordEvolutionEvent(state, { stage: "observe", event: "user-feedback-recorded", source, text, issue_id: issue.id });
   writeJson(stateFile, state);
   appendJsonl(logFile, { event: "feedback-recorded", source, length: item.text.length });
   return item;
+}
+
+async function learnFromExternalCode(state, { force = false } = {}) {
+  const queries = [
+    "mne eeg preprocessing",
+    "eeglab preprocessing",
+    "eeg bids mne",
+    "p300 oddball eeg",
+  ];
+  const fallbackRepos = [
+    { name: "mne-tools/mne-python", url: "https://github.com/mne-tools/mne-python", description: "MNE-Python: EEG/MEG analysis, preprocessing, epochs, ICA, events, time-frequency workflows.", stars: 0, language: "Python", topics: ["mne", "eeg", "meg", "epochs", "ica"] },
+    { name: "sccn/eeglab", url: "https://github.com/sccn/eeglab", description: "EEGLAB: MATLAB EEG processing with clean_rawdata, ICA, epoching, event workflows.", stars: 0, language: "MATLAB", topics: ["eeglab", "eeg", "ica", "clean_rawdata"] },
+    { name: "sappelhoff/pyprep", url: "https://github.com/sappelhoff/pyprep", description: "PyPREP: PREP pipeline for EEG referencing, line noise, bad channel detection.", stars: 0, language: "Python", topics: ["PREP", "bad-channels", "eeg"] },
+    { name: "mne-tools/mne-bids", url: "https://github.com/mne-tools/mne-bids", description: "MNE-BIDS: BIDS import/export workflow for MNE EEG/MEG projects.", stars: 0, language: "Python", topics: ["BIDS", "mne", "eeg"] },
+    { name: "NeuroTechX/moabb", url: "https://github.com/NeuroTechX/moabb", description: "MOABB: benchmark datasets and reproducible EEG/BCI analysis pipelines.", stars: 0, language: "Python", topics: ["eeg", "benchmark", "bci", "datasets"] },
+  ];
+  const methodKeywords = [
+    "raw.filter", "notch_filter", "set_montage", "events_from_annotations", "Epochs",
+    "ICA", "find_bads_eog", "interpolate_bads", "autoreject", "PREP",
+    "clean_rawdata", "ASR", "BIDS", "mne-bids", "PSD", "time-frequency", "P300",
+  ];
+  const repos = [];
+  for (const query of queries) {
+    const url = `https://api.github.com/search/repositories?q=${encodeURIComponent(query)}&sort=stars&order=desc&per_page=5`;
+    try {
+      const data = await httpJson(url);
+      for (const item of data.items || []) {
+        repos.push({
+          name: item.full_name,
+          url: item.html_url,
+          description: item.description || "",
+          stars: item.stargazers_count || 0,
+          language: item.language || "",
+          topics: item.topics || [],
+        });
+      }
+    } catch (err) {
+      appendJsonl(logFile, { event: "external-code-search-failed", query, error: err.message });
+    }
+  }
+  const unique = [...new Map(repos.map((repo) => [repo.name, repo])).values()]
+    .sort((a, b) => b.stars - a.stars)
+    .slice(0, 12);
+  const sourceRepos = unique.length ? unique : fallbackRepos;
+  const corpus = sourceRepos.map((repo) => `${repo.name} ${repo.description} ${(repo.topics || []).join(" ")}`).join("\n");
+  const learnedMethods = methodKeywords.filter((keyword) => new RegExp(keyword.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i").test(corpus));
+  const recommendations = [
+    "上传 EDF 后补齐采样率、通道、事件标记、坏道数量的显式校验。",
+    "预处理工作流优先覆盖 notch/filter、坏道检测、ICA/PREP/ASR、插值、epoch 和导出报告。",
+    "在界面上把每一步参数、风险提示和可复现来源写清楚，避免用户把探索结果当临床结论。",
+    "为 P300/oddball、BIDS/MNE 导入、坏道/事件缺失分别沉淀回归样例。",
+  ];
+  const report = {
+    generated_at: nowIso(),
+    trigger: force ? "manual-or-feedback" : "idle",
+    source: "GitHub public repository search metadata",
+    repositories: sourceRepos,
+    fallback_used: !unique.length,
+    learned_methods: learnedMethods,
+    recommendations,
+    safety_note: "Only metadata and workflow ideas are summarized; external code is not copied into this project.",
+  };
+  writeJson(externalResearchFile, report);
+  state.last_external_code_learning_at = nowIso();
+  state.external_code_learning_requested_at = "";
+  state.external_code_learning_requested_by = "";
+  const issue = recordIssue(state, {
+    type: "external-code-learning",
+    source: "github-public-repositories",
+    area: "research",
+    severity: "medium",
+    summary: `学习 ${sourceRepos.length} 个公开 EEG/MNE/EEGLAB 相关仓库，提炼 ${learnedMethods.length} 个方法关键词和 ${recommendations.length} 条工作流升级建议。`,
+    evidence: JSON.stringify({ repos: sourceRepos.map((repo) => repo.name), learnedMethods, recommendations }),
+    next_action: "convert-external-workflow-lessons-to-regression-tests-and-guided-ui-improvements",
+  });
+  appendJsonl(queueFile, { type: "external-code-learning", status: "pending", issue_id: issue.id, report: externalResearchFile });
+  recordEvolutionEvent(state, { stage: "external_research", event: "external-code-learning-complete", source: "github", text: issue.summary, issue_id: issue.id, area: "research", severity: "medium" });
+  appendJsonl(logFile, { event: "external-code-learning-complete", repos: sourceRepos.length, learned_methods: learnedMethods.length, fallback_used: !unique.length, report: externalResearchFile });
+  return report;
 }
 
 function refreshRolePlayQueue(state) {
@@ -569,8 +689,18 @@ async function optimizeOnce({ force = false } = {}) {
   ensureDir(optimizerDir);
   const state = readJson(stateFile, {});
   const bugs = scanRuntimeBugs(state);
+  const externalRequested = Boolean(state.external_code_learning_requested_at);
+  const lastExternalAt = Date.parse(state.last_external_code_learning_at || 0);
+  const externalDue = force || externalRequested || !lastExternalAt || Date.now() - lastExternalAt >= externalResearchMinMs;
+  const externalResearch = externalDue
+    ? await learnFromExternalCode(state, { force: force || externalRequested }).catch((err) => {
+      appendJsonl(logFile, { event: "external-code-learning-failed", error: err.message });
+      recordEvolutionEvent(state, { stage: "external_research", event: "external-code-learning-failed", source: "github", text: err.message, area: "research", severity: "medium" });
+      return { ok: false, error: err.message };
+    })
+    : { skipped: true, reason: "external-research-throttled" };
   const lastRoleplayAt = Date.parse(state.last_roleplay_at || 0);
-  const roleplayDue = force || bugs.length > 0 || !lastRoleplayAt || Date.now() - lastRoleplayAt >= roleplayUpdateMinMs;
+  const roleplayDue = force || bugs.length > 0 || externalRequested || !lastRoleplayAt || Date.now() - lastRoleplayAt >= roleplayUpdateMinMs;
   const roles = roleplayDue ? refreshRolePlayQueue(state) : state.role_play_reviews || [];
   const issues = bugs.map((bug) => ({
     id: bug.issue_id,
@@ -593,7 +723,7 @@ async function optimizeOnce({ force = false } = {}) {
   }
   updateLearningMemory(state, { issues, release: idleResult });
   state.last_seen_at = nowIso();
-  state.last_result = { bugs: bugs.length, roles: roles.length, patch_plan: patchPlan.pending_issues.length, idle_optimization: idleResult };
+  state.last_result = { bugs: bugs.length, roles: roles.length, patch_plan: patchPlan.pending_issues.length, idle_optimization: idleResult, external_research: externalResearch };
   writeJson(stateFile, state);
   appendJsonl(logFile, { event: "self-optimizer-tick", ...state.last_result });
   return state.last_result;
