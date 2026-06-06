@@ -18,6 +18,7 @@ const roleplayDetailFile = path.join(optimizerDir, "self_optimizer_roleplay_deta
 const externalResearchFile = path.join(optimizerDir, "self_optimizer_external_code_research.json");
 const externalApprovalsFile = path.join(optimizerDir, "self_optimizer_learning_approvals.json");
 const externalApprovalsMdFile = path.join(optimizerDir, "self_optimizer_learning_approvals.md");
+const manualTriggerFile = path.join(optimizerDir, "self_optimizer_manual_triggers.jsonl");
 const emailTool = process.env.QL_SELF_OPTIMIZER_EMAIL_TOOL || "C:\\Users\\XGN\\.codex\\skills\\quanlan-email-delivery\\scripts\\email_tool.py";
 const emailPython = process.env.QL_SELF_OPTIMIZER_EMAIL_PYTHON || "C:\\Users\\XGN\\miniconda3\\python.exe";
 const emailProject = process.env.QL_SELF_OPTIMIZER_EMAIL_PROJECT || "D:\\Quanlan\\Codes\\Python\\xgn-assistant\\modes\\culture";
@@ -350,8 +351,97 @@ function writeEmailReport(kind, payload = {}) {
   return file;
 }
 
+function compactText(value, fallback = "无") {
+  const text = String(value || "").replace(/\s+/g, " ").trim();
+  if (!text) return fallback;
+  return text.length > 220 ? `${text.slice(0, 220)}...` : text;
+}
+
+function releaseStatusLine(releaseEvent = {}) {
+  if (releaseEvent.reason === "release-promoted") return "发布版已更新：开发版通过校验后已经同步到发布版，并会尝试同步 GitHub。";
+  if (releaseEvent.reason === "release-promotion-failed") return `发布版未更新：发布步骤失败，原因已记录：${compactText(releaseEvent.details?.error || releaseEvent.details?.stderr || "")}`;
+  if (releaseEvent.reason === "validated-only-no-release-change") return "发布版未更新：本轮只是校验，没有新的发布内容，所以不会反复发无效邮件。";
+  return "发布版未更新：本轮没有触发发布。";
+}
+
+function latestManualSelections() {
+  const entries = readJsonl(manualTriggerFile, 20).filter((item) => item.event === "manual-selection" || item.event === "manual-optimizer-started");
+  const latest = entries.at(-1);
+  return Array.isArray(latest?.selected) ? latest.selected : [];
+}
+
+function approvedLearningSummary(items = []) {
+  return items.map((item, index) => {
+    const source = item.source_repo || item.source_url || "来源未记录";
+    return `- ${index + 1}. ${compactText(item.title || item.method)}：${compactText(item.proposed_upgrade)} 来源：${source}${item.source_url ? ` (${item.source_url})` : ""}`;
+  });
+}
+
+function roleplayQuestionLines(details = []) {
+  return details.map((item, index) => {
+    const questions = Array.isArray(item.simulated_questions) && item.simulated_questions.length ? item.simulated_questions : roleplayQuestions(item.virtual_user || "");
+    const observed = Array.isArray(item.observed_issues) ? item.observed_issues.length : 0;
+    return [
+      `- ${index + 1}. 检查视角：${compactText(item.virtual_user || "脑电流程检查")}`,
+      `  - 它问了什么：${questions.map((q) => compactText(q, "")).filter(Boolean).join(" / ")}`,
+      `  - 发现结果：${observed ? `发现 ${observed} 个脑电流程风险，已进入问题单。` : "没有发现新的高优先级风险。"}`,
+    ].join("\n");
+  });
+}
+
+function writeReadableEmailReport(kind, payload = {}) {
+  ensureDir(emailOutDir);
+  const stamp = nowIso().replace(/[:.]/g, "-");
+  const file = path.join(emailOutDir, `${kind}-readable-${stamp}.txt`);
+  const issues = payload.issues || [];
+  const externalResearch = payload.external_research || {};
+  const approvedLearning = payload.approved_learning || [];
+  const roleplayDetails = payload.roleplay_details || [];
+  const manualSelections = latestManualSelections();
+  const learned = Array.isArray(externalResearch.learned_methods) ? externalResearch.learned_methods : [];
+  const repos = Array.isArray(externalResearch.repositories) ? externalResearch.repositories : [];
+  const bugLines = issues.length
+    ? issues.map((issue, index) => `- ${index + 1}. [${issue.severity || "unknown"} / ${issue.area || "unknown"}] ${compactText(issue.summary || issue.source || issue.id)}`)
+    : ["- 本轮没有发现新的运行 BUG。"];
+  const manualLines = manualSelections.length
+    ? manualSelections.map((item, index) => `- ${index + 1}. ${item.kind === "bug" ? "BUG" : item.kind === "upgrade" ? "升级" : "建议"}：${compactText(item.title)}；准备做：${compactText(item.proposed_upgrade)}`)
+    : ["- 本轮没有后台手动勾选任务。"];
+  const lines = [
+    "QL 脑电分析自优化日志",
+    "",
+    `时间：${nowIso()}`,
+    `本轮类型：${kind}`,
+    `邮件收件人：${emailTo}`,
+    "",
+    "一、这轮发现了什么 BUG",
+    ...bugLines,
+    "",
+    "二、这轮从公开代码库学到了什么",
+    learned.length ? `- 学到的方法关键词：${learned.join("、")}` : "- 本轮没有新的公开代码学习结果。",
+    repos.length ? `- 参考仓库：${repos.slice(0, 8).map((repo) => `${repo.name} ${repo.url}`).join("；")}` : "- 本轮没有新增参考仓库。",
+    "",
+    "三、你在后台勾选/批准了什么",
+    ...manualLines,
+    ...(approvedLearning.length ? approvedLearningSummary(approvedLearning) : []),
+    "",
+    "四、虚拟脑电流程检查问了什么",
+    ...(roleplayDetails.length ? roleplayQuestionLines(roleplayDetails) : ["- 本轮没有生成新的脑电流程模拟检查。"]),
+    "",
+    "五、发布版状态",
+    `- ${releaseStatusLine(payload.release_event || {})}`,
+    "",
+    "六、追溯文件",
+    `- 问题单：${issuesFile}`,
+    `- 学习审批：${externalApprovalsFile}`,
+    `- 手动勾选记录：${manualTriggerFile}`,
+    `- 公开代码学习报告：${externalResearchFile}`,
+  ];
+  fs.writeFileSync(file, `${lines.join("\n")}\n`, "utf8");
+  return file;
+}
+
 async function emailOptimizationLog(kind, payload = {}) {
-  const reportFile = writeEmailReport(kind, payload);
+  const reportFile = writeReadableEmailReport(kind, payload);
   let result = { ok: false, error: "not-started", reportFile };
   for (let attempt = 1; attempt <= 2; attempt += 1) {
     result = await run(emailPython, [
@@ -425,6 +515,27 @@ function readJson(file, fallback) {
     return JSON.parse(fs.readFileSync(file, "utf8").replace(/^\uFEFF/, ""));
   } catch (err) {
     if (err.code === "ENOENT") return fallback;
+    throw err;
+  }
+}
+
+function readJsonl(file, limit = 50) {
+  try {
+    return fs.readFileSync(file, "utf8")
+      .trim()
+      .split(/\r?\n/)
+      .filter(Boolean)
+      .slice(-limit)
+      .map((line) => {
+        try {
+          return JSON.parse(line);
+        } catch {
+          return null;
+        }
+      })
+      .filter(Boolean);
+  } catch (err) {
+    if (err.code === "ENOENT") return [];
     throw err;
   }
 }
@@ -1001,12 +1112,19 @@ async function optimizeOnce({ force = false } = {}) {
   if (roleplayDue) state.last_roleplay_at = nowIso();
   const idle = true;
   const lastIdleAt = Date.parse(state.last_idle_optimization_at || 0);
-  const idleDue = force || approvedLearning.length > 0 || !lastIdleAt || Date.now() - lastIdleAt >= idleUpdateMinMs;
+  const idleDue = approvedLearning.length > 0 || (!externalDue && (force || !lastIdleAt || Date.now() - lastIdleAt >= idleUpdateMinMs));
   const idleResult = idle && idleDue ? await runIdleOptimization(force) : { skipped: true, reason: idle ? "idle-update-throttled" : "not-idle" };
   if (idle && idleDue) state.last_idle_optimization_at = nowIso();
   if (idle && idleDue) {
     const releaseEvent = extractReleaseEventFromIdle(idleResult);
-    await maybeEmailOptimizationLog("release-optimization", { idle_optimization: idleResult, release_event: releaseEvent, issues: issues.slice(-10), roleplay_details: roleplayDetails });
+    await maybeEmailOptimizationLog("release-optimization", {
+      idle_optimization: idleResult,
+      release_event: releaseEvent,
+      issues: issues.slice(-10),
+      roleplay_details: roleplayDetails,
+      external_research: externalResearch,
+      approved_learning: approvedLearning,
+    });
   }
   updateLearningMemory(state, { issues, release: idleResult });
   state.last_seen_at = nowIso();
