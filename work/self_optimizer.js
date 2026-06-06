@@ -16,6 +16,8 @@ const memoryFile = path.join(optimizerDir, "self_optimizer_memory.json");
 const patchPlanFile = path.join(optimizerDir, "self_optimizer_patch_plan.json");
 const roleplayDetailFile = path.join(optimizerDir, "self_optimizer_roleplay_detail.jsonl");
 const externalResearchFile = path.join(optimizerDir, "self_optimizer_external_code_research.json");
+const externalApprovalsFile = path.join(optimizerDir, "self_optimizer_learning_approvals.json");
+const externalApprovalsMdFile = path.join(optimizerDir, "self_optimizer_learning_approvals.md");
 const emailTool = process.env.QL_SELF_OPTIMIZER_EMAIL_TOOL || "C:\\Users\\XGN\\.codex\\skills\\quanlan-email-delivery\\scripts\\email_tool.py";
 const emailPython = process.env.QL_SELF_OPTIMIZER_EMAIL_PYTHON || "C:\\Users\\XGN\\miniconda3\\python.exe";
 const emailProject = process.env.QL_SELF_OPTIMIZER_EMAIL_PROJECT || "D:\\Quanlan\\Codes\\Python\\xgn-assistant\\modes\\culture";
@@ -462,6 +464,22 @@ function httpJson(url, timeoutMs = 30_000) {
   });
 }
 
+function httpText(url, timeoutMs = 30_000) {
+  return new Promise((resolve, reject) => {
+    const req = https.get(url, { headers: { "User-Agent": "QL-EEG-self-optimizer" } }, (res) => {
+      let body = "";
+      res.setEncoding("utf8");
+      res.on("data", (chunk) => { body += chunk; });
+      res.on("end", () => {
+        if (res.statusCode < 200 || res.statusCode >= 300) reject(new Error(`GET ${url} failed ${res.statusCode}`));
+        else resolve(body);
+      });
+    });
+    req.setTimeout(timeoutMs, () => req.destroy(new Error(`timeout: ${url}`)));
+    req.on("error", reject);
+  });
+}
+
 function run(command, args, options = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, {
@@ -654,6 +672,14 @@ async function learnFromExternalCode(state, { force = false } = {}) {
   const sourceRepos = unique.length ? unique : fallbackRepos;
   const corpus = sourceRepos.map((repo) => `${repo.name} ${repo.description} ${(repo.topics || []).join(" ")}`).join("\n");
   const learnedMethods = methodKeywords.filter((keyword) => new RegExp(keyword.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i").test(corpus));
+  const codeFindings = await collectExternalCodeFindings(sourceRepos.slice(0, 8));
+  for (const finding of codeFindings) {
+    for (const keyword of finding.methods || []) {
+      if (!learnedMethods.includes(keyword)) learnedMethods.push(keyword);
+    }
+  }
+  const approvalItems = buildLearningApprovalItems(codeFindings, sourceRepos, learnedMethods);
+  writeLearningApprovalFiles(approvalItems);
   const recommendations = [
     "上传 EDF 后补齐采样率、通道、事件标记、坏道数量的显式校验。",
     "预处理工作流优先覆盖 notch/filter、坏道检测、ICA/PREP/ASR、插值、epoch 和导出报告。",
@@ -666,6 +692,9 @@ async function learnFromExternalCode(state, { force = false } = {}) {
     source: "GitHub public repository search metadata",
     repositories: sourceRepos,
     fallback_used: !unique.length,
+    code_findings: codeFindings,
+    approval_file: externalApprovalsFile,
+    approval_markdown: externalApprovalsMdFile,
     learned_methods: learnedMethods,
     recommendations,
     safety_note: "Only metadata and workflow ideas are summarized; external code is not copied into this project.",
@@ -674,19 +703,237 @@ async function learnFromExternalCode(state, { force = false } = {}) {
   state.last_external_code_learning_at = nowIso();
   state.external_code_learning_requested_at = "";
   state.external_code_learning_requested_by = "";
-  const issue = recordIssue(state, {
-    type: "external-code-learning",
-    source: "github-public-repositories",
-    area: "research",
-    severity: "medium",
-    summary: `学习 ${sourceRepos.length} 个公开 EEG/MNE/EEGLAB 相关仓库，提炼 ${learnedMethods.length} 个方法关键词和 ${recommendations.length} 条工作流升级建议。`,
-    evidence: JSON.stringify({ repos: sourceRepos.map((repo) => repo.name), learnedMethods, recommendations }),
-    next_action: "convert-external-workflow-lessons-to-regression-tests-and-guided-ui-improvements",
-  });
-  appendJsonl(queueFile, { type: "external-code-learning", status: "pending", issue_id: issue.id, report: externalResearchFile });
-  recordEvolutionEvent(state, { stage: "external_research", event: "external-code-learning-complete", source: "github", text: issue.summary, issue_id: issue.id, area: "research", severity: "medium" });
-  appendJsonl(logFile, { event: "external-code-learning-complete", repos: sourceRepos.length, learned_methods: learnedMethods.length, fallback_used: !unique.length, report: externalResearchFile });
+  state.learning_approval_pending = approvalItems.filter((item) => item.status === "pending").map((item) => item.id);
+  recordEvolutionEvent(state, { stage: "external_research", event: "external-code-learning-complete", source: "github", text: `代码级学习 ${sourceRepos.length} 个仓库，生成 ${approvalItems.length} 条待许可升级项。`, area: "research", severity: "medium" });
+  appendJsonl(logFile, { event: "external-code-learning-complete", repos: sourceRepos.length, learned_methods: learnedMethods.length, approvals: approvalItems.length, fallback_used: !unique.length, report: externalResearchFile, approval_file: externalApprovalsFile });
   return report;
+}
+
+async function collectExternalCodeFindings(repos) {
+  const candidatePaths = [
+    "README.md",
+    "examples/preprocessing.py",
+    "examples/preprocess.py",
+    "tutorials/preprocessing.py",
+    "notebooks/preprocessing.ipynb",
+    "preprocessing.py",
+    "pipeline.py",
+  ];
+  const findings = [];
+  for (const repo of repos) {
+    const [owner, name] = repo.name.split("/");
+    if (!owner || !name) continue;
+    for (const filePath of candidatePaths) {
+      const rawUrl = `https://raw.githubusercontent.com/${owner}/${name}/master/${filePath}`;
+      let text = "";
+      try {
+        text = await httpText(rawUrl, 15_000);
+      } catch {
+        continue;
+      }
+      const methods = extractMethodsFromCode(text);
+      if (!methods.length) continue;
+      findings.push({
+        repo: repo.name,
+        repo_url: repo.url,
+        file: filePath,
+        url: rawUrl,
+        methods,
+        code_signals: methods.map((method) => methodDescription(method)),
+        summary: summarizeCodeFinding(methods),
+      });
+      break;
+    }
+  }
+  return findings;
+}
+
+function extractMethodsFromCode(text) {
+  const checks = [
+    ["notch_filter", /notch_filter|line noise|工频/i],
+    ["filter", /raw\.filter|high-pass|low-pass|band-pass|滤波/i],
+    ["set_montage", /set_montage|montage|电极位置/i],
+    ["events_from_annotations", /events_from_annotations|find_events|event_id|事件/i],
+    ["Epochs", /Epochs|epoch|分段/i],
+    ["ICA", /\bICA\b|independent component/i],
+    ["interpolate_bads", /interpolate_bads|bad channel|坏道/i],
+    ["autoreject", /autoreject/i],
+    ["PREP", /\bPREP\b|pyprep/i],
+    ["ASR", /\bASR\b|clean_rawdata/i],
+    ["BIDS", /\bBIDS\b|mne-bids/i],
+    ["PSD", /\bPSD\b|power spectral/i],
+    ["time-frequency", /time[- ]frequency|tfr|morlet/i],
+  ];
+  return checks.filter(([, pattern]) => pattern.test(text)).map(([name]) => name);
+}
+
+function methodDescription(method) {
+  const descriptions = {
+    notch_filter: "增加工频噪声 notch 检查，避免 50/60Hz 污染影响结果。",
+    filter: "明确高通/低通/带通参数，并在报告中展示。",
+    set_montage: "校验电极布局/通道位置，避免通道名和空间位置不匹配。",
+    events_from_annotations: "从注释或事件表中提取事件并校验缺失。",
+    Epochs: "把连续数据按事件分段，并记录 epoch 数量和剔除原因。",
+    ICA: "加入 ICA 伪迹处理提示和风险说明。",
+    interpolate_bads: "坏道检测后支持插值并记录坏道列表。",
+    autoreject: "借鉴自动拒绝坏段/坏 epoch 的质量控制流程。",
+    PREP: "借鉴 PREP 的参考、线噪、坏道检测流程。",
+    ASR: "借鉴 ASR/clean_rawdata 的强伪迹清理思路。",
+    BIDS: "支持 BIDS/MNE-BIDS 导入导出和可复现数据结构。",
+    PSD: "增加频谱功率质控视图。",
+    "time-frequency": "增加时频分析工作流提示和参数记录。",
+  };
+  return descriptions[method] || `学习 ${method} 相关工作流。`;
+}
+
+function summarizeCodeFinding(methods) {
+  return methods.map(methodDescription).slice(0, 4).join(" ");
+}
+
+function buildLearningApprovalItems(codeFindings, repos, learnedMethods) {
+  const templates = [
+    {
+      method: "BIDS",
+      title: "补强 BIDS/MNE-BIDS 导入导出工作流",
+      upgrade: "在开发版增加 BIDS 结构检查、导入来源说明和导出报告入口。",
+      risk: "需要避免误改用户原始数据路径。",
+    },
+    {
+      method: "PREP",
+      title: "加入 PREP 风格预处理质控",
+      upgrade: "增加参考、线噪、坏道检测的流程提示和结果记录。",
+      risk: "PREP 参数需要作为建议，不直接替代用户选择。",
+    },
+    {
+      method: "ASR",
+      title: "加入 ASR/clean_rawdata 伪迹清理建议",
+      upgrade: "在预处理建议中标注强伪迹清理适用场景和限制。",
+      risk: "ASR 可能过度清理，必须保留风险提示。",
+    },
+    {
+      method: "ICA",
+      title: "完善 ICA 伪迹处理和解释风险提示",
+      upgrade: "补充 ICA 成分检查、EOG/伪迹说明和用户确认步骤。",
+      risk: "自动 ICA 不应直接给临床结论。",
+    },
+    {
+      method: "autoreject",
+      title: "加入坏 epoch 自动拒绝质控思路",
+      upgrade: "为 epoch 质量控制增加拒绝原因和数量统计。",
+      risk: "自动拒绝阈值需要可解释、可回退。",
+    },
+  ];
+  const sourceByMethod = new Map();
+  for (const finding of codeFindings) {
+    for (const method of finding.methods) {
+      if (!sourceByMethod.has(method)) sourceByMethod.set(method, finding);
+    }
+  }
+  const items = templates
+    .filter((item) => learnedMethods.includes(item.method))
+    .map((item) => {
+      const source = sourceByMethod.get(item.method) || codeFindings[0] || { repo: repos[0]?.name || "", repo_url: repos[0]?.url || "", url: repos[0]?.url || "" };
+      return {
+        id: stableId(["learning-approval", item.method, source.url]),
+        status: "pending",
+        method: item.method,
+        title: item.title,
+        explanation: methodDescription(item.method),
+        source_repo: source.repo,
+        source_url: source.url || source.repo_url,
+        source_file: source.file || "",
+        proposed_upgrade: item.upgrade,
+        risk_note: item.risk,
+        created_at: nowIso(),
+      };
+    });
+  return items;
+}
+
+function writeLearningApprovalFiles(items) {
+  const existing = readJson(externalApprovalsFile, { generated_at: "", items: [] });
+  const existingById = new Map((existing.items || []).map((item) => [item.id, item]));
+  const merged = items.map((item) => ({ ...item, status: existingById.get(item.id)?.status || item.status }));
+  const approval = { generated_at: nowIso(), instructions: "把 status 从 pending 改成 approved 即许可升级；改成 rejected 即拒绝。也可运行 node work/self_optimizer.js approve-learning <id|all>。", items: merged };
+  writeJson(externalApprovalsFile, approval);
+  const lines = [
+    "# QL脑电自优化器学习审批清单",
+    "",
+    "把 JSON 文件中对应条目的 status 改成 approved，或运行 `node work/self_optimizer.js approve-learning <id|all>`。",
+    "",
+    ...merged.flatMap((item) => [
+      `## ${item.title}`,
+      `- ID: ${item.id}`,
+      `- 状态: ${item.status}`,
+      `- 说明: ${item.explanation}`,
+      `- 来源: ${item.source_repo}`,
+      `- 地址: ${item.source_url}`,
+      `- 拟升级: ${item.proposed_upgrade}`,
+      `- 风险: ${item.risk_note}`,
+      "",
+    ]),
+  ];
+  fs.writeFileSync(externalApprovalsMdFile, `${lines.join("\n")}\n`, "utf8");
+  return approval;
+}
+
+function approvedLearningItems() {
+  const approvals = readJson(externalApprovalsFile, { items: [] });
+  return (approvals.items || []).filter((item) => item.status === "approved");
+}
+
+function queueApprovedLearningItems(state) {
+  const approved = approvedLearningItems();
+  const queuedIds = new Set(state.queued_learning_approval_ids || []);
+  const newlyQueued = [];
+  for (const item of approved) {
+    if (queuedIds.has(item.id)) continue;
+    const issue = recordIssue(state, {
+      type: "approved-external-code-learning",
+      source: item.source_url,
+      area: "research",
+      severity: "medium",
+      summary: `已许可升级：${item.title}。${item.proposed_upgrade}`,
+      evidence: JSON.stringify(item),
+      next_action: "implement-approved-eeg-workflow-upgrade-with-tests",
+    });
+    appendJsonl(queueFile, { type: "approved-external-code-learning", status: "pending", issue_id: issue.id, approval_id: item.id, method: item.method, source_url: item.source_url });
+    queuedIds.add(item.id);
+    newlyQueued.push(item);
+  }
+  state.queued_learning_approval_ids = [...queuedIds];
+  if (newlyQueued.length) {
+    recordEvolutionEvent(state, { stage: "external_research", event: "approved-learning-queued", source: "approval-file", text: `新增 ${newlyQueued.length} 条已许可学习升级项。`, area: "research", severity: "medium" });
+  }
+  return newlyQueued;
+}
+
+function listLearningApprovals() {
+  const approvals = readJson(externalApprovalsFile, { items: [] });
+  return {
+    approval_file: externalApprovalsFile,
+    markdown_file: externalApprovalsMdFile,
+    items: approvals.items || [],
+  };
+}
+
+function approveLearning(target = "") {
+  const approvals = readJson(externalApprovalsFile, { items: [] });
+  const items = approvals.items || [];
+  const normalized = String(target || "").trim();
+  let changed = 0;
+  for (const item of items) {
+    if (normalized === "all" || item.id === normalized || item.method === normalized) {
+      if (item.status !== "approved") {
+        item.status = "approved";
+        item.approved_at = nowIso();
+        changed += 1;
+      }
+    }
+  }
+  writeJson(externalApprovalsFile, { ...approvals, updated_at: nowIso(), items });
+  writeLearningApprovalFiles(items);
+  return { changed, approval_file: externalApprovalsFile, markdown_file: externalApprovalsMdFile };
 }
 
 function refreshRolePlayQueue(state) {
@@ -738,8 +985,9 @@ async function optimizeOnce({ force = false } = {}) {
   if (externalDue && externalResearch && !externalResearch.error) {
     state.last_external_code_learning_dev_signature = devIdle.signature;
   }
+  const approvedLearning = queueApprovedLearningItems(state);
   const lastRoleplayAt = Date.parse(state.last_roleplay_at || 0);
-  const roleplayDue = force || bugs.length > 0 || externalRequested || !lastRoleplayAt || Date.now() - lastRoleplayAt >= roleplayUpdateMinMs;
+  const roleplayDue = force || bugs.length > 0 || approvedLearning.length > 0 || externalRequested || !lastRoleplayAt || Date.now() - lastRoleplayAt >= roleplayUpdateMinMs;
   const roles = roleplayDue ? refreshRolePlayQueue(state) : state.role_play_reviews || [];
   const issues = bugs.map((bug) => ({
     id: bug.issue_id,
@@ -748,12 +996,12 @@ async function optimizeOnce({ force = false } = {}) {
     severity: classifyIssue(bug.summary || bug.kind, bug.source).severity,
     summary: bug.summary || bug.kind,
   }));
-  const patchPlan = (roleplayDue || issues.length) ? writePatchPlan(state, issues, roles) : { pending_issues: [] };
+  const patchPlan = (roleplayDue || issues.length || approvedLearning.length) ? writePatchPlan(state, issues, roles) : { pending_issues: [] };
   const roleplayDetails = roleplayDue ? writeRoleplayDetails(state, roles, issues) : state.last_roleplay_details || [];
   if (roleplayDue) state.last_roleplay_at = nowIso();
   const idle = true;
   const lastIdleAt = Date.parse(state.last_idle_optimization_at || 0);
-  const idleDue = force || externalDue || !lastIdleAt || Date.now() - lastIdleAt >= idleUpdateMinMs;
+  const idleDue = force || approvedLearning.length > 0 || !lastIdleAt || Date.now() - lastIdleAt >= idleUpdateMinMs;
   const idleResult = idle && idleDue ? await runIdleOptimization(force) : { skipped: true, reason: idle ? "idle-update-throttled" : "not-idle" };
   if (idle && idleDue) state.last_idle_optimization_at = nowIso();
   if (idle && idleDue) {
@@ -762,7 +1010,7 @@ async function optimizeOnce({ force = false } = {}) {
   }
   updateLearningMemory(state, { issues, release: idleResult });
   state.last_seen_at = nowIso();
-  state.last_result = { bugs: bugs.length, roles: roles.length, patch_plan: patchPlan.pending_issues.length, idle_optimization: idleResult, external_research: externalResearch };
+  state.last_result = { bugs: bugs.length, roles: roles.length, patch_plan: patchPlan.pending_issues.length, approved_learning: approvedLearning.length, idle_optimization: idleResult, external_research: externalResearch };
   writeJson(stateFile, state);
   appendJsonl(logFile, { event: "self-optimizer-tick", ...state.last_result });
   return state.last_result;
@@ -772,6 +1020,14 @@ async function main() {
   const [cmd, ...args] = process.argv.slice(2);
   if (cmd === "add-feedback" || cmd === "add-bug") {
     console.log(JSON.stringify(addFeedback(args.join(" "), cmd), null, 2));
+    return;
+  }
+  if (cmd === "list-learning") {
+    console.log(JSON.stringify(listLearningApprovals(), null, 2));
+    return;
+  }
+  if (cmd === "approve-learning") {
+    console.log(JSON.stringify(approveLearning(args[0] || ""), null, 2));
     return;
   }
   if (cmd === "--once" || cmd === "once" || cmd === "--force") {
