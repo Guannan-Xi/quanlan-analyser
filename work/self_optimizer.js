@@ -5,6 +5,7 @@ const { spawn } = require("child_process");
 const crypto = require("crypto");
 
 const root = path.resolve(__dirname, "..");
+const devRoot = path.join(root, "outputs", "eeglab-mne-dev");
 const optimizerDir = path.join(root, "outputs", "eeglab-mne-dev", "assets", "realtime_optimizer");
 const stateFile = path.join(optimizerDir, "self_optimizer_state.json");
 const logFile = path.join(optimizerDir, "self_optimizer_log.jsonl");
@@ -23,7 +24,7 @@ const emailOutDir = path.join(optimizerDir, "email_reports");
 const intervalMs = Number(process.env.QL_SELF_OPTIMIZER_INTERVAL_MS || 300_000);
 const idleUpdateMinMs = Number(process.env.QL_SELF_OPTIMIZER_IDLE_UPDATE_MIN_MS || 3_600_000);
 const roleplayUpdateMinMs = Number(process.env.QL_SELF_OPTIMIZER_ROLEPLAY_UPDATE_MIN_MS || 3_600_000);
-const externalResearchMinMs = Number(process.env.QL_SELF_OPTIMIZER_EXTERNAL_RESEARCH_MIN_MS || 86_400_000);
+const devIdleStableMs = Number(process.env.QL_SELF_OPTIMIZER_DEV_IDLE_STABLE_MS || 600_000);
 const bugPattern = /(error|failed|failure|exception|traceback|timeout|fatal|crash|bug|报错|错误|失败|卡住|卡主)/i;
 const externalLearningPattern = /(你去学学别人的代码|学学别人的代码|学习.*别人.*代码|参考.*github|github.*参考|借鉴.*开源|开源.*借鉴|看看.*github|外部代码|别人.*工程|常见.*脑电.*方法|常见.*脑电.*工作流)/i;
 
@@ -491,6 +492,41 @@ function run(command, args, options = {}) {
   });
 }
 
+function newestDevWriteMs(dir = devRoot, depth = 0) {
+  if (!fs.existsSync(dir) || depth > 5) return 0;
+  let newest = 0;
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (["node_modules", ".git", "assets", "data"].includes(entry.name)) continue;
+    const full = path.join(dir, entry.name);
+    let stat;
+    try {
+      stat = fs.statSync(full);
+    } catch {
+      continue;
+    }
+    if (entry.isDirectory()) {
+      newest = Math.max(newest, newestDevWriteMs(full, depth + 1));
+    } else if (/\.(js|css|html|json|md|py|mjs|ts|tsx|jsx)$/i.test(entry.name)) {
+      newest = Math.max(newest, stat.mtimeMs);
+    }
+  }
+  return newest;
+}
+
+function getDevIdleState(state) {
+  const newestWriteMs = newestDevWriteMs();
+  const stableForMs = newestWriteMs ? Date.now() - newestWriteMs : 0;
+  const signature = `${newestWriteMs}`;
+  const alreadyLearned = state.last_external_code_learning_dev_signature === signature;
+  return {
+    idle: Boolean(newestWriteMs) && stableForMs >= devIdleStableMs,
+    stableForMs,
+    newestWriteMs,
+    signature,
+    alreadyLearned,
+  };
+}
+
 function walkLogs(dir, depth = 0, out = []) {
   if (depth > 3 || !fs.existsSync(dir)) return out;
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -626,7 +662,7 @@ async function learnFromExternalCode(state, { force = false } = {}) {
   ];
   const report = {
     generated_at: nowIso(),
-    trigger: force ? "manual-or-feedback" : "idle",
+    trigger: force ? "manual-or-feedback" : "dev-version-idle",
     source: "GitHub public repository search metadata",
     repositories: sourceRepos,
     fallback_used: !unique.length,
@@ -690,15 +726,18 @@ async function optimizeOnce({ force = false } = {}) {
   const state = readJson(stateFile, {});
   const bugs = scanRuntimeBugs(state);
   const externalRequested = Boolean(state.external_code_learning_requested_at);
-  const lastExternalAt = Date.parse(state.last_external_code_learning_at || 0);
-  const externalDue = force || externalRequested || !lastExternalAt || Date.now() - lastExternalAt >= externalResearchMinMs;
+  const devIdle = getDevIdleState(state);
+  const externalDue = force || externalRequested || (devIdle.idle && !devIdle.alreadyLearned);
   const externalResearch = externalDue
     ? await learnFromExternalCode(state, { force: force || externalRequested }).catch((err) => {
       appendJsonl(logFile, { event: "external-code-learning-failed", error: err.message });
       recordEvolutionEvent(state, { stage: "external_research", event: "external-code-learning-failed", source: "github", text: err.message, area: "research", severity: "medium" });
       return { ok: false, error: err.message };
     })
-    : { skipped: true, reason: "external-research-throttled" };
+    : { skipped: true, reason: devIdle.idle ? "dev-version-already-learned" : "dev-version-still-being-edited", dev_idle: devIdle };
+  if (externalDue && externalResearch && !externalResearch.error) {
+    state.last_external_code_learning_dev_signature = devIdle.signature;
+  }
   const lastRoleplayAt = Date.parse(state.last_roleplay_at || 0);
   const roleplayDue = force || bugs.length > 0 || externalRequested || !lastRoleplayAt || Date.now() - lastRoleplayAt >= roleplayUpdateMinMs;
   const roles = roleplayDue ? refreshRolePlayQueue(state) : state.role_play_reviews || [];
@@ -714,7 +753,7 @@ async function optimizeOnce({ force = false } = {}) {
   if (roleplayDue) state.last_roleplay_at = nowIso();
   const idle = true;
   const lastIdleAt = Date.parse(state.last_idle_optimization_at || 0);
-  const idleDue = force || !lastIdleAt || Date.now() - lastIdleAt >= idleUpdateMinMs;
+  const idleDue = force || externalDue || !lastIdleAt || Date.now() - lastIdleAt >= idleUpdateMinMs;
   const idleResult = idle && idleDue ? await runIdleOptimization(force) : { skipped: true, reason: idle ? "idle-update-throttled" : "not-idle" };
   if (idle && idleDue) state.last_idle_optimization_at = nowIso();
   if (idle && idleDue) {
