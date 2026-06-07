@@ -149,21 +149,24 @@ function writePatchPlan(state, issues, roleReviews) {
 }
 
 function writeRoleplayDetails(state, roleReviews, issues) {
-  const details = roleReviews.map((review) => {
+  const details = roleReviews.map((review, index) => {
+    const sessionId = stableId(["roleplay", nowIso(), review.role, String(index), String(Math.random())]);
     const matched = issues.filter((issue) => {
       const text = `${issue.area || ""} ${issue.summary || ""}`;
-      if (/novice|EDF/i.test(review.role)) return /ux|scientific-validity|EDF|上传|通道|采样|事件/i.test(text);
-      if (/paper|reproduction/i.test(review.role)) return /scientific-validity|research|MNE|论文|复现/i.test(text);
-      if (/clinical/i.test(review.role)) return /scientific-validity|runtime|临床|预处理|风险/i.test(text);
-      if (/operator|release/i.test(review.role)) return /release|runtime|发布|runtime-state/i.test(text);
+      if (/novice|EDF/i.test(review.role)) return /ux|scientific-validity|EDF|upload|channel|sample|event/i.test(text);
+      if (/paper|reproduction/i.test(review.role)) return /scientific-validity|research|MNE|paper|reproduce/i.test(text);
+      if (/clinical/i.test(review.role)) return /scientific-validity|runtime|clinical|preprocess|risk/i.test(text);
+      if (/operator|release/i.test(review.role)) return /release|runtime|publish|runtime-state/i.test(text);
       return false;
     });
-    return {
-      project: "QL脑电分析平台",
+    const questions = roleplayQuestions(review.role);
+    const detail = {
+      project: "QL EEG analysis platform",
       round_at: nowIso(),
+      session_id: sessionId,
       virtual_user: review.role,
       test_focus: review.prompt,
-      simulated_questions: roleplayQuestions(review.role),
+      simulated_questions: questions,
       evidence_sources: [logFile, issuesFile, patchPlanFile],
       observed_issues: matched.map((issue) => ({
         id: issue.id || "",
@@ -171,18 +174,69 @@ function writeRoleplayDetails(state, roleReviews, issues) {
         severity: issue.severity || "unknown",
         summary: issue.summary || "",
       })),
-      conclusion: matched.length ? `发现 ${matched.length} 个相关问题，需要转成脑电流程回归测试。` : "本轮没有发现该角色视角下的新高优先级问题。",
-      recommendation: matched.length ? "优先补充上传、预处理、事件/坏道和发布校验的可复现测试。" : "继续积累真实 EDF/MNE 工作流反馈。",
+      conclusion: matched.length ? `Found ${matched.length} related issues; convert them into EEG workflow regression checks.` : "No new high-priority issue found from this role-play perspective.",
+      recommendation: matched.length ? "Prioritize reproducible tests for upload, preprocessing, events, bad channels, and release validation." : "Continue collecting real EDF/MNE workflow feedback.",
       needs_human_confirmation: matched.some((issue) => issue.severity === "high" && issue.area === "scientific-validity"),
+      source_module: "work/self_optimizer.js:writeRoleplayDetails",
     };
+    detail.dialogue_rounds = buildRoleplayDialogueRounds(detail, questions, matched);
+    return detail;
   });
-  for (const detail of details) appendJsonl(roleplayDetailFile, detail);
+  for (const detail of details) {
+    appendJsonl(roleplayDetailFile, detail);
+    for (const turn of detail.dialogue_rounds || []) appendJsonl(roleplayDetailFile, turn);
+  }
   state.last_roleplay_detail_file = roleplayDetailFile;
   state.last_roleplay_details = details;
-  appendJsonl(eventsFile, { project: "QL脑电分析平台", stage: "roleplay_review", event: "roleplay-details-written", roles: details.length });
+  appendJsonl(eventsFile, { project: "QL EEG analysis platform", stage: "roleplay_review", event: "roleplay-details-written", roles: details.length, detail_file: roleplayDetailFile });
   return details;
 }
 
+function buildRoleplayDialogueRounds(summary, questions, matched) {
+  const virtualUser = summary.virtual_user || "virtual user";
+  const observedIssue = matched[0]?.summary || "";
+  const recommendation = summary.recommendation || "";
+  const needsHuman = Boolean(summary.needs_human_confirmation);
+  const base = {
+    project: summary.project,
+    timestamp: nowIso(),
+    session_id: summary.session_id,
+    scenario: summary.test_focus,
+    test_focus: summary.test_focus,
+    virtual_user: virtualUser,
+    coach: "self-optimizer simulated coach",
+    customer: virtualUser,
+    observed_issue: observedIssue,
+    recommendation,
+    needs_human_confirmation: needsHuman,
+    source_module: "work/self_optimizer.js:buildRoleplayDialogueRounds",
+    record_type: "roleplay_dialogue_turn",
+  };
+  const firstQuestion = questions[0] || "What could confuse this EEG workflow user?";
+  const secondQuestion = questions[1] || "What should the platform clarify before release?";
+  return [
+    { ...base, round: 1, speaker: virtualUser, role: "virtual_user", message: firstQuestion },
+    {
+      ...base,
+      round: 1,
+      speaker: "self-optimizer simulated coach",
+      role: "coach",
+      message: matched.length
+        ? `Checked evidence and found ${matched.length} risks; convert them into reproducible tests.`
+        : "Checked logs, issues, and patch plan; no new high-priority risk found.",
+    },
+    { ...base, round: 2, speaker: virtualUser, role: "virtual_user", message: secondQuestion },
+    {
+      ...base,
+      round: 2,
+      speaker: "self-optimizer simulated coach",
+      role: "coach",
+      message: needsHuman
+        ? "This touches scientific validity or high-risk interpretation and needs human confirmation before formal change."
+        : "This recommendation is recorded for issue tracking, regression checks, or UI guidance improvements.",
+    },
+  ];
+}
 function userProblemLine(issue) {
   const raw = String(issue.summary || issue.source || "").replace(/\s+/g, " ").trim();
   const text = raw.slice(0, 500);
@@ -1146,6 +1200,15 @@ async function main() {
   }
   if (cmd === "approve-learning") {
     console.log(JSON.stringify(approveLearning(args[0] || ""), null, 2));
+    return;
+  }
+  if (cmd === "roleplay-test") {
+    ensureDir(optimizerDir);
+    const state = readJson(stateFile, {});
+    const roles = refreshRolePlayQueue(state).slice(0, 1);
+    const details = writeRoleplayDetails(state, roles, []);
+    writeJson(stateFile, { ...state, last_seen_at: nowIso() });
+    console.log(JSON.stringify({ ok: true, detail_file: roleplayDetailFile, sessions: details.map((item) => item.session_id), turns: details.flatMap((item) => item.dialogue_rounds || []).length }, null, 2));
     return;
   }
   if (cmd === "--once" || cmd === "once" || cmd === "--force") {
