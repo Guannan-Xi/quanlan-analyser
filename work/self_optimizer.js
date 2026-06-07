@@ -19,10 +19,11 @@ const externalResearchFile = path.join(optimizerDir, "self_optimizer_external_co
 const externalApprovalsFile = path.join(optimizerDir, "self_optimizer_learning_approvals.json");
 const externalApprovalsMdFile = path.join(optimizerDir, "self_optimizer_learning_approvals.md");
 const manualTriggerFile = path.join(optimizerDir, "self_optimizer_manual_triggers.jsonl");
+const totalConsoleSettingsFile = process.env.XGN_ASSISTANT_SETTINGS_FILE || "D:\\Quanlan\\Codes\\Python\\xgn-assistant\\quanlan_dual_assistant_settings.json";
 const emailTool = process.env.QL_SELF_OPTIMIZER_EMAIL_TOOL || "C:\\Users\\XGN\\.codex\\skills\\quanlan-email-delivery\\scripts\\email_tool.py";
 const emailPython = process.env.QL_SELF_OPTIMIZER_EMAIL_PYTHON || "C:\\Users\\XGN\\miniconda3\\python.exe";
 const emailProject = process.env.QL_SELF_OPTIMIZER_EMAIL_PROJECT || "D:\\Quanlan\\Codes\\Python\\xgn-assistant\\modes\\culture";
-const emailTo = process.env.QL_SELF_OPTIMIZER_EMAIL_TO || "399467826@qq.com";
+const fallbackEmailTo = "399467826@qq.com";
 const emailOutDir = path.join(optimizerDir, "email_reports");
 const intervalMs = Number(process.env.QL_SELF_OPTIMIZER_INTERVAL_MS || 300_000);
 const idleUpdateMinMs = Number(process.env.QL_SELF_OPTIMIZER_IDLE_UPDATE_MIN_MS || 3_600_000);
@@ -42,6 +43,24 @@ function ensureDir(dir) {
 function appendJsonl(file, record) {
   ensureDir(path.dirname(file));
   fs.appendFileSync(file, `${JSON.stringify({ at: nowIso(), ...record })}\n`, "utf8");
+}
+
+function optimizerEmailTo() {
+  if (process.env.QL_SELF_OPTIMIZER_EMAIL_TO) return process.env.QL_SELF_OPTIMIZER_EMAIL_TO;
+  try {
+    const raw = fs.readFileSync(totalConsoleSettingsFile, "utf8");
+    const settings = JSON.parse(raw);
+    const value = String(settings.email_recipient || "").trim();
+    if (value) return value;
+  } catch {
+    try {
+      const raw = fs.readFileSync(totalConsoleSettingsFile, "utf8");
+      const match = raw.match(/"email_recipient"\s*:\s*"([^"]*)"/);
+      const value = String(match?.[1] || "").trim();
+      if (value) return value;
+    } catch {}
+  }
+  return fallbackEmailTo;
 }
 
 function stableId(parts) {
@@ -353,6 +372,7 @@ function roleplayEmailLine(item, index) {
 }
 
 function writeEmailReport(kind, payload = {}) {
+  const emailTo = payload.email_to || optimizerEmailTo();
   ensureDir(emailOutDir);
   const stamp = nowIso().replace(/[:.]/g, "-");
   const file = path.join(emailOutDir, `${kind}-${stamp}.txt`);
@@ -444,6 +464,7 @@ function roleplayQuestionLines(details = []) {
 }
 
 function writeReadableEmailReport(kind, payload = {}) {
+  const emailTo = payload.email_to || optimizerEmailTo();
   ensureDir(emailOutDir);
   const stamp = nowIso().replace(/[:.]/g, "-");
   const file = path.join(emailOutDir, `${kind}-readable-${stamp}.txt`);
@@ -495,7 +516,8 @@ function writeReadableEmailReport(kind, payload = {}) {
 }
 
 async function emailOptimizationLog(kind, payload = {}) {
-  const reportFile = writeReadableEmailReport(kind, payload);
+  const emailTo = optimizerEmailTo();
+  const reportFile = writeReadableEmailReport(kind, { ...payload, email_to: emailTo });
   let result = { ok: false, error: "not-started", reportFile };
   for (let attempt = 1; attempt <= 2; attempt += 1) {
     result = await run(emailPython, [
