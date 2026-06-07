@@ -44,6 +44,81 @@ button {
   cursor: pointer;
 }
 
+.boss-home {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 80;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 42px;
+  padding: 0 16px;
+  border-radius: 999px;
+  background: #111827;
+  color: #fff;
+  font-weight: 800;
+  text-decoration: none;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.24);
+}
+
+.boss-brief {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.boss-brief div {
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--panel);
+  padding: 16px;
+  box-shadow: var(--shadow);
+}
+
+.boss-brief span {
+  color: var(--teal);
+  display: block;
+  font-size: 12px;
+  font-weight: 900;
+  margin-bottom: 8px;
+}
+
+.boss-brief strong {
+  display: block;
+  line-height: 1.4;
+  margin-bottom: 8px;
+}
+
+.boss-brief p {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
+  margin: 0;
+}
+
+.login-brief {
+  display: grid;
+  gap: 7px;
+  margin: 16px 0;
+  padding: 14px;
+  border-radius: 18px;
+  background: rgba(21, 122, 119, 0.08);
+  border: 1px solid rgba(21, 122, 119, 0.18);
+}
+
+.login-brief strong,
+.login-brief span {
+  display: block;
+}
+
+.login-brief span {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
 .login-screen {
   display: grid;
   grid-template-columns: minmax(260px, 0.75fr) minmax(320px, 1fr);

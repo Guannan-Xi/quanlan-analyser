@@ -8,6 +8,7 @@
     <script src="./vendor/lucide.min.js"></script>
   </head>
   <body>
+    <a class="boss-home" href="http://127.0.0.1:8765/">返回主界面</a>
     <section class="login-screen" id="loginScreen">
       <div class="login-brand">
         <div class="brand-mark">NC</div>
@@ -20,6 +21,13 @@
         <p class="eyebrow">安全登录</p>
         <h1>从上传脑电到生成投稿图，一步一步带你完成</h1>
         <p>客户账号用于上传数据、查看结果、充值和开票；后台账号用于运营人员管理客户、订单、任务和系统状态。</p>
+
+        <div class="login-brief">
+          <strong>进入后主要看三件事：</strong>
+          <span>发生了什么：当前脑电任务处在上传、分析、统计还是出报告。</span>
+          <span>有什么意义：结果能否交付给客户、能否用于论文或演示。</span>
+          <span>建议下一步：继续新手教程、开始分析，或直接下载结果包。</span>
+        </div>
 
         <div class="login-tabs" role="tablist" aria-label="登录类型">
           <button class="active" type="button" data-login-tab="customerLogin">客户登录</button>
@@ -96,6 +104,24 @@
             <button class="ghost-btn" id="logoutBtn"><i data-lucide="log-out"></i><span>退出</span></button>
           </div>
         </header>
+
+        <section class="boss-brief">
+          <div>
+            <span>发生了什么</span>
+            <strong>这里展示脑电分析任务从上传、方法选择到结果报告的全过程。</strong>
+            <p>当前页面会把复杂的 EEG 流程拆成项目总览、分析、统计、投稿图和数据管理。</p>
+          </div>
+          <div>
+            <span>有什么意义</span>
+            <strong>它帮助用户判断数据是否可分析、结果是否可交付。</strong>
+            <p>老板视角重点看任务是否完成、结果是否可下载、用户是否还卡在上传或方法选择。</p>
+          </div>
+          <div>
+            <span>建议下一步</span>
+            <strong>先看“项目总览”，再进入“开始分析”或“投稿图”。</strong>
+            <p>如果用户不会选方法，优先使用新手教程；如果结果已生成，直接查看统计结果和下载包。</p>
+          </div>
+        </section>
 
         <section class="view active" id="dashboard">
           <div class="metric-grid">
