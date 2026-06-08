@@ -143,6 +143,7 @@ button {
   justify-content: space-between;
   align-items: flex-start;
   gap: 14px;
+  min-height: 520px;
   padding: 24px;
   color: white;
   background: #163238;
@@ -2051,6 +2052,10 @@ select {
     grid-template-columns: 1fr;
   }
 
+  .login-brand {
+    min-height: 360px;
+  }
+
   .shell {
     grid-template-columns: 86px 1fr;
   }
@@ -2091,9 +2096,27 @@ select {
   }
 }
 
+@media (min-width: 761px) and (max-width: 1080px) {
+  .login-screen {
+    grid-template-columns: minmax(300px, 0.78fr) minmax(360px, 1fr);
+  }
+
+  .login-brand {
+    min-height: calc(100vh - 56px);
+  }
+}
+
 @media (max-width: 760px) {
   .login-screen {
     padding: 14px;
+  }
+
+  .login-brand {
+    min-height: 300px;
+  }
+
+  .login-brand::before {
+    inset: 82px 14px 52px;
   }
 
   .login-actions {
