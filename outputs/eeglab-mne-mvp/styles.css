@@ -1,16 +1,16 @@
 :root {
   --ink: #17202a;
-  --muted: #6b7785;
-  --line: #d9e0e7;
-  --page: #f4f7f7;
+  --muted: #64748b;
+  --line: #d8e0e7;
+  --page: #f3f6f8;
   --panel: #ffffff;
-  --teal: #157a77;
-  --teal-soft: #d9f0ee;
-  --coral: #d95f43;
-  --amber: #d99a22;
+  --teal: #0f766e;
+  --teal-soft: #dff5f1;
+  --coral: #c94d36;
+  --amber: #b7791f;
   --green: #2b8a54;
-  --steel: #526577;
-  --shadow: 0 18px 48px rgba(23, 32, 42, 0.1);
+  --steel: #475569;
+  --shadow: 0 14px 34px rgba(15, 23, 42, 0.08);
 }
 
 * {
@@ -26,10 +26,8 @@ body {
   min-height: 100vh;
   color: var(--ink);
   background:
-    linear-gradient(90deg, rgba(21, 122, 119, 0.08) 0 1px, transparent 1px 100%),
-    linear-gradient(0deg, rgba(82, 101, 119, 0.07) 0 1px, transparent 1px 100%),
+    linear-gradient(180deg, #f8fafc 0%, #eef4f3 100%),
     var(--page);
-  background-size: 36px 36px;
   font-family: Inter, "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
   letter-spacing: 0;
 }
@@ -71,10 +69,11 @@ button {
 
 .boss-brief div {
   border: 1px solid var(--line);
-  border-radius: 18px;
+  border-left: 3px solid #14b8a6;
+  border-radius: 8px;
   background: var(--panel);
   padding: 16px;
-  box-shadow: var(--shadow);
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.055);
 }
 
 .boss-brief span {
@@ -103,7 +102,7 @@ button {
   gap: 7px;
   margin: 16px 0;
   padding: 14px;
-  border-radius: 18px;
+  border-radius: 8px;
   background: rgba(21, 122, 119, 0.08);
   border: 1px solid rgba(21, 122, 119, 0.18);
 }
@@ -121,7 +120,7 @@ button {
 
 .login-screen {
   display: grid;
-  grid-template-columns: minmax(260px, 0.75fr) minmax(320px, 1fr);
+  grid-template-columns: minmax(320px, 0.82fr) minmax(360px, 1fr);
   gap: 24px;
   align-items: stretch;
   min-height: 100vh;
@@ -137,12 +136,51 @@ button {
 }
 
 .login-brand {
+  position: relative;
+  overflow: hidden;
   display: flex;
+  flex-direction: column;
+  justify-content: space-between;
   align-items: flex-start;
   gap: 14px;
   padding: 24px;
   color: white;
-  background: #1e343a;
+  background: #163238;
+}
+
+.login-brand::before {
+  content: "";
+  position: absolute;
+  inset: 92px 18px 18px;
+  border: 1px solid rgba(217, 240, 238, 0.24);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(22, 50, 56, 0.04), rgba(22, 50, 56, 0.28)),
+    url("./assets/publication-main-figure.png") center / cover no-repeat;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.24);
+}
+
+.login-brand::after {
+  content: "QC dashboard / ERP grand average / statistics-ready package";
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  max-width: 100%;
+  min-height: 30px;
+  align-items: center;
+  padding: 0 10px;
+  border: 1px solid rgba(217, 240, 238, 0.28);
+  border-radius: 999px;
+  color: rgba(236, 247, 246, 0.86);
+  background: rgba(9, 31, 35, 0.62);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.login-brand > * {
+  position: relative;
+  z-index: 1;
 }
 
 .login-brand .brand-mark {
@@ -167,14 +205,14 @@ button {
 .login-panel {
   display: grid;
   align-content: center;
-  padding: clamp(28px, 5vw, 64px);
+  padding: clamp(26px, 4vw, 54px);
 }
 
 .login-panel h1 {
   max-width: 720px;
   margin: 8px 0 12px;
-  font-size: clamp(32px, 5vw, 56px);
-  line-height: 1.08;
+  font-size: clamp(30px, 4.4vw, 48px);
+  line-height: 1.1;
 }
 
 .login-panel p {
@@ -279,17 +317,17 @@ button {
 
 .shell {
   display: grid;
-  grid-template-columns: 248px 1fr;
+  grid-template-columns: 244px 1fr;
   min-height: 100vh;
 }
 
 .sidebar {
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 20px;
   padding: 24px 18px;
   color: #ecf7f6;
-  background: #1e343a;
+  background: linear-gradient(180deg, #163238 0%, #10272b 100%);
 }
 
 .brand {
@@ -341,7 +379,7 @@ button {
   display: flex;
   align-items: center;
   gap: 11px;
-  height: 44px;
+  min-height: 42px;
   padding: 0 12px;
   color: rgba(236, 247, 246, 0.78);
   background: transparent;
@@ -358,7 +396,8 @@ button svg {
 .nav-item.active,
 .nav-item:hover {
   color: #ffffff;
-  background: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.13);
+  box-shadow: inset 3px 0 0 #7dd3c7;
 }
 
 .account-panel {
@@ -405,6 +444,7 @@ label span {
 .main {
   min-width: 0;
   padding: 26px;
+  background: linear-gradient(180deg, #f8fafc 0%, #eef4f3 100%);
 }
 
 .topbar {
@@ -499,11 +539,21 @@ label span {
   border: 1px solid rgba(217, 224, 231, 0.86);
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.92);
-  box-shadow: 0 10px 34px rgba(23, 32, 42, 0.07);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
 }
 
 .metric {
+  position: relative;
+  overflow: hidden;
   padding: 18px;
+}
+
+.metric::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 3px;
+  background: linear-gradient(90deg, #0f766e, #38bdf8);
 }
 
 .metric strong {
@@ -531,6 +581,11 @@ label span {
 
 .panel {
   padding: 18px;
+}
+
+.panel:hover,
+.metric:hover {
+  border-color: rgba(15, 118, 110, 0.28);
 }
 
 .panel-head {
@@ -1303,6 +1358,7 @@ select {
   border-radius: 8px;
   background: #fbfcfd;
   text-align: left;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
 }
 
 .journey-card[role="button"] {
@@ -1313,6 +1369,7 @@ select {
 .journey-card[role="button"]:focus-visible {
   border-color: var(--teal);
   outline: 0;
+  transform: translateY(-1px);
   box-shadow: 0 0 0 3px rgba(21, 122, 119, 0.16);
 }
 
@@ -1321,7 +1378,7 @@ select {
   width: 32px;
   height: 32px;
   place-items: center;
-  border-radius: 8px;
+  border-radius: 999px;
   color: white;
   background: var(--steel);
 }
@@ -1345,6 +1402,7 @@ select {
 .journey-card.active {
   border-color: var(--teal);
   background: #f1faf8;
+  box-shadow: 0 10px 26px rgba(15, 118, 110, 0.11);
 }
 
 .journey-card.active b {
@@ -1354,6 +1412,7 @@ select {
 .journey-card.important {
   border-color: #e7bb63;
   background: #fff8e7;
+  box-shadow: 0 10px 24px rgba(183, 121, 31, 0.1);
 }
 
 .journey-card.important b {
