@@ -284,6 +284,15 @@ function clearSession() {
   sessionStorage.removeItem(AUTH_KEY);
 }
 
+function enhanceControlLabels() {
+  qsa(".nav-item, .icon-btn").forEach((button) => {
+    const label = button.getAttribute("aria-label") || button.getAttribute("title") || button.textContent.trim();
+    if (!label) return;
+    button.setAttribute("title", label);
+    button.setAttribute("aria-label", label);
+  });
+}
+
 function renderAdminCustomerProfile() {
   const customer = getStoredCustomer();
   const safeText = (value, fallback = "-") => value || fallback;
@@ -830,6 +839,7 @@ function boot() {
   updateRecommendation();
   renderJourneyDetail(0);
   renderAdminCustomerProfile();
+  enhanceControlLabels();
 
   qsa("[data-view], [data-view-jump]").forEach((button) => button.addEventListener("click", () => setView(button.dataset.view || button.dataset.viewJump)));
   qsa("[data-login-tab]").forEach((button) => button.addEventListener("click", () => switchLoginTab(button.dataset.loginTab)));
