@@ -193,6 +193,13 @@ function writeRoleplayDetails(state, roleReviews, issues) {
         severity: issue.severity || "unknown",
         summary: issue.summary || "",
       })),
+      audience_objections: buildAudienceObjections(review.role, matched),
+      changes_made: matched.length
+        ? ["已把相关风险进入问题单和补丁计划", "下一轮会转成脑电工作流回归测试或界面提示优化"]
+        : ["已完成该角色视角的脑电流程走查", "本轮不修改科学解释，只保留继续观察"],
+      effect_summary: matched.length
+        ? `发现 ${matched.length} 类脑电流程风险；后续用上传、预处理、导出和发布校验复测。`
+        : "本轮没有新增高优先级风险；流程继续保持后台巡检。",
       conclusion: matched.length ? `Found ${matched.length} related issues; convert them into EEG workflow regression checks.` : "No new high-priority issue found from this role-play perspective.",
       recommendation: matched.length ? "Prioritize reproducible tests for upload, preprocessing, events, bad channels, and release validation." : "Continue collecting real EDF/MNE workflow feedback.",
       needs_human_confirmation: matched.some((issue) => issue.severity === "high" && issue.area === "scientific-validity"),
@@ -209,6 +216,13 @@ function writeRoleplayDetails(state, roleReviews, issues) {
   state.last_roleplay_details = details;
   appendJsonl(eventsFile, { project: "QL EEG analysis platform", stage: "roleplay_review", event: "roleplay-details-written", roles: details.length, detail_file: roleplayDetailFile });
   return details;
+}
+
+function buildAudienceObjections(role, matchedIssues) {
+  const questions = roleplayQuestions(role).map((question) => `虚拟用户质疑：${question}`);
+  const issueLines = matchedIssues.slice(0, 4).map((issue) => userProblemLine(issue));
+  const lines = [...questions.slice(0, 2), ...issueLines].filter(Boolean);
+  return lines.length ? [...new Set(lines)] : ["本轮该角色没有提出新的高优先级质疑。"];
 }
 
 function buildRoleplayDialogueRounds(summary, questions, matched) {
@@ -356,6 +370,12 @@ function roleplayEmailLine(item, index) {
   const questions = Array.isArray(item.simulated_questions) && item.simulated_questions.length
     ? item.simulated_questions
     : roleplayQuestions(rawUser);
+  const objections = Array.isArray(item.audience_objections) && item.audience_objections.length
+    ? item.audience_objections
+    : questions;
+  const changes = Array.isArray(item.changes_made) && item.changes_made.length
+    ? item.changes_made
+    : [item.recommendation || "继续观察真实脑电工作流反馈。"];
   const count = Array.isArray(item.observed_issues) ? item.observed_issues.length : 0;
   const needsConfirm = item.needs_human_confirmation ? "涉及科学有效性，需要人工确认。" : "暂不需要人工确认。";
   const result = count
@@ -363,8 +383,10 @@ function roleplayEmailLine(item, index) {
     : "本轮没有发现新的高优先级风险。";
   return [
     `- ${index + 1}. ${user}`,
-    `  - 模拟提问：${questions.join(" / ")}`,
+    `  - 观众质疑：${objections.join(" / ")}`,
     `  - 检查重点：${focus}`,
+    `  - 做了什么：${changes.join(" / ")}`,
+    `  - 效果：${item.effect_summary || result}`,
     `  - 本轮结果：${result}`,
     `  - 具体发现：${roleplayFindingLine(item)}`,
     `  - 下一步：${needsConfirm}`,
@@ -547,6 +569,28 @@ function extractReleaseEventFromIdle(idleResult) {
     return { sent_worthy: true, reason: "release-promotion-failed", details: promote };
   }
   return { sent_worthy: false, reason: promote.ok ? "validated-only-no-release-change" : "no-release-promotion-run", details: promote };
+}
+
+function releaseEventSignature(releaseEvent = {}) {
+  const details = releaseEvent.details || {};
+  return stableId([
+    releaseEvent.reason || "",
+    details.error || "",
+    details.stdout || "",
+    details.stderr || "",
+  ]);
+}
+
+function shouldNotifyReleaseEvent(state, releaseEvent = {}) {
+  if (!releaseEvent.sent_worthy) return { notify: false, reason: releaseEvent.reason || "not-sent-worthy" };
+  const signature = releaseEventSignature(releaseEvent);
+  if (releaseEvent.reason !== "release-promoted" && state.last_release_email_signature === signature) {
+    return { notify: false, reason: `duplicate-${releaseEvent.reason || "release-event"}`, signature };
+  }
+  state.last_release_email_signature = signature;
+  state.last_release_email_reason = releaseEvent.reason || "";
+  state.last_release_email_at = nowIso();
+  return { notify: true, signature };
 }
 
 async function syncReleaseToGithub(releaseEvent = {}) {
@@ -1193,6 +1237,9 @@ async function optimizeOnce({ force = false } = {}) {
   if (idle && idleDue) state.last_idle_optimization_at = nowIso();
   if (idle && idleDue) {
     const releaseEvent = extractReleaseEventFromIdle(idleResult);
+    const notification = shouldNotifyReleaseEvent(state, releaseEvent);
+    if (!notification.notify) releaseEvent.sent_worthy = false;
+    releaseEvent.notification = notification;
     await maybeEmailOptimizationLog("release-optimization", {
       idle_optimization: idleResult,
       release_event: releaseEvent,

@@ -8,6 +8,17 @@ if (-not (Test-Path -LiteralPath $Script)) {
   throw "Self optimizer script not found: $Script"
 }
 
+$existing = Get-CimInstance Win32_Process |
+  Where-Object {
+    $_.Name -eq "node.exe" -and
+    $_.CommandLine -like "*work\self_optimizer.js --daemon*"
+  }
+if ($existing) {
+  $ids = ($existing | Select-Object -ExpandProperty ProcessId) -join ", "
+  Write-Output "QL analyser self-optimizer already running. PID(s): $ids"
+  exit 0
+}
+
 # Fast learning cadence: scan every 1 minute, idle/role-play learning every 3 minutes.
 $env:QL_SELF_OPTIMIZER_INTERVAL_MS = "60000"
 $env:QL_SELF_OPTIMIZER_IDLE_UPDATE_MIN_MS = "180000"

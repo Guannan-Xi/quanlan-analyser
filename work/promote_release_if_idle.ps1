@@ -17,6 +17,26 @@ if (-not (Test-Path -LiteralPath $release)) {
   throw "Release version not found: $release"
 }
 
+if (-not (Test-Path -LiteralPath $runtimePath)) {
+  $runtimeDir = Split-Path -Parent $runtimePath
+  if (-not (Test-Path -LiteralPath $runtimeDir)) {
+    New-Item -ItemType Directory -Path $runtimeDir -Force | Out-Null
+  }
+  $initialRuntime = @{
+    runningTasks = @()
+    queuedTasks = @()
+    completedResults = @()
+    upgrade = @{
+      status = "idle"
+      source = "runtime-state-created-by-promote-script"
+      lastPromotedAt = $null
+    }
+  } | ConvertTo-Json -Depth 8
+  $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+  [System.IO.File]::WriteAllText($runtimePath, $initialRuntime, $utf8NoBom)
+  Write-Output "Release runtime state was missing; created idle runtime-state.json."
+}
+
 $runtime = Get-Content -LiteralPath $runtimePath -Raw | ConvertFrom-Json
 $activeCount = @($runtime.runningTasks).Count + @($runtime.queuedTasks).Count
 if ($activeCount -gt 0) {
@@ -55,6 +75,9 @@ if (Test-Path -LiteralPath $candidate) {
 }
 
 $stamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+if ($null -eq $runtime.upgrade) {
+  $runtime | Add-Member -MemberType NoteProperty -Name upgrade -Value ([pscustomobject]@{}) -Force
+}
 $runtime.upgrade.status = "idle"
 $runtime.upgrade.lastPromotedAt = $stamp
 $runtime.upgrade.source = "outputs/eeglab-mne-dev"
