@@ -12,6 +12,10 @@ node_modules/
 dist/
 build/
 .vite/
+test-results/
+playwright-report/
+work/
+.model_connection_library/
 
 *.log
 *.tmp
@@ -19,8 +23,21 @@ build/
 *.zip
 *.7z
 *.rar
+*.jpg
+*.jpeg
+*.png
+*_api_key.txt
+*token*
+*secret*
+quanlan_model_connection_library.json
+quanlan_model_defaults.json
+PROJECT_STATE.json
 
 work/customer_oddball_case/
+outputs/eeglab-mne-dev/
+outputs/eeglab-mne-release/
+outputs/eeglab-mne-mvp/assets/nohe_301_c64rs_0610/
+outputs/eeglab-mne-mvp/assets/system_teaching_oddball/
 work/*customer*
 work/*.fif
 work/*.edf
@@ -32,3 +49,10 @@ work/*.eeg
 outputs/**/*.zip
 outputs/**/*.log
 outputs/**/customer*
+
+data/uploads/**
+data/derivatives/**
+data/reports/**
+!data/uploads/.gitkeep
+!data/derivatives/.gitkeep
+!data/reports/.gitkeep

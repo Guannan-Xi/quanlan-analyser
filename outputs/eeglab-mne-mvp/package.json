@@ -4,8 +4,11 @@
   "private": true,
   "description": "Static MVP for an online EEG analysis platform prototype.",
   "scripts": {
-    "serve": "npx http-server . -p 4173 -c-1",
-    "check": "node --check app.js"
+    "serve": "node local-static-server.js 4173",
+    "check": "node --check architecture-model.js && node --check app.js && node --check local-static-server.js && node --check platform-adapters.js && node check-system-teaching-edf.js && node audit-product-actions.js",
+    "stress:local": "node stress-local-static.js",
+    "smoke:browser": "node smoke-browser.js",
+    "smoke:v0": "node smoke-v0.js"
   },
   "devDependencies": {
     "http-server": "^14.1.1"

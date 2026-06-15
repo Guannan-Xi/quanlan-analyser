@@ -1,0 +1,15 @@
+{
+  "name": "quanlan-analyser-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "node --check src/main.js",
+    "test:ui": "playwright test",
+    "serve": "npx http-server . -p 4174 -c-1"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.60.0",
+    "http-server": "^14.1.1"
+  }
+}

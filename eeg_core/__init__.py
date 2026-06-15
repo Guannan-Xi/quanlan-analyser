@@ -1,0 +1,2 @@
+"""EEG core analysis package."""
+

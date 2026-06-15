@@ -1,0 +1,21 @@
+export const sampleDataset = {
+  label: "北京301眼科 C64RS 示例数据",
+  filename: "C64RS_390026040074_260531103644.bdf",
+  device: "RSC-64RS / C64RS",
+  format: "BDF",
+  size: "34.5 MiB",
+  sizeBytes: 36134328,
+  headerSignalCount: 65,
+  eegChannelCount: 64,
+  auxiliarySignalCount: 1,
+  annotationsCount: 80,
+  samplingRate: "1000 Hz",
+  duration: "188 秒",
+  nTimes: 188000,
+  recordCount: 188,
+  recordDuration: "1 秒",
+  headerBytes: 16896,
+  mneReader: "MNE 1.12.1 / preload=False",
+  sourcePath: "D:\\Quanlan\\Data\\C64ERP\\【诺赫】北京301眼科–RSC–64RS（0610）\\C64RS_390026040074_260531103644.bdf",
+  handling: "仅读取元信息，不复制、不提交原始 BDF。"
+};
