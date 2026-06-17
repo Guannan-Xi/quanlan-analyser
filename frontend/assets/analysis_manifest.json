@@ -1,0 +1,30 @@
+{
+  "engine": {
+    "mne": "1.12.1",
+    "numpy": "2.4.6",
+    "matplotlib": "3.10.9"
+  },
+  "inputs": {
+    "synthetic_edf": "synthetic_8ch_120s.edf",
+    "events": "synthetic_8ch_120s_events.tsv"
+  },
+  "outputs": [
+    "subject_level_metrics.csv",
+    "bandpower_long_format.csv",
+    "statistics_summary.csv",
+    "publication-erp-grand-average.png",
+    "publication-bandpower-statistics.png",
+    "publication-qc-dashboard.png",
+    "publication-main-figure.png",
+    "figure_caption.txt",
+    "pipeline_config.json",
+    "methods_snippet.txt",
+    "reviewer_checklist.json",
+    "publication_package.zip"
+  ],
+  "recommended_reporting": [
+    "Report preprocessing parameters, rejected epoch percentage, ICA component criteria, and exact statistical correction.",
+    "Use subject-level metrics CSV for confirmatory statistics; never run final inference from only group plots.",
+    "Export figures at 300 dpi or higher and keep raw vectors/CSV for journal revision."
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "beginner_guardrails": [
+    "Confirm the statistical unit is subject, not trial.",
+    "Check event code mapping before epoching.",
+    "Report filter, reference, rejection, ICA, and baseline settings.",
+    "Export subject-level tables with every publication figure.",
+    "Correct multiple comparisons or justify the confirmatory window."
+  ],
+  "figure_postprocess": {
+    "dpi": 300,
+    "palette": "colorblind-friendly teal/coral",
+    "font_policy": "journal single-column 10 pt equivalent",
+    "line_width": "2.0-2.2 pt for primary waveforms",
+    "required_exports": [
+      "PNG",
+      "CSV",
+      "JSON manifest",
+      "methods text"
+    ]
+  }
+}

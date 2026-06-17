@@ -1,0 +1,651 @@
+{
+  "count": 20,
+  "records": [
+    {
+      "slug": "rest_eyes_open_closed",
+      "name": "静息态睁闭眼",
+      "family": "resting_state",
+      "effect": "alpha_reactivity",
+      "events": {
+        "eyes/closed": 1,
+        "eyes/open": 1
+      },
+      "channels": 12,
+      "duration_s": 60,
+      "sfreq_hz": 256,
+      "edf_bytes": 373904,
+      "effect_detectability": 677.677,
+      "effect_metric": "10_hz_power_proxy",
+      "review_grade": "excellent",
+      "coverage": {
+        "upload": true,
+        "event_parsing": true,
+        "epoching": true,
+        "time_frequency": false,
+        "erp": false,
+        "statistics_ready": true
+      },
+      "recommended_outputs": [
+        "events.tsv",
+        "QC",
+        "subject-level CSV",
+        "publication figure",
+        "manifest"
+      ]
+    },
+    {
+      "slug": "auditory_oddball_p300",
+      "name": "听觉 Oddball P300",
+      "family": "erp",
+      "effect": "p300",
+      "events": {
+        "standard": 14,
+        "target": 4
+      },
+      "channels": 12,
+      "duration_s": 60,
+      "sfreq_hz": 256,
+      "edf_bytes": 373664,
+      "effect_detectability": 3.568,
+      "effect_metric": "posterior_positive_difference_uv",
+      "review_grade": "excellent",
+      "coverage": {
+        "upload": true,
+        "event_parsing": true,
+        "epoching": true,
+        "time_frequency": false,
+        "erp": true,
+        "statistics_ready": true
+      },
+      "recommended_outputs": [
+        "events.tsv",
+        "QC",
+        "subject-level CSV",
+        "publication figure",
+        "manifest"
+      ]
+    },
+    {
+      "slug": "visual_oddball_p300",
+      "name": "视觉 Oddball P300",
+      "family": "erp",
+      "effect": "p300",
+      "events": {
+        "standard": 14,
+        "target": 4
+      },
+      "channels": 12,
+      "duration_s": 60,
+      "sfreq_hz": 256,
+      "edf_bytes": 373664,
+      "effect_detectability": 3.481,
+      "effect_metric": "posterior_positive_difference_uv",
+      "review_grade": "excellent",
+      "coverage": {
+        "upload": true,
+        "event_parsing": true,
+        "epoching": true,
+        "time_frequency": false,
+        "erp": true,
+        "statistics_ready": true
+      },
+      "recommended_outputs": [
+        "events.tsv",
+        "QC",
+        "subject-level CSV",
+        "publication figure",
+        "manifest"
+      ]
+    },
+    {
+      "slug": "go_nogo_inhibition",
+      "name": "Go/No-Go 抑制控制",
+      "family": "cognitive_control",
+      "effect": "n2_p3",
+      "events": {
+        "go": 14,
+        "nogo": 4
+      },
+      "channels": 12,
+      "duration_s": 60,
+      "sfreq_hz": 256,
+      "edf_bytes": 373424,
+      "effect_detectability": 4.17,
+      "effect_metric": "frontal_n2_difference_uv",
+      "review_grade": "excellent",
+      "coverage": {
+        "upload": true,
+        "event_parsing": true,
+        "epoching": true,
+        "time_frequency": false,
+        "erp": true,
+        "statistics_ready": true
+      },
+      "recommended_outputs": [
+        "events.tsv",
+        "QC",
+        "subject-level CSV",
+        "publication figure",
+        "manifest"
+      ]
+    },
+    {
+      "slug": "flanker_conflict_ern",
+      "name": "Flanker 冲突与错误监控",
+      "family": "cognitive_control",
+      "effect": "ern_conflict",
+      "events": {
+        "congruent": 6,
+        "error": 6,
+        "incongruent": 6
+      },
+      "channels": 12,
+      "duration_s": 60,
+      "sfreq_hz": 256,
+      "edf_bytes": 373904,
+      "effect_detectability": 4.674,
+      "effect_metric": "frontal_ern_uv",
+      "review_grade": "excellent",
+      "coverage": {
+        "upload": true,
+        "event_parsing": true,
+        "epoching": true,
+        "time_frequency": false,
+        "erp": true,
+        "statistics_ready": true
+      },
+      "recommended_outputs": [
+        "events.tsv",
+        "QC",
+        "subject-level CSV",
+        "publication figure",
+        "manifest"
+      ]
+    },
+    {
+      "slug": "stroop_conflict",
+      "name": "Stroop 冲突",
+      "family": "cognitive_control",
+      "effect": "n450",
+      "events": {
+        "congruent": 14,
+        "incongruent": 4
+      },
+      "channels": 12,
+      "duration_s": 60,
+      "sfreq_hz": 256,
+      "edf_bytes": 373904,
+      "effect_detectability": 3.794,
+      "effect_metric": "frontal_n450_difference_uv",
+      "review_grade": "excellent",
+      "coverage": {
+        "upload": true,
+        "event_parsing": true,
+        "epoching": true,
+        "time_frequency": false,
+        "erp": true,
+        "statistics_ready": true
+      },
+      "recommended_outputs": [
+        "events.tsv",
+        "QC",
+        "subject-level CSV",
+        "publication figure",
+        "manifest"
+      ]
+    },
+    {
+      "slug": "nback_working_memory",
+      "name": "N-back 工作记忆",
+      "family": "cognition",
+      "effect": "frontal_theta",
+      "events": {
+        "0back": 14,
+        "2back": 4
+      },
+      "channels": 12,
+      "duration_s": 60,
+      "sfreq_hz": 256,
+      "edf_bytes": 373544,
+      "effect_detectability": 1091.614,
+      "effect_metric": "frontal_theta_proxy",
+      "review_grade": "excellent",
+      "coverage": {
+        "upload": true,
+        "event_parsing": true,
+        "epoching": true,
+        "time_frequency": true,
+        "erp": false,
+        "statistics_ready": true
+      },
+      "recommended_outputs": [
+        "events.tsv",
+        "QC",
+        "subject-level CSV",
+        "publication figure",
+        "manifest"
+      ]
+    },
+    {
+      "slug": "face_n170",
+      "name": "面孔知觉 N170",
+      "family": "erp",
+      "effect": "n170",
+      "events": {
+        "face": 14,
+        "object": 4
+      },
+      "channels": 12,
+      "duration_s": 60,
+      "sfreq_hz": 256,
+      "edf_bytes": 373544,
+      "effect_detectability": 4.722,
+      "effect_metric": "occipital_n170_difference_uv",
+      "review_grade": "excellent",
+      "coverage": {
+        "upload": true,
+        "event_parsing": true,
+        "epoching": true,
+        "time_frequency": false,
+        "erp": true,
+        "statistics_ready": true
+      },
+      "recommended_outputs": [
+        "events.tsv",
+        "QC",
+        "subject-level CSV",
+        "publication figure",
+        "manifest"
+      ]
+    },
+    {
+      "slug": "semantic_n400",
+      "name": "语义违反 N400",
+      "family": "language",
+      "effect": "n400",
+      "events": {
+        "related": 14,
+        "unrelated": 4
+      },
+      "channels": 12,
+      "duration_s": 60,
+      "sfreq_hz": 256,
+      "edf_bytes": 373784,
+      "effect_detectability": 4.192,
+      "effect_metric": "posterior_n400_difference_uv",
+      "review_grade": "excellent",
+      "coverage": {
+        "upload": true,
+        "event_parsing": true,
+        "epoching": true,
+        "time_frequency": false,
+        "erp": true,
+        "statistics_ready": true
+      },
+      "recommended_outputs": [
+        "events.tsv",
+        "QC",
+        "subject-level CSV",
+        "publication figure",
+        "manifest"
+      ]
+    },
+    {
+      "slug": "auditory_mmn",
+      "name": "听觉 MMN",
+      "family": "erp",
+      "effect": "mmn",
+      "events": {
+        "deviant": 4,
+        "standard": 14
+      },
+      "channels": 12,
+      "duration_s": 60,
+      "sfreq_hz": 256,
+      "edf_bytes": 373664,
+      "effect_detectability": 4.262,
+      "effect_metric": "frontal_mmn_difference_uv",
+      "review_grade": "excellent",
+      "coverage": {
+        "upload": true,
+        "event_parsing": true,
+        "epoching": true,
+        "time_frequency": false,
+        "erp": true,
+        "statistics_ready": true
+      },
+      "recommended_outputs": [
+        "events.tsv",
+        "QC",
+        "subject-level CSV",
+        "publication figure",
+        "manifest"
+      ]
+    },
+    {
+      "slug": "visual_search_n2pc",
+      "name": "视觉搜索 N2pc",
+      "family": "attention",
+      "effect": "n2pc",
+      "events": {
+        "target_left": 14,
+        "target_right": 4
+      },
+      "channels": 12,
+      "duration_s": 60,
+      "sfreq_hz": 256,
+      "edf_bytes": 373904,
+      "effect_detectability": 3.059,
+      "effect_metric": "contralateral_n2pc_uv",
+      "review_grade": "excellent",
+      "coverage": {
+        "upload": true,
+        "event_parsing": true,
+        "epoching": true,
+        "time_frequency": false,
+        "erp": true,
+        "statistics_ready": true
+      },
+      "recommended_outputs": [
+        "events.tsv",
+        "QC",
+        "subject-level CSV",
+        "publication figure",
+        "manifest"
+      ]
+    },
+    {
+      "slug": "motor_imagery_lr",
+      "name": "左右手运动想象",
+      "family": "bci",
+      "effect": "mu_beta_erd",
+      "events": {
+        "left_hand": 14,
+        "right_hand": 4
+      },
+      "channels": 12,
+      "duration_s": 60,
+      "sfreq_hz": 256,
+      "edf_bytes": 373784,
+      "effect_detectability": 3235.322,
+      "effect_metric": "10_hz_power_proxy",
+      "review_grade": "excellent",
+      "coverage": {
+        "upload": true,
+        "event_parsing": true,
+        "epoching": true,
+        "time_frequency": true,
+        "erp": false,
+        "statistics_ready": true
+      },
+      "recommended_outputs": [
+        "events.tsv",
+        "QC",
+        "subject-level CSV",
+        "publication figure",
+        "manifest"
+      ]
+    },
+    {
+      "slug": "motor_execution_mrp",
+      "name": "运动执行准备电位",
+      "family": "motor",
+      "effect": "mrp",
+      "events": {
+        "move_left": 14,
+        "move_right": 4
+      },
+      "channels": 12,
+      "duration_s": 60,
+      "sfreq_hz": 256,
+      "edf_bytes": 373784,
+      "effect_detectability": 4.653,
+      "effect_metric": "central_mrp_uv",
+      "review_grade": "excellent",
+      "coverage": {
+        "upload": true,
+        "event_parsing": true,
+        "epoching": true,
+        "time_frequency": false,
+        "erp": false,
+        "statistics_ready": true
+      },
+      "recommended_outputs": [
+        "events.tsv",
+        "QC",
+        "subject-level CSV",
+        "publication figure",
+        "manifest"
+      ]
+    },
+    {
+      "slug": "ssvep_frequency_tagging",
+      "name": "SSVEP 频率标记",
+      "family": "bci",
+      "effect": "ssvep",
+      "events": {
+        "flicker_10hz": 4,
+        "flicker_15hz": 4
+      },
+      "channels": 12,
+      "duration_s": 60,
+      "sfreq_hz": 256,
+      "edf_bytes": 373904,
+      "effect_detectability": 3586.192,
+      "effect_metric": "10_hz_power_proxy",
+      "review_grade": "excellent",
+      "coverage": {
+        "upload": true,
+        "event_parsing": true,
+        "epoching": true,
+        "time_frequency": true,
+        "erp": false,
+        "statistics_ready": true
+      },
+      "recommended_outputs": [
+        "events.tsv",
+        "QC",
+        "subject-level CSV",
+        "publication figure",
+        "manifest"
+      ]
+    },
+    {
+      "slug": "auditory_assr_40hz",
+      "name": "40 Hz 听觉稳态 ASSR",
+      "family": "steady_state",
+      "effect": "assr",
+      "events": {
+        "silence": 4,
+        "tone_40hz": 4
+      },
+      "channels": 12,
+      "duration_s": 60,
+      "sfreq_hz": 256,
+      "edf_bytes": 373784,
+      "effect_detectability": 87.971,
+      "effect_metric": "40_hz_power_proxy",
+      "review_grade": "excellent",
+      "coverage": {
+        "upload": true,
+        "event_parsing": true,
+        "epoching": true,
+        "time_frequency": true,
+        "erp": false,
+        "statistics_ready": true
+      },
+      "recommended_outputs": [
+        "events.tsv",
+        "QC",
+        "subject-level CSV",
+        "publication figure",
+        "manifest"
+      ]
+    },
+    {
+      "slug": "emotional_lpp",
+      "name": "情绪图片 LPP",
+      "family": "affective",
+      "effect": "lpp",
+      "events": {
+        "emotional": 4,
+        "neutral": 14
+      },
+      "channels": 12,
+      "duration_s": 60,
+      "sfreq_hz": 256,
+      "edf_bytes": 373784,
+      "effect_detectability": 3.369,
+      "effect_metric": "posterior_positive_difference_uv",
+      "review_grade": "excellent",
+      "coverage": {
+        "upload": true,
+        "event_parsing": true,
+        "epoching": true,
+        "time_frequency": false,
+        "erp": true,
+        "statistics_ready": true
+      },
+      "recommended_outputs": [
+        "events.tsv",
+        "QC",
+        "subject-level CSV",
+        "publication figure",
+        "manifest"
+      ]
+    },
+    {
+      "slug": "error_related_negativity",
+      "name": "错误相关负波 ERN",
+      "family": "performance_monitoring",
+      "effect": "ern",
+      "events": {
+        "correct": 14,
+        "error": 4
+      },
+      "channels": 12,
+      "duration_s": 60,
+      "sfreq_hz": 256,
+      "edf_bytes": 373664,
+      "effect_detectability": 3.96,
+      "effect_metric": "frontal_ern_uv",
+      "review_grade": "excellent",
+      "coverage": {
+        "upload": true,
+        "event_parsing": true,
+        "epoching": true,
+        "time_frequency": false,
+        "erp": true,
+        "statistics_ready": true
+      },
+      "recommended_outputs": [
+        "events.tsv",
+        "QC",
+        "subject-level CSV",
+        "publication figure",
+        "manifest"
+      ]
+    },
+    {
+      "slug": "sleep_spindle_kcomplex",
+      "name": "睡眠纺锤与 K-complex",
+      "family": "sleep",
+      "effect": "sleep_events",
+      "events": {
+        "k_complex": 2,
+        "spindle": 2,
+        "stage2": 1
+      },
+      "channels": 12,
+      "duration_s": 60,
+      "sfreq_hz": 256,
+      "edf_bytes": 373784,
+      "effect_detectability": 1504.12,
+      "effect_metric": "sleep_event_detectability",
+      "review_grade": "excellent",
+      "coverage": {
+        "upload": true,
+        "event_parsing": true,
+        "epoching": true,
+        "time_frequency": true,
+        "erp": false,
+        "statistics_ready": true
+      },
+      "recommended_outputs": [
+        "events.tsv",
+        "QC",
+        "subject-level CSV",
+        "publication figure",
+        "manifest"
+      ]
+    },
+    {
+      "slug": "meditation_alpha_theta",
+      "name": "冥想 Alpha/Theta",
+      "family": "resting_state",
+      "effect": "alpha_theta",
+      "events": {
+        "baseline": 1,
+        "meditation": 1
+      },
+      "channels": 12,
+      "duration_s": 60,
+      "sfreq_hz": 256,
+      "edf_bytes": 373784,
+      "effect_detectability": 9608.283,
+      "effect_metric": "9.5_hz_power_proxy",
+      "review_grade": "excellent",
+      "coverage": {
+        "upload": true,
+        "event_parsing": true,
+        "epoching": true,
+        "time_frequency": true,
+        "erp": false,
+        "statistics_ready": true
+      },
+      "recommended_outputs": [
+        "events.tsv",
+        "QC",
+        "subject-level CSV",
+        "publication figure",
+        "manifest"
+      ]
+    },
+    {
+      "slug": "somatosensory_sep",
+      "name": "躯体感觉诱发 SEP",
+      "family": "sensory",
+      "effect": "sep",
+      "events": {
+        "left_stim": 14,
+        "right_stim": 4
+      },
+      "channels": 12,
+      "duration_s": 60,
+      "sfreq_hz": 256,
+      "edf_bytes": 373784,
+      "effect_detectability": 10.101,
+      "effect_metric": "central_sep_peak_to_baseline_uv",
+      "review_grade": "excellent",
+      "coverage": {
+        "upload": true,
+        "event_parsing": true,
+        "epoching": true,
+        "time_frequency": false,
+        "erp": true,
+        "statistics_ready": true
+      },
+      "recommended_outputs": [
+        "events.tsv",
+        "QC",
+        "subject-level CSV",
+        "publication figure",
+        "manifest"
+      ]
+    }
+  ],
+  "sources_used_for_scope": [
+    "ERP CORE covers N170, MMN, N2pc, N400, P3b, LRP and ERN components across six paradigms.",
+    "MNE and EEGLAB documentation support ERP, time-frequency, ICA, statistics, visualization, sleep/BCI examples, and event-related workflows."
+  ]
+}

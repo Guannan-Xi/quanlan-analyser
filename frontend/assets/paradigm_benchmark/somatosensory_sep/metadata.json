@@ -1,0 +1,32 @@
+{
+  "slug": "somatosensory_sep",
+  "name": "躯体感觉诱发 SEP",
+  "family": "sensory",
+  "effect": "sep",
+  "events": {
+    "left_stim": 14,
+    "right_stim": 4
+  },
+  "channels": 12,
+  "duration_s": 60,
+  "sfreq_hz": 256,
+  "edf_bytes": 373784,
+  "effect_detectability": 10.101,
+  "effect_metric": "central_sep_peak_to_baseline_uv",
+  "review_grade": "excellent",
+  "coverage": {
+    "upload": true,
+    "event_parsing": true,
+    "epoching": true,
+    "time_frequency": false,
+    "erp": true,
+    "statistics_ready": true
+  },
+  "recommended_outputs": [
+    "events.tsv",
+    "QC",
+    "subject-level CSV",
+    "publication figure",
+    "manifest"
+  ]
+}
