@@ -147,4 +147,42 @@ Codex 不应假设自己掌握全部产品背景。
 9. 不得使用 `git push --force`。
 10. 如果远程仓库已有历史或发生冲突，停止并报告，不要强行处理。
 
+## Project AI Handoff Skills
+
+This project uses two local AI collaboration skills.
+
+### 1. qlanalyser-close-chat-handoff
+
+Use when the user says:
+
+- ????????
+- ??????
+- ??????
+- ?? AI ??
+
+Purpose:
+
+- Update current project handoff documents
+- Summarize project state
+- Record recent completed work and test results
+- Prepare a startup prompt for a new ChatGPT conversation
+- Use `qlanalyser-git-guard` before committing
+- Do not push automatically
+
+### 2. qlanalyser-continue-project-context
+
+Use when the user says:
+
+- ??? QLanalyser Online ??
+- ?? QLanalyser ??
+- ??????
+- ?? AI_HANDOFF_CURRENT ??
+
+Purpose:
+
+- Read current project handoff documents
+- Summarize project state
+- Identify current risks
+- Recommend one next small Codex task
+- Do not assume previous chat history
 
