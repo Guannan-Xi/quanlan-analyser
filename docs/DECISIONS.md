@@ -14,8 +14,8 @@
 
 品牌统一为：
 
-- `全澜脑科学®`
-- `QuanLan BrainScience®`
+- 全澜脑科学<sup>®</sup>
+- QuanLan BrainScience<sup>®</sup>
 
 ## 3. 产品定位
 
@@ -99,4 +99,6 @@
 - 不自动 push；push 到 GitHub 必须等待用户明确确认。
 - 不使用 `git push --force` 或 `git push -f`。
 - 如果本地与远程历史分叉、落后或发生冲突，停止并报告，不强行 merge、rebase 或覆盖远程历史。
+
+
 

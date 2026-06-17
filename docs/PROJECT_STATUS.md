@@ -74,7 +74,7 @@ QLanalyser Online v0.1 Pilot：稳定 MVP，用于客户免费试用。
 
 ## 8. 最近一次修改
 
-本次建立 Git 任务提交规则、创建项目专属 skill `qlanalyser-git-guard`，并确认远程仓库为 `https://github.com/Guannan-Xi/quanlan-analyser.git`。当前本地 `main` 与 `origin/main` 存在差异（本地 ahead 2、behind 1），不得自动 push，需先确认同步策略。
+本次将品牌注册商标符号统一为上角标展示：网页中使用 `<sup class="registered-mark">®</sup>`，Markdown 品牌规范中使用 `<sup>®</sup>`；同步更新前端当前版本和历史静态输出副本。当前本地 `main` 与 `origin/main` 仍存在 ahead/behind 差异，不得自动 push，需先确认同步策略。
 
 ## 9. 下一步建议任务
 
@@ -118,6 +118,8 @@ scripts\run_v01_acceptance.ps1
 数据库启动方式：未发现正式数据库，当前使用 `data/state/*.json`。
 
 Docker 启动方式：`frontend/` 内有静态前端 Dockerfile；后端 Docker 或统一 compose 方案待确认。
+
+
 
 
 

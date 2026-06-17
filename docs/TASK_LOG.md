@@ -67,7 +67,7 @@ YYYY-MM-DD
 根据 `docs/PROJECT_STATUS.md` 的项目诊断结果，选择第一个最小开发任务。
 ---
 
-## 最新任务
+## 历史任务
 
 ### 日期
 2026-06-17
@@ -103,7 +103,47 @@ YYYY-MM-DD
 
 ### 下一步建议
 先确认远程同步策略，再决定是否将本地 commit 推送到 GitHub。
+---
 
+## 最新任务
+
+### 日期
+2026-06-17
+
+### 任务目标
+将品牌注册商标符号 `®` 调整为上角标展示。
+
+### 修改文件
+- `AGENTS.md`：品牌规范中的注册商标符号改为 `<sup>®</sup>`。
+- `docs/DECISIONS.md`：品牌决策记录中的注册商标符号改为 `<sup>®</sup>`。
+- `frontend/index.html`：登录页和侧边栏品牌文案改为上角标注册商标。
+- `frontend/styles.css`：新增 `.registered-mark` 样式。
+- `frontend/DEPLOY.md`：部署说明品牌文案改为上角标注册商标。
+- `outputs/eeglab-mne-mvp/index.html`：同步历史静态输出副本的品牌上角标展示。
+- `outputs/eeglab-mne-mvp/styles.css`：同步 `.registered-mark` 样式。
+- `outputs/eeglab-mne-mvp/DEPLOY.md`：同步部署说明品牌文案。
+- `docs/PROJECT_STATUS.md`：更新最近一次修改与远程分叉风险。
+- `docs/TASK_LOG.md`：记录本次任务。
+
+### 已完成
+- 已将英文品牌名后的注册商标符号调整为 `<sup>®</sup>` 或网页中的 `<sup class="registered-mark">®</sup>`。
+- 已将中文品牌名后的注册商标符号调整为 `<sup>®</sup>` 或网页中的 `<sup class="registered-mark">®</sup>`。
+- 已新增上角标样式，减少注册符号对品牌文字视觉高度的影响。
+
+### 测试方式
+文案/UI 轻量修改；通过 `rg` 检查裸品牌注册符号是否仍残留，通过 `git diff --cached --name-only` 检查仅暂存本次相关文件。未运行应用测试。
+
+### 测试结果
+待提交前最终确认。
+
+### 风险点
+当前本地 `main` 与 `origin/main` 仍存在差异；不得自动 push，需要用户确认同步策略。历史静态输出副本同步修改，后续如不再维护该副本需另行确认。
+
+### 未完成事项
+未执行 push；未处理本地与远程分支差异。
+
+### 下一步建议
+确认是否继续处理品牌命名统一（例如旧的 `QLanalyser 脑电分析平台` 文案）以及远程同步策略。
 
 
 

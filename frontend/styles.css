@@ -1,4 +1,4 @@
-﻿:root {
+:root {
   --ink: #17202a;
   --muted: #64748b;
   --line: #d8e0e7;
@@ -2575,3 +2575,10 @@ select {
 @media (min-height: 820px) {
   .login-panel { transform: translateY(-6px); }
 }
+.registered-mark {
+  font-size: 0.62em;
+  line-height: 0;
+  vertical-align: super;
+  margin-left: 1px;
+}
+

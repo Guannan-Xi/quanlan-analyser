@@ -1,4 +1,4 @@
-﻿# QLanalyser Online 项目协作规则
+# QLanalyser Online 项目协作规则
 
 ## 项目名称
 
@@ -6,8 +6,8 @@ QLanalyser Online
 
 ## 品牌
 
-全澜脑科学®  
-QuanLan BrainScience®
+全澜脑科学<sup>®</sup>  
+QuanLan BrainScience<sup>®</sup>
 
 ## 产品定位
 
@@ -146,4 +146,5 @@ Codex 不应假设自己掌握全部产品背景。
 8. push 到 GitHub 必须等待用户明确确认。
 9. 不得使用 `git push --force`。
 10. 如果远程仓库已有历史或发生冲突，停止并报告，不要强行处理。
+
 
