@@ -1,0 +1,32 @@
+{
+  "slug": "stroop_conflict",
+  "name": "Stroop 冲突",
+  "family": "cognitive_control",
+  "effect": "n450",
+  "events": {
+    "congruent": 14,
+    "incongruent": 4
+  },
+  "channels": 12,
+  "duration_s": 60,
+  "sfreq_hz": 256,
+  "edf_bytes": 373904,
+  "effect_detectability": 3.794,
+  "effect_metric": "frontal_n450_difference_uv",
+  "review_grade": "excellent",
+  "coverage": {
+    "upload": true,
+    "event_parsing": true,
+    "epoching": true,
+    "time_frequency": false,
+    "erp": true,
+    "statistics_ready": true
+  },
+  "recommended_outputs": [
+    "events.tsv",
+    "QC",
+    "subject-level CSV",
+    "publication figure",
+    "manifest"
+  ]
+}

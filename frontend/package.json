@@ -1,15 +1,13 @@
-{
-  "name": "quanlan-analyser-frontend",
-  "version": "0.1.0",
+﻿{
+  "name": "qlanalyser-eeg-platform",
+  "version": "1.0.0",
   "private": true,
-  "type": "module",
+  "description": "QLanalyser 脑电分析平台：让脑电数据管理更清晰，让分析流程更简单，让研究结果更容易交付。",
   "scripts": {
-    "check": "node --check src/main.js",
-    "test:ui": "playwright test",
-    "serve": "npx http-server . -p 4174 -c-1"
+    "serve": "npx http-server . -p 4173 -c-1",
+    "check": "node --check app.js"
   },
   "devDependencies": {
-    "@playwright/test": "^1.60.0",
     "http-server": "^14.1.1"
   }
 }

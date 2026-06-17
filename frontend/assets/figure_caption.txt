@@ -1,0 +1,3 @@
+Figure 1. Publication-ready EEG analysis summary.
+
+(A) Grand-average target and standard ERP waveforms with standard error shading. The shaded time interval indicates the significant target-standard cluster identified by a one-sample cluster permutation test on subject-level difference waves. (B) Resting-state band-power summaries for eyes-closed and eyes-open conditions with subject-level paired estimates. (C) Quality-control distributions for rejected epochs, bad channels, and ICA components removed. Vertical lines indicate sample means where applicable. (D) Target ERP scalp topographies at representative post-stimulus latencies.

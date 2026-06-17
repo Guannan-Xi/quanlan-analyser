@@ -1,0 +1,32 @@
+{
+  "slug": "error_related_negativity",
+  "name": "错误相关负波 ERN",
+  "family": "performance_monitoring",
+  "effect": "ern",
+  "events": {
+    "correct": 14,
+    "error": 4
+  },
+  "channels": 12,
+  "duration_s": 60,
+  "sfreq_hz": 256,
+  "edf_bytes": 373664,
+  "effect_detectability": 3.96,
+  "effect_metric": "frontal_ern_uv",
+  "review_grade": "excellent",
+  "coverage": {
+    "upload": true,
+    "event_parsing": true,
+    "epoching": true,
+    "time_frequency": false,
+    "erp": true,
+    "statistics_ready": true
+  },
+  "recommended_outputs": [
+    "events.tsv",
+    "QC",
+    "subject-level CSV",
+    "publication figure",
+    "manifest"
+  ]
+}
