@@ -1,0 +1,1 @@
+TFR preview follows a Morlet ERSP/ITC design. Production enablement should wait until wavelet parameters, baseline policy, cluster statistics, artifact control, and null testing are locked.

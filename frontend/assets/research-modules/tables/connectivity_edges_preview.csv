@@ -1,0 +1,6 @@
+source,target,band,metric,weight,status
+C3,C4,alpha,wPLI,0.42,preview_not_enabled
+P3,P4,alpha,wPLI,0.56,preview_not_enabled
+O1,O2,alpha,wPLI,0.61,preview_not_enabled
+O1,Pz,alpha,wPLI,0.38,preview_not_enabled
+O2,Pz,alpha,wPLI,0.4,preview_not_enabled

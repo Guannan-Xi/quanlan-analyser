@@ -1,0 +1,4 @@
+contrast,test,n,mean,sd,t,p_uncorrected,cohen_dz
+P300 target-standard,one_sample_t_subject_differences,24,3.41958,0.86485,19.3704,9.699844918913666e-16,3.954
+Alpha reactivity eyes-closed minus open,one_sample_t_subject_differences,24,2.26186,0.72441,15.29625,1.5175498976915954e-13,3.1223
+Rejected epoch percent vs 10pct threshold,one_sample_t_subject_differences,24,-4.59545,1.41532,-15.9067,6.64786880420708e-14,-3.2469

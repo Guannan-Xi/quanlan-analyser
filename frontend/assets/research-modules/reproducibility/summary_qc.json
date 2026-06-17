@@ -1,0 +1,17 @@
+{
+  "status": "enabled_v01_static_demo",
+  "subjects": 24,
+  "mean_rejected_epoch_percent": 5.405,
+  "review_subjects": [],
+  "checks": [
+    "readability",
+    "sampling_rate",
+    "duration",
+    "eeg_channels",
+    "flat_channels",
+    "extreme_amplitude",
+    "bad_channels",
+    "rejected_epochs",
+    "ica_components"
+  ]
+}

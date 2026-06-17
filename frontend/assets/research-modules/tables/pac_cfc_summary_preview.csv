@@ -1,0 +1,4 @@
+roi,phase_band_hz,amplitude_band_hz,modulation_index,surrogate_p_value,status
+Pz,4-8,70-95,0.138,0.004,preview_not_enabled
+Cz,4-8,35-55,0.062,0.091,preview_not_enabled
+Fz,6-10,70-95,0.041,0.176,preview_not_enabled

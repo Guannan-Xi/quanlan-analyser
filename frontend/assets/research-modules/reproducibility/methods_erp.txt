@@ -1,0 +1,1 @@
+Events are derived from annotations, epochs are cut from -200 to 800 ms, baseline corrected using -200 to 0 ms, averaged by condition, and summarized in N200/P300 windows. Event semantics must be verified before interpretation.

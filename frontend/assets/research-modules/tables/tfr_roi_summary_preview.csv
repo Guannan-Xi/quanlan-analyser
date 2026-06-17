@@ -1,0 +1,4 @@
+roi,frequency_hz,time_window_ms,effect_db,status
+frontal_theta,4-8,150-450,0.42,preview_not_enabled
+posterior_alpha_erd,8-13,0-500,-0.31,preview_not_enabled
+central_beta_ers,18-26,250-600,0.28,preview_not_enabled

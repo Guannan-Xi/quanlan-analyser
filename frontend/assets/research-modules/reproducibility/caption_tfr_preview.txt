@@ -1,0 +1,1 @@
+TFR preview output. ERSP heatmap and ITC curve illustrate the intended Morlet workflow, including baseline correction, event time zero, time-frequency ROI summaries, and cluster-aware statistics before production enablement.

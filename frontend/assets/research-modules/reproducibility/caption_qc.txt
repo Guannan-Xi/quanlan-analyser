@@ -1,0 +1,1 @@
+QC module output. Raw trace preview highlights event timing and an artifact candidate. Histograms show rejected epochs, bad channels, and ICA components removed; threshold lines mark review triggers.

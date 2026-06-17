@@ -1,0 +1,18 @@
+{
+  "status": "preview_not_enabled_in_v01",
+  "method": "coherence / PLV / wPLI with leakage control",
+  "bands_hz": {
+    "theta": [
+      4,
+      8
+    ],
+    "alpha": [
+      8,
+      13
+    ],
+    "beta": [
+      13,
+      30
+    ]
+  }
+}

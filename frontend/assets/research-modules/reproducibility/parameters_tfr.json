@@ -1,0 +1,9 @@
+{
+  "status": "preview_not_enabled_in_v01",
+  "method": "Morlet wavelet ERSP / ITC",
+  "frequencies_hz": [
+    3,
+    40
+  ],
+  "surrogates_required": true
+}

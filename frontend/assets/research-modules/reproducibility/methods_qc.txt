@@ -1,0 +1,1 @@
+QC reads file metadata, checks channel presence, sampling rate, duration, per-channel amplitude range, rejected-epoch percentage, bad-channel count, and ICA-removal counts. It is descriptive and flags data for review before downstream interpretation.

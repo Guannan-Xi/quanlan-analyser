@@ -1,0 +1,521 @@
+{
+  "generatedAt": "2026-06-18",
+  "product": "QLanalyser Online v0.1 Pilot",
+  "purpose": "Standalone static research-module pages for customer testing and scientific UI review.",
+  "researchGuardrail": "All displayed data are synthetic and for research workflow testing only; not for clinical diagnosis.",
+  "sampleData": {
+    "metadata": "/assets/research-modules/reproducibility/synthetic_research_metadata.json",
+    "events_tsv": "/assets/research-modules/data/synthetic_events.tsv",
+    "raw_preview_csv": "/assets/research-modules/data/synthetic_raw_preview_8ch_12s.csv",
+    "subject_metrics_csv": "/assets/research-modules/tables/synthetic_subject_level_metrics.csv",
+    "source_edf": "/assets/synthetic_8ch_120s.edf",
+    "source_events": "/assets/synthetic_8ch_120s_events.tsv"
+  },
+  "shared": {
+    "mne_reference": "assets/research-modules/reproducibility/mne_research_reference.json",
+    "reviewer_checklist": "assets/research-modules/reproducibility/research_reviewer_checklist.json",
+    "figure_background": "/assets/research-modules/figures/qlanalyser-neuron-firing-bg.png"
+  },
+  "modules": {
+    "qc": {
+      "slug": "qc",
+      "page": "qc.html",
+      "title": "QC 数据质量控制",
+      "subtitle": "读取、完整性、通道、伪迹与可分析性审查",
+      "status": "V01 已启用",
+      "statusLevel": "enabled",
+      "scenario": "研究助理上传 EDF/FIF 后，先判断数据是否值得继续分析，并导出给 PI 的质控说明。",
+      "mneObjects": [
+        "mne.io.Raw",
+        "mne.Annotations",
+        "Raw.plot",
+        "metadata summary"
+      ],
+      "inputs": [
+        "EEG 原始文件：EDF/BDF/FIF/BrainVision/SET/CNT",
+        "采样率、通道表、事件标记或注释",
+        "坏道和伪迹阈值",
+        "任务范式和预处理上下文"
+      ],
+      "controls": [
+        "文件格式",
+        "最低采样率",
+        "最短时长",
+        "坏道阈值",
+        "极端振幅阈值"
+      ],
+      "outputs": [
+        "QC summary JSON",
+        "subject-level QC CSV",
+        "原始片段预览图",
+        "方法说明与复现参数",
+        "下一步是否允许 PSD/ERP 的建议"
+      ],
+      "risks": [
+        "QC 只能提示风险，不能替代人工复核。",
+        "眼动/肌电/电极松动需要结合实验记录判断。"
+      ],
+      "figures": [
+        {
+          "label": "Publication QC dashboard",
+          "src": "/assets/research-modules/figures/qc-dashboard-publication.png",
+          "alt": "QC publication dashboard"
+        },
+        {
+          "label": "Raw trace preview",
+          "src": "/assets/research-modules/figures/analysis-raw-segment.png",
+          "alt": "Raw trace preview"
+        }
+      ],
+      "tables": [
+        {
+          "label": "受试者 QC 表",
+          "src": "/assets/research-modules/tables/qc_subject_summary.csv"
+        }
+      ],
+      "docs": [
+        {
+          "label": "参数 JSON",
+          "src": "/assets/research-modules/reproducibility/parameters_qc.json",
+          "type": "json"
+        },
+        {
+          "label": "方法说明",
+          "src": "/assets/research-modules/reproducibility/methods_qc.txt",
+          "type": "text"
+        },
+        {
+          "label": "图注",
+          "src": "/assets/research-modules/reproducibility/caption_qc.txt",
+          "type": "text"
+        },
+        {
+          "label": "总结 JSON",
+          "src": "/assets/research-modules/reproducibility/summary_qc.json",
+          "type": "json"
+        }
+      ],
+      "package": "/assets/research-modules/packages/qc_static_research_package.zip"
+    },
+    "psd": {
+      "slug": "psd",
+      "page": "psd.html",
+      "title": "PSD 静息态频谱 / 频段功率",
+      "subtitle": "Welch 功率谱、频段汇总、alpha reactivity 与 topomap",
+      "status": "V01 已启用",
+      "statusLevel": "enabled",
+      "scenario": "静息态睁眼/闭眼范式，需要快速确认 alpha 峰、频段功率、受试者级统计表和投稿图。",
+      "mneObjects": [
+        "mne.io.Raw",
+        "Raw.compute_psd",
+        "mne.time_frequency.Spectrum",
+        "mne.viz.plot_topomap"
+      ],
+      "inputs": [
+        "连续 EEG 或静息态分段",
+        "条件标签：eyes open / eyes closed / baseline",
+        "参考、滤波、notch 与坏道策略",
+        "频段定义"
+      ],
+      "controls": [
+        "频率范围",
+        "Welch window",
+        "频段定义",
+        "参考方式",
+        "是否输出 channel-level 表"
+      ],
+      "outputs": [
+        "Welch PSD 曲线图",
+        "band_power CSV",
+        "alpha topomap",
+        "subject-level paired statistics",
+        "方法、参数、软件版本与结果包"
+      ],
+      "risks": [
+        "个体 alpha 峰可能偏移，固定 8-13 Hz 需谨慎解释。",
+        "PSD 对参考、眼动、肌电和坏段高度敏感。"
+      ],
+      "figures": [
+        {
+          "label": "PSD publication figure",
+          "src": "/assets/research-modules/figures/psd-bandpower-publication.png",
+          "alt": "PSD publication figure"
+        },
+        {
+          "label": "Alpha topomap",
+          "src": "/assets/research-modules/figures/analysis-source.png",
+          "alt": "Alpha topography preview"
+        }
+      ],
+      "tables": [
+        {
+          "label": "频段功率长表",
+          "src": "/assets/research-modules/tables/psd_bandpower_long_format.csv"
+        },
+        {
+          "label": "统计摘要",
+          "src": "/assets/research-modules/tables/statistics_summary_subject_level.csv"
+        }
+      ],
+      "docs": [
+        {
+          "label": "参数 JSON",
+          "src": "/assets/research-modules/reproducibility/parameters_psd.json",
+          "type": "json"
+        },
+        {
+          "label": "方法说明",
+          "src": "/assets/research-modules/reproducibility/methods_psd.txt",
+          "type": "text"
+        },
+        {
+          "label": "图注",
+          "src": "/assets/research-modules/reproducibility/caption_psd.txt",
+          "type": "text"
+        },
+        {
+          "label": "总结 JSON",
+          "src": "/assets/research-modules/reproducibility/summary_psd.json",
+          "type": "json"
+        }
+      ],
+      "package": "/assets/research-modules/packages/psd_static_research_package.zip"
+    },
+    "erp": {
+      "slug": "erp",
+      "page": "erp.html",
+      "title": "ERP 事件相关电位 / P300",
+      "subtitle": "事件映射、Epoch、baseline、Evoked、成分窗口与 topomap",
+      "status": "V01 已启用",
+      "statusLevel": "enabled",
+      "scenario": "Oddball P300 客户需要确认事件、epoch 设置、P300 量化、差异波和可投稿图。",
+      "mneObjects": [
+        "mne.events_from_annotations",
+        "mne.Epochs",
+        "mne.Evoked",
+        "mne.viz.plot_compare_evokeds",
+        "mne.viz.plot_topomap"
+      ],
+      "inputs": [
+        "带注释/事件的 EEG 文件",
+        "event_id 映射：standard=1, target=2",
+        "epoch: -200 至 800 ms",
+        "baseline: -200 至 0 ms",
+        "ROI 通道与成分时间窗"
+      ],
+      "controls": [
+        "事件映射",
+        "epoch 起止",
+        "baseline",
+        "amplitude rejection",
+        "ROI 通道",
+        "成分时间窗"
+      ],
+      "outputs": [
+        "每条件 Evoked 波形",
+        "target-standard 差异与窗口指标",
+        "ERP metrics CSV",
+        "topomap 与图注",
+        "事件/epoch/QC 复现记录"
+      ],
+      "risks": [
+        "事件码含义必须由实验脚本或研究者确认。",
+        "不能把 trial 当作独立统计单位；统计应以 subject 为单位。"
+      ],
+      "figures": [
+        {
+          "label": "ERP publication figure",
+          "src": "/assets/research-modules/figures/erp-grand-average-publication.png",
+          "alt": "ERP publication figure"
+        },
+        {
+          "label": "ERP main figure",
+          "src": "/assets/research-modules/figures/publication-main-figure.png",
+          "alt": "ERP main figure"
+        }
+      ],
+      "tables": [
+        {
+          "label": "ERP 成分指标表",
+          "src": "/assets/research-modules/tables/erp_component_metrics.csv"
+        },
+        {
+          "label": "统计摘要",
+          "src": "/assets/research-modules/tables/statistics_summary_subject_level.csv"
+        }
+      ],
+      "docs": [
+        {
+          "label": "参数 JSON",
+          "src": "/assets/research-modules/reproducibility/parameters_erp.json",
+          "type": "json"
+        },
+        {
+          "label": "方法说明",
+          "src": "/assets/research-modules/reproducibility/methods_erp.txt",
+          "type": "text"
+        },
+        {
+          "label": "图注",
+          "src": "/assets/research-modules/reproducibility/caption_erp.txt",
+          "type": "text"
+        },
+        {
+          "label": "总结 JSON",
+          "src": "/assets/research-modules/reproducibility/summary_erp.json",
+          "type": "json"
+        }
+      ],
+      "package": "/assets/research-modules/packages/erp_static_research_package.zip"
+    },
+    "tfr": {
+      "slug": "tfr",
+      "page": "tfr.html",
+      "title": "TFR / ERSP / ITC 时频分析预研页",
+      "subtitle": "Morlet 小波设计、baseline、ERSP、ITC、cluster 统计",
+      "status": "V01 预研，尚未启用",
+      "statusLevel": "preview",
+      "scenario": "ASSR、Stroop、运动想象等范式需要时频功率和锁相指标；本页用于确认科研交互和输出合同。",
+      "mneObjects": [
+        "mne.time_frequency.tfr_morlet",
+        "Epochs",
+        "AverageTFR",
+        "cluster permutation design"
+      ],
+      "inputs": [
+        "事件锁定 epochs",
+        "频率列表与 n_cycles",
+        "baseline 区间和校正方式",
+        "输出指标：power / ITC",
+        "ROI、时间窗和多重比较策略"
+      ],
+      "controls": [
+        "频率范围",
+        "n_cycles",
+        "baseline mode",
+        "decimation",
+        "ROI",
+        "cluster p 阈值"
+      ],
+      "outputs": [
+        "ERSP heatmap",
+        "ITC 曲线",
+        "ROI summary CSV",
+        "统计掩膜/cluster 表",
+        "方法说明、参数和预研结果包"
+      ],
+      "risks": [
+        "V01 不应直接启用：需要先固化 wavelet 参数、baseline 策略、cluster 统计和伪迹控制。",
+        "过度平滑和多重比较会影响科研结论。"
+      ],
+      "figures": [
+        {
+          "label": "TFR preview chart",
+          "src": "/assets/research-modules/figures/tfr-ersp-itc-preview-publication.png",
+          "alt": "TFR preview chart"
+        },
+        {
+          "label": "Time-frequency reference",
+          "src": "/assets/research-modules/figures/analysis-timefreq.png",
+          "alt": "Time-frequency reference"
+        }
+      ],
+      "tables": [
+        {
+          "label": "TFR ROI 预览表",
+          "src": "/assets/research-modules/tables/tfr_roi_summary_preview.csv"
+        }
+      ],
+      "docs": [
+        {
+          "label": "参数 JSON",
+          "src": "/assets/research-modules/reproducibility/parameters_tfr.json",
+          "type": "json"
+        },
+        {
+          "label": "方法说明",
+          "src": "/assets/research-modules/reproducibility/methods_tfr_preview.txt",
+          "type": "text"
+        },
+        {
+          "label": "图注",
+          "src": "/assets/research-modules/reproducibility/caption_tfr_preview.txt",
+          "type": "text"
+        },
+        {
+          "label": "总结 JSON",
+          "src": "/assets/research-modules/reproducibility/summary_tfr_preview.json",
+          "type": "json"
+        }
+      ],
+      "package": "/assets/research-modules/packages/tfr_static_research_package.zip"
+    },
+    "pac": {
+      "slug": "pac",
+      "page": "pac.html",
+      "title": "PAC / CFC 相位-振幅耦合预研页",
+      "subtitle": "theta phase × gamma amplitude、comodulogram、surrogate 检验",
+      "status": "V01 预研，尚未启用",
+      "statusLevel": "preview",
+      "scenario": "麻醉苏醒、睡眠、记忆任务等客户可能关注 cross-frequency coupling；本页先定义完整输入输出与审稿风险。",
+      "mneObjects": [
+        "Raw/Epochs filtering",
+        "Hilbert transform design",
+        "surrogate/null model",
+        "comodulogram report"
+      ],
+      "inputs": [
+        "连续或事件锁定 EEG",
+        "phase frequency range",
+        "amplitude frequency range",
+        "滤波阶数/边界处理",
+        "surrogate 生成策略",
+        "ROI 和统计校正方案"
+      ],
+      "controls": [
+        "相位频段",
+        "振幅频段",
+        "filter length",
+        "Hilbert 边界裁剪",
+        "surrogate 次数",
+        "FDR/cluster 校正"
+      ],
+      "outputs": [
+        "comodulogram",
+        "phase-binned amplitude plot",
+        "modulation index table",
+        "surrogate p-values",
+        "方法与风险说明"
+      ],
+      "risks": [
+        "PAC 极易受滤波、边界、波形非正弦和伪迹影响。",
+        "必须有 surrogate/null model 和多重比较控制后才适合生产启用。"
+      ],
+      "figures": [
+        {
+          "label": "PAC preview chart",
+          "src": "/assets/research-modules/figures/pac-comodulogram-preview-publication.png",
+          "alt": "PAC preview chart"
+        },
+        {
+          "label": "ICA component reference",
+          "src": "/assets/research-modules/figures/analysis-ica.png",
+          "alt": "ICA reference preview"
+        }
+      ],
+      "tables": [
+        {
+          "label": "PAC/CFC 预览表",
+          "src": "/assets/research-modules/tables/pac_cfc_summary_preview.csv"
+        }
+      ],
+      "docs": [
+        {
+          "label": "参数 JSON",
+          "src": "/assets/research-modules/reproducibility/parameters_pac.json",
+          "type": "json"
+        },
+        {
+          "label": "方法说明",
+          "src": "/assets/research-modules/reproducibility/methods_pac_preview.txt",
+          "type": "text"
+        },
+        {
+          "label": "图注",
+          "src": "/assets/research-modules/reproducibility/caption_pac_preview.txt",
+          "type": "text"
+        },
+        {
+          "label": "总结 JSON",
+          "src": "/assets/research-modules/reproducibility/summary_pac_preview.json",
+          "type": "json"
+        }
+      ],
+      "package": "/assets/research-modules/packages/pac_static_research_package.zip"
+    },
+    "connectivity": {
+      "slug": "connectivity",
+      "page": "connectivity.html",
+      "title": "Connectivity 连接性预研页",
+      "subtitle": "coherence / PLV / wPLI、矩阵、网络图与边表",
+      "status": "V01 预研，尚未启用",
+      "statusLevel": "preview",
+      "scenario": "静息态或任务态网络分析客户需要透明的边定义、阈值、矩阵、网络图和可复查边表。",
+      "mneObjects": [
+        "Epochs/Raw spectral connectivity design",
+        "coherence",
+        "PLV",
+        "wPLI",
+        "graph summary"
+      ],
+      "inputs": [
+        "连续或分段 EEG",
+        "频段定义",
+        "连接性指标：coherence/PLV/wPLI",
+        "参考和体积传导控制",
+        "阈值策略",
+        "节点/ROI 定义"
+      ],
+      "controls": [
+        "metric",
+        "frequency band",
+        "window length",
+        "threshold",
+        "ROI/node set",
+        "null model"
+      ],
+      "outputs": [
+        "connectivity matrix",
+        "thresholded network graph",
+        "edge table CSV",
+        "graph metrics",
+        "参数、方法和预研结果包"
+      ],
+      "risks": [
+        "参考方式与体积传导会显著影响连接性。",
+        "网络阈值需要预注册或敏感性分析，不能只保留好看的边。"
+      ],
+      "figures": [
+        {
+          "label": "Connectivity preview chart",
+          "src": "/assets/research-modules/figures/connectivity-network-preview-publication.png",
+          "alt": "Connectivity preview chart"
+        },
+        {
+          "label": "Scalp/source reference",
+          "src": "/assets/research-modules/figures/analysis-source.png",
+          "alt": "Source reference preview"
+        }
+      ],
+      "tables": [
+        {
+          "label": "连接边表预览",
+          "src": "/assets/research-modules/tables/connectivity_edges_preview.csv"
+        }
+      ],
+      "docs": [
+        {
+          "label": "参数 JSON",
+          "src": "/assets/research-modules/reproducibility/parameters_connectivity.json",
+          "type": "json"
+        },
+        {
+          "label": "方法说明",
+          "src": "/assets/research-modules/reproducibility/methods_connectivity_preview.txt",
+          "type": "text"
+        },
+        {
+          "label": "图注",
+          "src": "/assets/research-modules/reproducibility/caption_connectivity_preview.txt",
+          "type": "text"
+        },
+        {
+          "label": "总结 JSON",
+          "src": "/assets/research-modules/reproducibility/summary_connectivity_preview.json",
+          "type": "json"
+        }
+      ],
+      "package": "/assets/research-modules/packages/connectivity_static_research_package.zip"
+    }
+  }
+}

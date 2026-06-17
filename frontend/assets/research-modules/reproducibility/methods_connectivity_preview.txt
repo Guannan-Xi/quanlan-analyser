@@ -1,0 +1,1 @@
+Connectivity preview must define metric, frequency band, reference policy, leakage/volume-conduction control, graph thresholding, and null testing before production use.

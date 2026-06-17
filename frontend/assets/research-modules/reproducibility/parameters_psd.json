@@ -1,0 +1,26 @@
+{
+  "method": "Welch PSD",
+  "bands_hz": {
+    "delta": [
+      1,
+      4
+    ],
+    "theta": [
+      4,
+      8
+    ],
+    "alpha": [
+      8,
+      13
+    ],
+    "beta": [
+      13,
+      30
+    ],
+    "low_gamma": [
+      30,
+      40
+    ]
+  },
+  "reference": "average"
+}

@@ -322,3 +322,64 @@ No high-risk secret patterns were reported. Medium-risk password assignment patt
 ### Recommendation
 Do not push. Do not merge or rebase without explicit confirmation. Before adapter work, split or park existing changes, decide how to reconcile `bb14003` with `fd73a10`, and keep `data/state/*.json` plus generated assets out of unrelated commits.
 
+
+---
+
+### Date
+2026-06-18
+
+### Task goal
+Research the relevant MNE documentation, split EEG analysis capabilities into standalone static test pages, generate synthetic research test data, publication-style figures, CSV/JSON/TXT/ZIP output packages, and complete one local validation round.
+
+### Modified files
+- `frontend/research-modules.html`: new research-module testbench entry page.
+- `frontend/research-modules.css`: styles for the testbench and module pages.
+- `frontend/research-modules.js`: manifest-driven rendering, CSV/JSON/TXT previews, and download links.
+- `frontend/research-module/*.html`: standalone QC, PSD, ERP, TFR, PAC, and Connectivity pages.
+- `frontend/assets/research-modules/`: synthetic data, figures, CSV tables, parameters/methods/captions/summaries, and ZIP packages.
+- `scripts/generate_research_module_assets.py`: generator for research-module static assets.
+- `scripts/acceptance_research_modules_static.mjs`: static acceptance script for the research-module pages.
+- `docs/PROJECT_STATUS.md`: records the new testbench scope and validation result.
+- `docs/TASK_LOG.md`: records this task and validation result.
+
+### Completed
+- Checked official MNE references for Raw, events_from_annotations, Epochs, Evoked, tfr_morlet, plot_topomap, and plot_compare_evokeds.
+- Split V01-enabled modules into QC, PSD, and ERP pages.
+- Added preview-only pages for TFR / ERSP / ITC, PAC / CFC, and Connectivity, clearly marking them as not enabled in V01 backend execution.
+- Generated synthetic research test data, subject-level tables, statistics summaries, method text, captions, reviewer checklist, manifest, and module ZIP packages.
+- Each page shows inputs, parameter controls, outputs, figures, CSV tables, parameter JSON, method text, captions, summaries, and package downloads.
+- Preserved the research-only guardrail: these outputs are not clinical diagnosis.
+
+### Validation
+Commands run:
+
+```powershell
+python -m py_compile scripts\generate_research_module_assets.py
+node --check frontend\research-modules.js
+node --check scripts\acceptance_research_modules_static.mjs
+node scripts\acceptance_research_modules_static.mjs
+```
+
+Local static service used for browser validation: `http://127.0.0.1:4177/research-modules.html`.
+
+### Result
+- Static research-module acceptance: passed.
+- Checks: 130.
+- Module pages: 6.
+- Report: `work/acceptance/research_modules_static_latest.json`.
+- Screenshots: `work/research-modules-index.png`, `work/research-modules-erp.png`.
+
+### Risks
+- The worktree still contains unrelated legacy uncommitted changes. This task should be committed with precise staging only.
+- TFR, PAC, and Connectivity are static research-design previews; they must not be described as enabled V01 backend workflows.
+- The generator requires local scientific Python packages, but the committed static pages do not require Python to render.
+
+### Unfinished
+- Unified output-contract adapter is not implemented yet.
+- TFR/PAC/Connectivity backend execution is not enabled.
+- Aliyun public deployment is pending after commit/push.
+
+### Next recommendations
+1. Commit and push this static testbench as a GitHub backup.
+2. Deploy the static pages to Aliyun and validate `http://39.97.248.225/research-modules.html`.
+3. Start the minimal unified output-contract adapter for QC/PSD/ERP result JSON, manifest, artifact list, and package index.

@@ -160,3 +160,43 @@ Sensitive scan result: no high-risk secret patterns were reported. Two medium-ri
 
 Recommended next safety step: before implementing the unified output-contract adapter, either park or deliberately split the existing uncommitted changes, then decide how to reconcile `bb14003` with the local 7 commits. Do not use `git add .`, do not merge/rebase without explicit confirmation, and do not push until the remote divergence is resolved.
 
+
+
+## 12. Research Modules Static Testbench
+
+Update date: 2026-06-18
+
+A standalone static research-module testbench was added for tomorrow's EEG analysis workflow review.
+
+- Entry: `frontend/research-modules.html`
+- Module pages: `frontend/research-module/qc.html`, `psd.html`, `erp.html`, `tfr.html`, `pac.html`, `connectivity.html`
+- Static assets and synthetic test data: `frontend/assets/research-modules/`
+- Manifest: `frontend/assets/research-modules/reproducibility/research_module_manifest.json`
+- All-in-one test package: `frontend/assets/research-modules/packages/qlanalyser_research_modules_static_test_package.zip`
+
+Scope boundary:
+
+- Enabled in V01: QC, PSD, ERP.
+- Preview/research-design only: TFR / ERSP / ITC, PAC / CFC, Connectivity. These pages define interaction and output expectations; they do not mean the V01 backend execution path is enabled.
+- All displayed data are synthetic and for research workflow testing only; not for clinical diagnosis.
+
+MNE references checked:
+
+- `mne.io.Raw`
+- `mne.events_from_annotations`
+- `mne.Epochs`
+- `mne.Evoked`
+- `mne.time_frequency.tfr_morlet`
+- `mne.viz.plot_topomap`
+- `mne.viz.plot_compare_evokeds`
+
+Local validation:
+
+```powershell
+python -m py_compile scripts\generate_research_module_assets.py
+node --check frontend\research-modules.js
+node --check scripts\acceptance_research_modules_static.mjs
+node scripts\acceptance_research_modules_static.mjs
+```
+
+Result: `passed`, 130 checks, 6 module pages. Report: `work/acceptance/research_modules_static_latest.json`.

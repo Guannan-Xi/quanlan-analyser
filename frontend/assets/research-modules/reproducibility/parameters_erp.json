@@ -1,0 +1,22 @@
+{
+  "event_id": {
+    "standard": 1,
+    "target": 2
+  },
+  "epoch_tmin_sec": -0.2,
+  "epoch_tmax_sec": 0.8,
+  "baseline_sec": [
+    -0.2,
+    0.0
+  ],
+  "components": {
+    "N200": [
+      0.16,
+      0.26
+    ],
+    "P300": [
+      0.28,
+      0.42
+    ]
+  }
+}
