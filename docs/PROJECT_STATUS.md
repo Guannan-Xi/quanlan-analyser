@@ -63,6 +63,7 @@ QLanalyser Online v0.1 Pilot：稳定 MVP，用于客户免费试用。
 ## 7. 当前风险点
 
 - 当前 git 工作树已有大量未提交修改和未跟踪文件，后续任务需要先确认边界，避免覆盖他人工作。
+- 本次按 Git 规则取消全局 `*.png` 忽略后，若干 PNG 资源会出现在未跟踪文件中；后续需要区分正式产品资源与临时截图，避免误提交。
 - 当前正式数据库缺失，JSON state 适合单机 Pilot，但多用户并发、数据一致性、备份恢复存在风险。
 - 当前未接入真实持久化任务队列，分析任务可能阻塞 HTTP 请求；较大 EEG 文件会带来超时和体验风险。
 - 上传文件仅按后缀限制，文件大小、恶意文件、重复文件、存储清理和权限隔离策略待完善。
@@ -73,13 +74,13 @@ QLanalyser Online v0.1 Pilot：稳定 MVP，用于客户免费试用。
 
 ## 8. 最近一次修改
 
-本次建立项目协作与交接文档。
+本次建立 Git 任务提交规则、创建项目专属 skill `qlanalyser-git-guard`，并确认远程仓库为 `https://github.com/Guannan-Xi/quanlan-analyser.git`。当前本地 `main` 与 `origin/main` 存在差异（本地 ahead 2、behind 1），不得自动 push，需先确认同步策略。
 
 ## 9. 下一步建议任务
 
-1. 运行或复核 V01 smoke/acceptance，更新当前真实通过/失败状态。
-2. 做一次产品命名与品牌文案审计，只清理活动页面、报告与部署文档中的旧命名。
-3. 端到端验证项目创建、EEG 上传、QC/PSD/ERP 任务、HTML 报告、ZIP 下载流程，并记录缺口。
+1. 先确认 `main` 与 `origin/main` 的同步策略，再决定是否 merge/rebase 或 push。
+2. 运行或复核 V01 smoke/acceptance，更新当前真实通过/失败状态。
+3. 做一次产品命名与品牌文案审计，只清理活动页面、报告与部署文档中的旧命名。
 
 ## 10. 本地运行方式
 
@@ -117,3 +118,6 @@ scripts\run_v01_acceptance.ps1
 数据库启动方式：未发现正式数据库，当前使用 `data/state/*.json`。
 
 Docker 启动方式：`frontend/` 内有静态前端 Dockerfile；后端 Docker 或统一 compose 方案待确认。
+
+
+

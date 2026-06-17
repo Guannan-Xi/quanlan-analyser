@@ -1,4 +1,4 @@
-.env
+﻿.env
 .env.*
 !.env.example
 
@@ -25,7 +25,6 @@ work/
 *.rar
 *.jpg
 *.jpeg
-*.png
 *_api_key.txt
 *token*
 *secret*
@@ -56,3 +55,13 @@ data/reports/**
 !data/uploads/.gitkeep
 !data/derivatives/.gitkeep
 !data/reports/.gitkeep
+
+# Local secrets, virtualenvs, AI scratch output
+.ai/
+.next/
+.venv/
+venv/
+*.key
+*.pem
+*.p12
+*.pfx

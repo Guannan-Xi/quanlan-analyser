@@ -86,3 +86,17 @@
 - 数据库只保存文件元数据和路径。
 - 长时间 EEG 分析任务不阻塞 HTTP 请求。
 - 分析结果必须尽量可复核，保存输入信息、参数、日志、软件版本和输出路径。
+## 9. Git 工作流规则
+
+每完成一个明确小任务后，必须使用项目专属 `qlanalyser-git-guard` 工作流：
+
+- 先检查 `git status`、`git diff --stat`、`git diff --name-only`、`git remote -v`。
+- 确认没有无关文件、敏感信息或临时输出进入提交。
+- 运行相关测试，或对文档类任务确认仅文档/规则文件变化。
+- 更新 `docs/PROJECT_STATUS.md` 和 `docs/TASK_LOG.md`。
+- 只 stage 本次任务相关文件，不使用 `git add .` 处理混杂工作树。
+- 创建小而清晰的本地 commit。
+- 不自动 push；push 到 GitHub 必须等待用户明确确认。
+- 不使用 `git push --force` 或 `git push -f`。
+- 如果本地与远程历史分叉、落后或发生冲突，停止并报告，不强行 merge、rebase 或覆盖远程历史。
+
