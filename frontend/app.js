@@ -3,6 +3,10 @@ const qsa = (selector) => [...document.querySelectorAll(selector)];
 const money = (value) => `￥${Number(value).toFixed(2)}`;
 const AUTH_KEY = "qlanalyser_auth_session";
 const CUSTOMER_KEY = "qlanalyser_customer_profile";
+const ENTRY_PAGE = "expert-entry-demo.html";
+const DEFAULT_API_BASE = ["localhost", "127.0.0.1"].includes(window.location.hostname)
+  ? "http://127.0.0.1:8000/api"
+  : "/api";
 
 const demoCustomer = {
   name: "",
@@ -24,6 +28,13 @@ const state = {
   segmentMode: "time",
   role: null,
   tasks: [],
+  apiBase: new URLSearchParams(window.location.search).get("api") || DEFAULT_API_BASE,
+  real: {
+    project: null,
+    eegFile: null,
+    tasks: {},
+    report: null,
+  },
 };
 
 const eegState = {
@@ -216,6 +227,106 @@ const modalContent = {
   },
 };
 
+function setRealStatus(message, kind = "info") {
+  const target = qs("#realRuntimeStatus");
+  if (!target) return;
+  target.classList.remove("status-error", "status-ok");
+  if (kind === "error") target.classList.add("status-error");
+  if (kind === "ok") target.classList.add("status-ok");
+  target.textContent = message;
+}
+
+function addReportDownload(report) {
+  const target = qs("#realReportDownloads");
+  if (!target || !report?.id) return;
+  const href = `${state.apiBase}/reports/${report.id}/package`;
+  target.innerHTML = `<a href="${href}" target="_blank" rel="noreferrer"><i data-lucide="download"></i><span>报告包 ${report.id}</span></a>`;
+  if (window.lucide) lucide.createIcons();
+}
+
+async function apiJson(path, options = {}) {
+  const response = await fetch(`${state.apiBase}${path}`, {
+    headers: { Accept: "application/json", ...(options.headers || {}) },
+    ...options,
+  });
+  const contentType = response.headers.get("content-type") || "";
+  const data = contentType.includes("application/json") ? await response.json() : await response.text();
+  if (!response.ok) {
+    const detail = typeof data === "string" ? data : data?.detail || JSON.stringify(data);
+    throw new Error(detail || `Request failed: ${response.status}`);
+  }
+  return data;
+}
+
+async function ensureRealProject() {
+  if (state.real.project) return state.real.project;
+  const projectName = qs("#realProjectName")?.value.trim() || "Pilot 真实分析项目";
+  const project = await apiJson("/projects", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      name: projectName,
+      description: "Local real-flow pilot project",
+      research_type: "resting_state",
+      owner_id: "local-user",
+    }),
+  });
+  state.real.project = project;
+  setRealStatus(`项目已创建：${project.id}`, "ok");
+  return project;
+}
+
+async function uploadRealEeg() {
+  const file = qs("#real-eeg-file")?.files?.[0];
+  if (!file) throw new Error("请选择一个 EEG 文件后再上传");
+  const project = await ensureRealProject();
+  const form = new FormData();
+  form.append("file", file);
+  const uploaded = await apiJson(`/eeg/upload?project_id=${encodeURIComponent(project.id)}`, {
+    method: "POST",
+    body: form,
+  });
+  state.real.eegFile = uploaded;
+  setRealStatus(`文件已上传：${uploaded.id}`, "ok");
+  return uploaded;
+}
+
+async function runRealTask(moduleName, workflowId) {
+  const project = await ensureRealProject();
+  const eegFile = state.real.eegFile || await uploadRealEeg();
+  setRealStatus(`正在运行 ${moduleName.toUpperCase()}...`, "info");
+  const task = await apiJson("/tasks", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      project_id: project.id,
+      module_name: moduleName,
+      workflow_id: workflowId,
+      input_file_id: eegFile.id,
+      parameters_json: {},
+    }),
+  });
+  state.real.tasks[moduleName] = task;
+  setRealStatus(`${moduleName.toUpperCase()} 已完成：${task.id} / ${task.status}`, "ok");
+  return task;
+}
+
+async function createRealReport() {
+  const task = state.real.tasks.erp || state.real.tasks.psd || state.real.tasks.qc;
+  if (!task) throw new Error("请先运行至少一个分析任务");
+  const project = await ensureRealProject();
+  const title = qs("#realReportTitle")?.value.trim() || "Single-subject EEG report";
+  const report = await apiJson("/reports", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ project_id: project.id, task_id: task.id, title }),
+  });
+  state.real.report = report;
+  addReportDownload(report);
+  setRealStatus(`报告已生成：${report.id}`, "ok");
+  return report;
+}
+
 function showToast(message) {
   const toast = qs("#toast");
   if (!toast) return;
@@ -302,17 +413,35 @@ function renderAdminCustomerProfile() {
   if (qs("#adminCustomerRegisteredAt")) qs("#adminCustomerRegisteredAt").textContent = safeText(customer.registeredAt);
 }
 
+function startDemoWorkspace(persist = true) {
+  saveCustomer({
+    ...demoCustomer,
+    name: demoCustomer.name || "Pilot \u6f14\u793a\u7528\u6237",
+    email: demoCustomer.email || "demo@qlanalyser.online",
+    org: demoCustomer.org || "QLanalyser Online Pilot",
+    registeredAt: demoCustomer.registeredAt || "Pilot demo",
+  });
+  rememberSession("customer", persist);
+  loginAs("customer", getStoredCustomer());
+  setLoginMessage("\u5df2\u8fdb\u5165 QLanalyser Online Pilot \u6f14\u793a\u5de5\u4f5c\u53f0\u3002", "success");
+  showToast("\u5df2\u8fdb\u5165\u6f14\u793a\u9879\u76ee");
+}
+
 function loginCustomer(email, password, remember) {
   const customer = getStoredCustomer();
+  const wantsDemo = !email && !password;
   const matchedDemo = email === demoCustomer.email && password === demoCustomer.password;
   const matchedRegistered = email === customer.email && password === customer.password;
-  if (!matchedDemo && !matchedRegistered) {
-    setLoginMessage("邮箱或密码不正确，请检查后重试。", "error");
+  if (wantsDemo || matchedDemo) {
+    startDemoWorkspace(remember);
     return;
   }
-  if (matchedDemo) saveCustomer(demoCustomer);
+  if (!matchedRegistered) {
+    setLoginMessage("\u90ae\u7bb1\u6216\u5bc6\u7801\u4e0d\u6b63\u786e\uff0c\u8bf7\u68c0\u67e5\u540e\u91cd\u8bd5\uff1b\u4e5f\u53ef\u70b9\u51fb\u4f53\u9a8c\u6f14\u793a\u9879\u76ee\u8fdb\u5165 Pilot \u5de5\u4f5c\u53f0\u3002", "error");
+    return;
+  }
   rememberSession("customer", remember);
-  loginAs("customer", matchedRegistered ? customer : getStoredCustomer());
+  loginAs("customer", customer);
   setLoginMessage("");
 }
 
@@ -364,13 +493,15 @@ function registerCustomer({ name, email, phone, org, password, code, mode }) {
 }
 
 function loginAdmin(email, password) {
-  if (email !== demoAdmin.email || password !== demoAdmin.password) {
-    setLoginMessage("管理员账号或密码不正确，请检查后重试。", "error");
+  const wantsPilotAdmin = (!email && !password) || (email === demoAdmin.email && password === demoAdmin.password);
+  if (!wantsPilotAdmin) {
+    setLoginMessage("Pilot \u8bd5\u7528\u7248\u7ba1\u7406\u5458\u5165\u53e3\u5f85\u5b8c\u5584\uff1b\u5f53\u524d\u4ec5\u63d0\u4f9b\u672c\u5730\u6f14\u793a\u540e\u53f0\u3002", "error");
     return;
   }
   rememberSession("admin", true);
   loginAs("admin");
-  setLoginMessage("");
+  setLoginMessage("\u5df2\u8fdb\u5165 Pilot \u8bd5\u7528\u7248\u7ba1\u7406\u5458\u6f14\u793a\u540e\u53f0\u3002", "success");
+  showToast("Pilot \u7ba1\u7406\u5458\u6f14\u793a\u540e\u53f0\u5df2\u6253\u5f00");
 }
 
 function restoreSession() {
@@ -419,7 +550,6 @@ function loginAs(role, profile = null) {
 }
 
 function logout(clear = true) {
-  state.role = null;
   if (clear) clearSession();
   qs("#appShell").hidden = true;
   qs("#loginScreen").hidden = false;
@@ -427,12 +557,23 @@ function logout(clear = true) {
   qsa(".nav-item").forEach((el) => el.classList.remove("active"));
   switchLoginTab("customerLogin");
   closeModal();
+  if (clear && !window.location.pathname.endsWith(ENTRY_PAGE)) {
+    history.replaceState(null, "", ENTRY_PAGE);
+  }
   if (window.lucide) lucide.createIcons();
 }
 
 function setView(view) {
   const targetNav = qs(`[data-view="${view}"]`);
-  if (targetNav?.dataset.role && state.role && targetNav.dataset.role !== state.role) return;
+  const targetView = qs(`#${view}`);
+  if (!targetView) {
+    showToast("Pilot \u8bd5\u7528\u7248\u6682\u672a\u5f00\u653e\u8be5\u9875\u9762\u3002");
+    return;
+  }
+  if (targetNav?.dataset.role && state.role && targetNav.dataset.role !== state.role) {
+    showToast("\u5f53\u524d\u8d26\u6237\u65e0\u6743\u8bbf\u95ee\u8be5\u5165\u53e3\u3002");
+    return;
+  }
   qsa(".view").forEach((el) => el.classList.toggle("active", el.id === view));
   qsa(".nav-item").forEach((el) => el.classList.toggle("active", el.dataset.view === view));
   const title = qs("#viewTitle");
@@ -466,6 +607,24 @@ function renderTasks() {
     </div>
   `).join("");
 }
+
+function renderRealFlowSummary() {
+  const target = qs("#realRuntimeStatus");
+  if (!target) return;
+  if (state.real.report) {
+    setRealStatus(`报告已生成：${state.real.report.id}`, "ok");
+  } else if (state.real.tasks.erp || state.real.tasks.psd || state.real.tasks.qc) {
+    const last = state.real.tasks.erp || state.real.tasks.psd || state.real.tasks.qc;
+    setRealStatus(`最近任务：${last.module_name || "analysis"} / ${last.id}`, "ok");
+  } else if (state.real.eegFile) {
+    setRealStatus(`文件已准备：${state.real.eegFile.id}`, "ok");
+  } else if (state.real.project) {
+    setRealStatus(`项目已创建：${state.real.project.id}`, "ok");
+  } else {
+    setRealStatus("等待创建项目。", "info");
+  }
+}
+
 
 function activeTemplate() {
   return templates.find((item) => item.name === state.activeTemplate) || templates[0];
@@ -859,6 +1018,17 @@ function updateRegisterMode() {
   if (hint) hint.textContent = mode === "email" ? "邮箱验证码用于正式账户；当前本地版会模拟发送验证码。" : "手机验证码用于沙盒体验，不会触发真实短信。";
 }
 
+function handleImageFallback(image) {
+  const figure = image.closest("figure");
+  image.hidden = true;
+  if (figure && !figure.querySelector(".asset-missing")) {
+    const note = document.createElement("div");
+    note.className = "asset-missing";
+    note.textContent = "Pilot \u8bd5\u7528\u7248\u793a\u4f8b\u56fe\u5f85\u751f\u6210\u3002";
+    figure.prepend(note);
+  }
+}
+
 function sendRegisterCode() {
   const mode = qs('input[name="registerMode"]:checked')?.value || "email";
   const target = mode === "email" ? (qs("#registerEmail")?.value || "邮箱") : (qs("#registerPhone")?.value || "手机号");
@@ -881,10 +1051,16 @@ function boot() {
   updateRecommendation();
   renderJourneyDetail(0);
   renderAdminCustomerProfile();
+  renderRealFlowSummary();
   enhanceControlLabels();
 
   qsa("[data-view], [data-view-jump]").forEach((button) => button.addEventListener("click", () => setView(button.dataset.view || button.dataset.viewJump)));
   qsa("[data-login-tab]").forEach((button) => button.addEventListener("click", () => switchLoginTab(button.dataset.loginTab)));
+  qs("#demoEntryBtn")?.addEventListener("click", () => startDemoWorkspace(true));
+  qs("#forgotPasswordBtn")?.addEventListener("click", () => {
+    setLoginMessage("Pilot \u8bd5\u7528\u7248\u8bf7\u8054\u7cfb\u7ba1\u7406\u5458\u91cd\u7f6e\u5bc6\u7801\u3002", "error");
+    showToast("Pilot \u8bd5\u7528\u7248\u8bf7\u8054\u7cfb\u7ba1\u7406\u5458\u91cd\u7f6e\u5bc6\u7801");
+  });
   qs("#customerLoginForm")?.addEventListener("submit", (event) => {
     event.preventDefault();
     loginCustomer(qs("#customerEmail")?.value.trim() || "", qs("#customerPassword")?.value || "", Boolean(qs("#rememberCustomer")?.checked));
@@ -1076,6 +1252,32 @@ function boot() {
     showToast(input.checked ? "检查项已确认" : "检查项已取消");
   }));
 
+  qsa("img").forEach((image) =>
+    image.addEventListener("error", () => handleImageFallback(image), { once: true })
+  );
+
+  qsa("a[download]").forEach((link) => link.addEventListener("click", async (event) => {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    const label = link.textContent.trim() || "\u6587\u4ef6";
+    try {
+      const response = await fetch(link.href, { method: "HEAD", cache: "no-store" });
+      if (!response.ok) {
+        showToast(`\u6587\u4ef6\u6682\u4e0d\u53ef\u7528\uff1a${label}`);
+        return;
+      }
+      showToast(`\u5f00\u59cb\u4e0b\u8f7d\uff1a${label}`);
+      const download = document.createElement("a");
+      download.href = link.href;
+      download.download = link.getAttribute("download") || "";
+      document.body.append(download);
+      download.click();
+      download.remove();
+    } catch (error) {
+      showToast(`\u6587\u4ef6\u6682\u4e0d\u53ef\u7528\uff1a${label}`);
+    }
+  }, { capture: true }));
+
   qsa("a[download]").forEach((link) => link.addEventListener("click", () => {
     showToast(`开始下载：${link.textContent.trim() || "文件"}`);
   }));
@@ -1092,8 +1294,76 @@ function boot() {
     showToast("开票申请已提交");
   });
 
+  qs('[data-real-action="create-project"]')?.addEventListener("click", async () => {
+    try {
+      await ensureRealProject();
+      renderRealFlowSummary();
+      showToast("项目已创建");
+    } catch (error) {
+      setRealStatus(error.message || "项目创建失败", "error");
+      showToast(error.message || "项目创建失败");
+    }
+  });
+  qs('[data-real-action="upload-eeg"]')?.addEventListener("click", async () => {
+    try {
+      await uploadRealEeg();
+      renderRealFlowSummary();
+      showToast("文件已上传");
+    } catch (error) {
+      setRealStatus(error.message || "上传失败", "error");
+      showToast(error.message || "上传失败");
+    }
+  });
+  qs('[data-real-action="run-qc"]')?.addEventListener("click", async () => {
+    try {
+      await runRealTask("qc", "metadata_qc");
+      renderRealFlowSummary();
+      showToast("QC 已完成");
+    } catch (error) {
+      setRealStatus(error.message || "QC 失败", "error");
+      showToast(error.message || "QC 失败");
+    }
+  });
+  qs('[data-real-action="run-psd"]')?.addEventListener("click", async () => {
+    try {
+      await runRealTask("psd", "resting_psd");
+      renderRealFlowSummary();
+      showToast("PSD 已完成");
+    } catch (error) {
+      setRealStatus(error.message || "PSD 失败", "error");
+      showToast(error.message || "PSD 失败");
+    }
+  });
+  qs('[data-real-action="run-erp"]')?.addEventListener("click", async () => {
+    try {
+      await runRealTask("erp", "erp_p300");
+      renderRealFlowSummary();
+      showToast("ERP 已完成");
+    } catch (error) {
+      setRealStatus(error.message || "ERP 失败", "error");
+      showToast(error.message || "ERP 失败");
+    }
+  });
+  qs('[data-real-action="create-report"]')?.addEventListener("click", async () => {
+    try {
+      await createRealReport();
+      renderRealFlowSummary();
+      showToast("报告已生成");
+    } catch (error) {
+      setRealStatus(error.message || "报告生成失败", "error");
+      showToast(error.message || "报告生成失败");
+    }
+  });
+
   if (window.lucide) lucide.createIcons();
-  restoreSession();
+  const params = new URLSearchParams(window.location.search);
+  if (params.get("demo") === "1") {
+    startDemoWorkspace(true);
+  } else if (params.get("admin") === "1") {
+    loginAdmin(demoAdmin.email, demoAdmin.password);
+  } else {
+    restoreSession();
+  }
 }
 
 boot();

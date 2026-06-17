@@ -156,39 +156,6 @@
               </div>
               <div class="task-list" id="taskList"></div>
             </section>
-            <section class="panel span-2 real-flow-panel">
-              <div class="panel-head">
-                <div><h2>真实分析链路</h2><p>把当前项目、文件上传、QC / PSD / ERP 任务和报告包直接连到本地后端。</p></div>
-                <span class="badge">local API</span>
-              </div>
-              <div class="real-flow-grid">
-                <label class="real-field">
-                  <span>项目名称</span>
-                  <input id="realProjectName" type="text" value="Pilot 真实分析项目" />
-                </label>
-                <label class="real-field">
-                  <span>文件</span>
-                  <input id="real-eeg-file" type="file" accept=".edf,.bdf,.set,.vhdr,.cnt,.fif" />
-                </label>
-                <label class="real-field">
-                  <span>报告标题</span>
-                  <input id="realReportTitle" type="text" value="Single-subject EEG report" />
-                </label>
-                <label class="real-field">
-                  <span>状态</span>
-                  <div class="real-status" id="realRuntimeStatus">等待创建项目。</div>
-                </label>
-              </div>
-              <div class="real-actions">
-                <button class="primary-btn" type="button" data-real-action="create-project"><i data-lucide="folder-plus"></i><span>创建项目</span></button>
-                <button class="ghost-btn" type="button" data-real-action="upload-eeg"><i data-lucide="upload"></i><span>上传 EEG</span></button>
-                <button class="ghost-btn" type="button" data-real-action="run-qc"><i data-lucide="shield-check"></i><span>运行 QC</span></button>
-                <button class="ghost-btn" type="button" data-real-action="run-psd"><i data-lucide="bar-chart-3"></i><span>运行 PSD</span></button>
-                <button class="ghost-btn" type="button" data-real-action="run-erp"><i data-lucide="waves"></i><span>运行 ERP</span></button>
-                <button class="ghost-btn" type="button" data-real-action="create-report"><i data-lucide="file-text"></i><span>生成报告</span></button>
-              </div>
-              <div class="real-downloads" id="realReportDownloads"></div>
-            </section>
             <section class="panel">
               <div class="panel-head compact"><h2>新手安全护栏</h2></div>
               <div class="checklist">
