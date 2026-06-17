@@ -278,3 +278,47 @@ Plan the QLanalyser Online v0.1 Pilot architecture and modular EEG analysis road
 2. Stabilize the UI acceptance startup flow so missing 4174 does not fail by surprise.
 3. Run a naming audit for active pages, reports, and deployment docs.
 
+---
+
+## Git sync risk audit before adapter work
+
+### Conclusion first
+Do not push now. `main` is ahead 7 and behind 1, the remote-only commit is a different object from the local equivalent commit, and the working tree has broad unstaged/untracked changes. The next adapter task should not start until the existing changes are split or parked.
+
+### Commands reviewed
+- `git status --short --branch`: `main...origin/main [ahead 7, behind 1]`; staged area empty; broad unstaged/untracked changes present.
+- `git remote -v`: origin fetch/push is `https://github.com/Guannan-Xi/quanlan-analyser.git`.
+- `git log --oneline --left-right --graph origin/main...HEAD`: local has 7 commits; remote has `bb14003`.
+- `git ls-remote origin refs/heads/main`: remote currently points to `bb14003`, so local `origin/main` is current.
+- `git diff --stat`: 29 tracked files changed, 1278 insertions and 446 deletions.
+- `git diff --cached --stat` and `git diff --cached --name-only`: no staged changes.
+- `git log --oneline -10`: latest local commit is `0597e06 docs(architecture): plan v0.1 pilot architecture and analysis modules`.
+
+### Local commits not pushed
+- `0597e06 docs(architecture): plan v0.1 pilot architecture and analysis modules` - architecture/module planning docs; keep.
+- `e72f1a8 docs(ai): add project handoff skills` - handoff skill docs; keep pending review.
+- `4d6a3a6 docs(test): record v01 baseline acceptance` - acceptance record; keep pending review.
+- `7c0a062 style(brand): superscript registered marks` - brand styling docs/frontend-related change; keep pending review.
+- `10bdd27 docs(git): add guard workflow` - git guard workflow docs; keep.
+- `0644c8d docs: add collaboration handoff process` - collaboration handoff docs; keep.
+- `fd73a10 Set QLanalyser as the only EEG platform version` - local commit whose content matches remote `bb14003`; keep but reconcile history before push.
+
+### Remote-only commit
+- `bb14003 Set QLanalyser as the only EEG platform version` - content diff against local `fd73a10` is empty, but commit object differs. Conflict risk is low at file-content level but high at Git-history/push level because direct push is non-fast-forward.
+
+### Uncommitted change categories
+- Frontend pages: `frontend/app.js`, `frontend/index.html`, `frontend/styles.css`, `frontend/expert-entry-demo.html`.
+- Frontend/assets: PNG analysis/publication assets and `frontend/assets/paradigm_benchmark/paradigm_coverage_summary.png`.
+- Outputs mirror: `outputs/eeglab-mne-mvp/app.js`, `index.html`, `styles.css`, `expert-entry-demo.html`, and neuron background asset.
+- Backend API/services: modified `backend/api/*.py`, `backend/main.py`, `backend/services/product_catalog.py`, `report_service.py`, `storage_service.py`, `task_service.py`; untracked `readiness_service.py`, `state_store.py`.
+- EEG analysis/report code: modified `eeg_core/analysis/erp.py`, `psd.py`, `eeg_core/io/metadata.py`, `readers.py`, `eeg_core/preprocess/quality.py`, `eeg_core/report/html_report.py`; untracked `eeg_core/report/reproducibility.py`.
+- Worker/scripts: modified worker report/preprocess wrappers; untracked acceptance/smoke/virtual-user scripts.
+- Docs: modified `README.md`; untracked `docs/v01_production_readiness.md`.
+- Runtime state: untracked `data/state/*.json` should not be included in the next adapter commit without a deliberate decision.
+
+### Sensitive scan
+No high-risk secret patterns were reported. Medium-risk password assignment pattern hits were found in `frontend/app.js:373` and `outputs/eeglab-mne-mvp/app.js:373`. Values were not printed; confirm they are demo-only before staging these files.
+
+### Recommendation
+Do not push. Do not merge or rebase without explicit confirmation. Before adapter work, split or park existing changes, decide how to reconcile `bb14003` with `fd73a10`, and keep `data/state/*.json` plus generated assets out of unrelated commits.
+

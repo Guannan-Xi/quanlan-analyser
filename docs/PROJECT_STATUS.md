@@ -148,3 +148,15 @@ Architecture judgment: the current project is suitable for a single-node, low-co
 
 Next priority: standardize job_type, task states, and output contracts (`parameters.json`, `result.json`, `manifest.json`, `log.txt`) before moving to module registry, background runner, database, queue, and object storage.
 
+## 13. Git sync risk audit
+
+Conclusion first: do not push now. The local branch is `main...origin/main [ahead 7, behind 1]`, the working tree still has broad unstaged code/assets/scripts/state changes, and the remote-only commit must be reconciled before any push.
+
+Current remote state is not stale: `git ls-remote origin refs/heads/main` points to `bb14003`, the same object as local `origin/main`. The remote-only commit `bb14003 Set QLanalyser as the only EEG platform version` has no content diff against local commit `fd73a10` (`git diff fd73a10 bb14003` is empty), but it is a different commit object, so direct push would still be a non-fast-forward risk.
+
+Staging area is clean. Unstaged/untracked changes remain across README/docs, backend API/services, EEG analysis/report code, frontend pages, outputs mirror files, worker/scripts, generated state JSON, and image/assets. These must be reviewed and split before the next adapter task.
+
+Sensitive scan result: no high-risk secret patterns were reported. Two medium-risk `password` assignment pattern hits were found in `frontend/app.js:373` and `outputs/eeglab-mne-mvp/app.js:373`; values were not printed and should be manually confirmed as demo-only before staging those files.
+
+Recommended next safety step: before implementing the unified output-contract adapter, either park or deliberately split the existing uncommitted changes, then decide how to reconcile `bb14003` with the local 7 commits. Do not use `git add .`, do not merge/rebase without explicit confirmation, and do not push until the remote divergence is resolved.
+
