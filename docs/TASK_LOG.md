@@ -105,7 +105,7 @@ YYYY-MM-DD
 先确认远程同步策略，再决定是否将本地 commit 推送到 GitHub。
 ---
 
-## 最新任务
+## 历史任务
 
 ### 日期
 2026-06-17
@@ -144,6 +144,73 @@ YYYY-MM-DD
 
 ### 下一步建议
 确认是否继续处理品牌命名统一（例如旧的 `QLanalyser 脑电分析平台` 文案）以及远程同步策略。
+---
 
+## 最新任务
 
+### 日期
+2026-06-17
+
+### 任务目标
+运行现有 V01 smoke/acceptance 脚本，确认 QLanalyser Online v0.1 Pilot 当前本地原型真实可运行状态；同步记录 Pilot 命名基线。
+
+### 修改文件
+- `docs/PROJECT_STATUS.md`：更新基线验收结果、已完成功能、风险点和下一步建议。
+- `docs/TASK_LOG.md`：记录本次 smoke/acceptance 命令、结果、失败项与风险。
+- `docs/DECISIONS.md`：记录统一命名：产品名 `QLanalyser Online`、版本标记 `Pilot`、完整版本 `QLanalyser Online v0.1 Pilot`、中文说明 `QLanalyser Online Pilot 试用版`。
+
+### 已完成
+- 执行 `git status -sb` 与 `git diff --stat`，确认当前工作树存在大量既有未提交业务代码改动和未跟踪资源。
+- 执行 smoke 验证，通过。
+- 执行完整 acceptance 脚本：Python compileall、frontend syntax、core/worker、full API 均通过；默认 UI 步骤因 4174 前端服务未启动失败。
+- 手动启动临时 backend `127.0.0.1:8000` 与 frontend `127.0.0.1:4174` 后，单独执行 UI acceptance，通过。
+- 单独执行 persistence acceptance，通过。
+- 未修改前端页面、后端逻辑、分析模块或依赖。
+
+### 测试方式
+执行以下命令：
+
+```powershell
+git status -sb
+git diff --stat
+C:\Users\XGN\miniconda3\python.exe scripts\smoke_v01_api.py
+powershell -ExecutionPolicy Bypass -File scripts\run_v01_acceptance.ps1
+# 临时启动 backend/frontend 后：
+node scripts\acceptance_v01_ui.mjs
+C:\Users\XGN\miniconda3\python.exe scripts\acceptance_v01_persistence.py
+```
+
+### 测试结果
+- Smoke：通过。
+- Full acceptance：部分通过。compileall、frontend syntax、core/worker、full API 通过；UI 步骤在默认环境失败，原因是 `http://127.0.0.1:4174/?api=http://127.0.0.1:8000/api` 连接被拒绝。
+- UI acceptance：手动启动 8000/4174 后通过。
+- Persistence acceptance：通过。
+- Full API acceptance 报告：`work/acceptance/v01_acceptance_latest.json`，状态 `passed`，126 checks，失败数 0。
+
+### 已验证功能
+- 服务健康检查：通过。
+- 项目创建：通过。
+- EEG 上传：通过，包含 `.fif` 上传及缺失/不支持/空文件失败检查。
+- Metadata/QC：通过。
+- Resting PSD：通过。
+- ERP/P300：通过；无事件 ERP 失败路径也通过。
+- HTML 报告：通过。
+- ZIP 报告包：通过。
+- 失败任务列表：通过，admin failed tasks 接口返回失败 ERP 任务。
+- 高级方法禁用：TFR、PAC、Connectivity 在 V01 中按预期返回 422。
+
+### 未验证功能
+- 不启动服务时的一键 UI acceptance 通过性：未通过，需先启动 4174 前端服务。
+- 真实客户部署环境、认证/会话、安全权限、长时间大文件任务、备份恢复：未在本次脚本中验证。
+
+### 风险点
+- 当前验收基于本地未提交工作树，存在大量既有业务代码改动和未跟踪资源。
+- 当前 `main` 与 `origin/main` 仍处于 ahead/behind 分叉状态，不得自动 push。
+- 本次验收生成/更新 `data/state`、`data/uploads`、`data/derivatives`、`data/reports`、`work/acceptance` 等本地产物，不应提交。
+
+### 未完成事项
+未修复 acceptance 脚本对 4174 前端服务的启动依赖；未处理远程分叉；未 push。
+
+### 下一步建议
+固化验收脚本启动流程，或在 README 中明确启动 backend/frontend 后再运行完整 UI acceptance。
 

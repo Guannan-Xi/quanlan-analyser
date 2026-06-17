@@ -4,6 +4,14 @@
 
 QLanalyser Online v0.1 Pilot：稳定 MVP，用于客户免费试用。
 
+命名基线：
+
+- 产品名：QLanalyser Online
+- 版本标记：Pilot
+- 完整版本：QLanalyser Online v0.1 Pilot
+- 中文说明：QLanalyser Online Pilot 试用版
+- 边界说明：本平台用于科研数据管理与分析辅助，结果不作为临床诊断依据。
+
 ## 2. 当前技术栈
 
 - 前端：静态 HTML、CSS、JavaScript，使用 `http-server` 本地服务；`frontend/package.json` 中仍有旧命名，需后续统一。
@@ -36,16 +44,19 @@ QLanalyser Online v0.1 Pilot：稳定 MVP，用于客户免费试用。
 - 支持生成分析 artifacts，并通过 artifact 下载接口获取文件。
 - 支持生成 HTML 报告与 ZIP 报告包，报告包包含报告、表格和 reproducibility 信息。
 - 已有管理员 dashboard 与失败任务列表接口。
-- 已有 V01 smoke 与 acceptance 脚本，覆盖项目创建、上传、metadata、QC、PSD、ERP、报告包与高级方法禁用检查。
-- 前端静态工作台已存在，包含项目、数据、QC、分析、结果、报告等页面资源，具体联调状态待确认。
+- V01 smoke 验证通过：项目创建、真实 EEG 上传、metadata、QC、PSD、ERP、报告和 ZIP 包均通过。
+- V01 Full API acceptance 通过：126 项检查，失败数 0，覆盖高级方法禁用、失败 ERP 任务错误保存、artifact 下载、HTML 报告、ZIP 报告包、admin failed tasks 等。
+- V01 persistence acceptance 通过：项目、受试者、EEG 文件、任务、报告状态可写入 `data/state`。
+- UI acceptance 在默认脚本中因 4174 前端服务未启动失败；手动启动后端 8000 与前端 4174 后，`scripts/acceptance_v01_ui.mjs` 通过。
+- 前端静态工作台已存在，包含项目、数据、QC、分析、结果、报告等页面资源。
 
 ## 5. 部分完成的功能
 
 - 登录页与登录逻辑：前端页面存在，但真实认证、会话、权限边界待确认。
-- 工作台首页：前端静态工作台存在，真实 API 联调完整性待确认。
-- 管理员入口：后端 admin API 已有基础接口，前端入口和权限控制待确认。
-- 分析任务状态：后端任务模型包含状态、进度、错误信息，但当前任务执行路径可能同步阻塞；后台运行机制待确认。
-- 任务失败原因展示：后端保存 `error_message` 并提供失败任务列表，前端展示完整性待确认。
+- 工作台首页：UI acceptance 在手动启动服务后通过，真实试用部署下的端口、代理和启动方式仍需固化。
+- 管理员入口：后端 admin dashboard 与 failed tasks 接口验收通过，前端权限控制待确认。
+- 分析任务状态：QC/PSD/ERP 任务完成态、失败 ERP 任务错误信息保存均已通过自动化验收；长任务后台运行机制仍待确认。
+- 任务失败原因展示：后端失败任务列表验收通过，前端展示完整性待确认。
 - 基础日志：报告与任务输出中有 reproducibility 信息，系统级运行日志与审计日志待确认。
 - 基础部署和备份说明：前端 DEPLOY 与 README 有局部说明，后端、数据目录、备份恢复说明不完整。
 - Billing 路由：代码中存在 billing API，但 v0.1 Pilot 暂不做在线支付，是否保留为占位待确认。
@@ -62,24 +73,25 @@ QLanalyser Online v0.1 Pilot：稳定 MVP，用于客户免费试用。
 
 ## 7. 当前风险点
 
-- 当前 git 工作树已有大量未提交修改和未跟踪文件，后续任务需要先确认边界，避免覆盖他人工作。
-- 本次按 Git 规则取消全局 `*.png` 忽略后，若干 PNG 资源会出现在未跟踪文件中；后续需要区分正式产品资源与临时截图，避免误提交。
+- 当前 git 工作树已有大量未提交业务代码修改和未跟踪文件，验收结果代表当前本地工作树，不代表远程干净 checkout。
+- 当前本地 `main` 与 `origin/main` 存在 ahead/behind 分叉，禁止自动 push，需要先确认同步策略。
+- `scripts/run_v01_acceptance.ps1` 默认要求 4174 前端服务已启动；未启动时 UI acceptance 会因 `ERR_CONNECTION_REFUSED` 失败。手动启动 8000/4174 后 UI 脚本可通过。
 - 当前正式数据库缺失，JSON state 适合单机 Pilot，但多用户并发、数据一致性、备份恢复存在风险。
 - 当前未接入真实持久化任务队列，分析任务可能阻塞 HTTP 请求；较大 EEG 文件会带来超时和体验风险。
 - 上传文件仅按后缀限制，文件大小、恶意文件、重复文件、存储清理和权限隔离策略待完善。
 - 前端、报告包、部署说明中仍可能存在旧产品命名和旧定位文案，存在品牌不一致风险。
 - 高级分析方法如 PAC、Connectivity、TFR、机器学习应继续保持禁用或明确返回不可用，避免 Pilot 承诺过高。
 - 报告可复核性已经有雏形，但仍需持续验证输入文件信息、参数、运行日志、软件版本、输出路径是否完整保存。
-- 本地端口、API base、前端 4173/4174 与代理模式并存，客户试用部署前需要统一说明。
+- 本次验收生成/更新 `data/state`、`data/uploads`、`data/derivatives`、`data/reports`、`work/acceptance` 等本地产物，不应混入提交。
 
 ## 8. 最近一次修改
 
-本次将品牌注册商标符号统一为上角标展示：网页中使用 `<sup class="registered-mark">®</sup>`，Markdown 品牌规范中使用 `<sup>®</sup>`；同步更新前端当前版本和历史静态输出副本。当前本地 `main` 与 `origin/main` 仍存在 ahead/behind 差异，不得自动 push，需先确认同步策略。
+本次执行 QLanalyser Online v0.1 Pilot 基线验收：smoke 通过；完整 acceptance 的 compile、frontend syntax、core/worker、full API 通过；默认 UI 步骤因 4174 前端服务未启动失败，手动启动 8000/4174 后 UI acceptance 通过；persistence acceptance 通过。同步写入 Pilot 命名基线。
 
 ## 9. 下一步建议任务
 
-1. 先确认 `main` 与 `origin/main` 的同步策略，再决定是否 merge/rebase 或 push。
-2. 运行或复核 V01 smoke/acceptance，更新当前真实通过/失败状态。
+1. 固化本地验收启动方式：让 acceptance 脚本自动启动或明确要求启动 backend/frontend，避免 UI 步骤因服务未启动失败。
+2. 先确认 `main` 与 `origin/main` 的同步策略，再决定是否 merge/rebase 或 push。
 3. 做一次产品命名与品牌文案审计，只清理活动页面、报告与部署文档中的旧命名。
 
 ## 10. 本地运行方式
@@ -118,6 +130,7 @@ scripts\run_v01_acceptance.ps1
 数据库启动方式：未发现正式数据库，当前使用 `data/state/*.json`。
 
 Docker 启动方式：`frontend/` 内有静态前端 Dockerfile；后端 Docker 或统一 compose 方案待确认。
+
 
 
 

@@ -6,6 +6,18 @@
 
 `QLanalyser Online`
 
+版本标记统一为：
+
+`Pilot`
+
+完整版本统一为：
+
+`QLanalyser Online v0.1 Pilot`
+
+中文说明统一为：
+
+`QLanalyser Online Pilot 试用版`
+
 不得继续使用：
 
 `QLanalyser EEG`
@@ -99,6 +111,7 @@
 - 不自动 push；push 到 GitHub 必须等待用户明确确认。
 - 不使用 `git push --force` 或 `git push -f`。
 - 如果本地与远程历史分叉、落后或发生冲突，停止并报告，不强行 merge、rebase 或覆盖远程历史。
+
 
 
 
