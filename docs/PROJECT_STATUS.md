@@ -131,12 +131,20 @@ scripts\run_v01_acceptance.ps1
 
 Docker 启动方式：`frontend/` 内有静态前端 Dockerfile；后端 Docker 或统一 compose 方案待确认。
 
-## 11. AI ???? Skills
+## 11. AI Handoff Skills
 
-??????????? AI ?? skills?
+当前项目使用两类 AI 接力 skills：
 
-- `qlanalyser-close-chat-handoff`?????????????????????????????????
-- `qlanalyser-continue-project-context`??????????????????????????????????????
+- `qlanalyser-close-chat-handoff`：用于结束当前对话前生成可接力的状态记录。
+- `qlanalyser-continue-project-context`：用于新对话接续项目上下文、验收结果和下一步计划。
 
-???????? QLanalyser Online ????????????????????? EEG ??????????????? push?
+继续 QLanalyser Online 时，请优先复核工作树、验收结果和 EEG 平台入口，不要自动 push。
+
+## 12. v0.1 Pilot architecture/module plan
+
+New planning document: `docs/v01_pilot_architecture_plan.md`.
+
+Architecture judgment: the current project is suitable for a single-node, low-concurrency, controlled-trial QLanalyser Online v0.1 Pilot. metadata/QC, PSD, and report packaging can be treated as the stable baseline; ERP should remain beta; TFR/PAC/connectivity should remain experimental or planned. The current JSON state store, synchronous task runner, and local filesystem should not be described as a production-grade 20-user / 500MB-file architecture.
+
+Next priority: standardize job_type, task states, and output contracts (`parameters.json`, `result.json`, `manifest.json`, `log.txt`) before moving to module registry, background runner, database, queue, and object storage.
 

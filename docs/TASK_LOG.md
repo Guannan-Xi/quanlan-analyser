@@ -216,38 +216,65 @@ C:\Users\XGN\miniconda3\python.exe scripts\acceptance_v01_persistence.py
 
 ---
 
-## ????
+## AI handoff skills 接力记录
 
-### ??
+### 日期
 2026-06-17
 
-### ????
-???? QLanalyser Online ???? AI handoff skills?????????????????????
+### 背景
+继续 QLanalyser Online 项目时，已确认存在 AI handoff skills，可用于结束对话前写入接力状态，或在新对话中恢复项目上下文。
 
-### ????
-- `.agents/skills/qlanalyser-close-chat-handoff/SKILL.md`????????????????? skill?
-- `.agents/skills/qlanalyser-continue-project-context/SKILL.md`??????????????????? skill?
-- `AGENTS.md`??? Project AI Handoff Skills ?????
-- `docs/PROJECT_STATUS.md`????? AI ???? skills?
-- `docs/TASK_LOG.md`???????? skill ?????
+### 本轮复核
+- 执行 `git status -sb`，确认工作树仍有未提交改动，分支 `main...origin/main` 处于 ahead 6、behind 1。
+- 复核 GLM sidecar 成功结果：`.ai/glm-results/glm-1781704292-d8d5699c.result.json`，其 checklist 建议继续跑 Playwright、smoke、acceptance、更新 docs、精确暂存并 commit。
+- 运行 `python -m compileall backend eeg_core worker scripts`，通过。
+- 运行 `npm run check` 于 `frontend/` 与 `outputs/eeglab-mne-mvp/`，均通过。
+- 运行 `scripts/run_v01_acceptance.ps1`：compile、frontend syntax、core/worker、full API 均通过；UI 步骤因 4174 前端服务未启动失败。
+- 手动启动临时 backend `127.0.0.1:8000` 与 frontend `127.0.0.1:4174` 后，单独运行 `node scripts/acceptance_v01_ui.mjs`，通过；随后已停止临时服务。
+- 运行 `scripts/smoke_v01_api.py`，通过。
+- 运行 `scripts/acceptance_v01_persistence.py`，通过。
+- 运行 `scripts/check_no_mojibake.py` 时发现本文件与 `docs/PROJECT_STATUS.md` 存在问号乱码段落，并已修复。
 
-### ???
-- ?????? `.agents/skills` ?????? skills?
-- ????????????????Git ??????????
-- ??????????? EEG ????????????
+### 未完成事项
+未处理远程分叉；未执行精确暂存、commit 或 push。
 
-### ????
-??? `git status --short --branch`????? `git diff --stat`????? `git diff` ????????????????/token ????????????????? git ????????????????
+### 下一步建议
+再次运行 `scripts/check_no_mojibake.py` 与必要的 acceptance 验收后，按变更范围精确 stage；如需结束当前对话，可运行 `qlanalyser-close-chat-handoff` 生成当前接力记录。
 
-### ????
-??? `git status --short --branch`????? `git diff --stat`????? `git diff` ????????????????/token ????????????????
+---
 
-### ???
-??????????????????????????????? stage ??? skill ?????
+## v0.1 Pilot architecture/module planning
 
-### ?????
-? push??????????????
+### Date
+2026-06-17
 
-### ?????
-?? `qlanalyser-close-chat-handoff` ????? `docs/AI_HANDOFF_CURRENT.md`?????????????????
+### Goal
+Plan the QLanalyser Online v0.1 Pilot architecture and modular EEG analysis roadmap, including current state, MVP target architecture, module boundaries, task system, concurrency target, output contract, test strategy, and phased refactor route.
+
+### Audit summary
+- Frontend is static HTML/CSS/JavaScript; backend is FastAPI; state is stored in `data/state/*.json`; files are stored under `data/uploads`, `data/derivatives`, and `data/reports`.
+- Analysis code lives mainly in `eeg_core/`, with metadata/QC, PSD, ERP, report, and reproducibility capabilities already present.
+- Task creation currently runs analysis synchronously in `backend/services/task_service.py`; `worker/tasks/*` are thin wrappers and are not backed by a real queue yet.
+- Report service can produce HTML and ZIP packages, but unified `result.json`, `manifest.json`, and `log.txt` contracts still need follow-up work.
+- The 20-user concurrency and 500MB-file goal should be treated as a controlled Pilot capacity probe, not a production SLA.
+
+### Modified files
+- `docs/v01_pilot_architecture_plan.md`: added architecture, module boundary, concurrency, output contract, test plan, and phased roadmap planning.
+- `docs/PROJECT_STATUS.md`: added the planning document index and architecture judgment.
+- `docs/TASK_LOG.md`: recorded this architecture planning audit.
+
+### Verification
+- This was a documentation/planning task. It did not change EEG analysis core logic, upload architecture, database, queue, or frontend UI.
+- Lightweight checks are being run: Python compileall, frontend JS syntax check, and mojibake check.
+
+### Not completed
+- No large directory refactor.
+- No PostgreSQL, Redis, Celery, or RQ introduction.
+- UI acceptance still depends on a running 4174 frontend service.
+- No commit or push performed.
+
+### Next steps
+1. Add a unified output-contract adapter for PSD/QC/ERP, starting with `result.json` and `manifest.json`.
+2. Stabilize the UI acceptance startup flow so missing 4174 does not fail by surprise.
+3. Run a naming audit for active pages, reports, and deployment docs.
 
