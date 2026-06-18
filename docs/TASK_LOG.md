@@ -447,3 +447,50 @@ python scripts\launch_v01_public_virtual_users.py
 1. Commit this production-stability slice with precise staging, then push GitHub backup if the staged diff is clean.
 2. Start the minimal unified output-contract adapter for QC/PSD/ERP.
 3. Add a future MNE modernization pass to replace legacy `pick_types()` calls after adapter work is stable.
+
+## No-login Analysis Lab formal entry and standalone module pages
+
+Date: 2026-06-18
+
+### Task goal
+Add a formal no-login Analysis Lab to the project entry so standalone EEG analysis modules can be opened directly for parallel development and future customer single-module trials.
+
+### Modified files
+- `frontend/index.html`: added no-login Analysis Lab button on the login screen and an in-workspace shortcut.
+- `frontend/expert-entry-demo.html`: added the same Analysis Lab entry points.
+- `frontend/styles.css`: added anchor-button styles for the lab entry buttons.
+- `frontend/research-modules.html`: linked the research-module overview to the Analysis Lab.
+- `frontend/module-lab.html`, `frontend/module-lab.css`, `frontend/module-lab.js`: new standalone lab overview and per-module detail pages.
+- `frontend/assets/qlanalyser-neuron-firing-bg.png` and `frontend/assets/research-modules/figures/qlanalyser-neuron-firing-bg.png`: updated neuron-firing network background.
+- `scripts/acceptance_research_modules_static.mjs`: expanded acceptance to cover entry pages, lab overview, six lab module URLs, static module pages, assets, and guardrail sections.
+
+### Implementation notes
+- Stable lab URLs: `module-lab.html?module=qc`, `psd`, `erp`, `tfr`, `pac`, `connectivity`.
+- Each module page shows inputs, parameters, MNE methods, outputs, figures, file deliverables, acceptance matrix, risks, and handoff notes.
+- TFR / PAC / Connectivity remain preview-only; QC / PSD / ERP remain V01-enabled.
+- Lab implementation is static and manifest-driven; it does not require login or backend execution.
+
+### Validation
+Commands run:
+
+```powershell
+node --check frontend\module-lab.js
+node --check scriptscceptance_research_modules_static.mjs
+python scripts\check_no_mojibake.py
+node scriptscceptance_research_modules_static.mjs
+```
+
+Result:
+- Syntax checks passed.
+- Mojibake/readiness check passed.
+- Static/lab browser acceptance passed: 189 checks, 6 module pages.
+- Report: `work/acceptance/research_modules_static_latest.json`.
+
+### Multi-model / review record
+- External consultant call: DeepSeek (`polish`) succeeded in 15.234 s; output file `.ai/module-lab-review/deepseek_review.md`; estimated tokens included in consultant metrics summary.
+- Review emphasis: no-login guardrail, preview module labeling, acceptance coverage, and contract clarity. Local evidence confirmed these are covered or documented as risks.
+- Gemini/Grok were not called in this specific finishing pass to keep scope bounded after the interruption; fallback internal reverse review was performed against diffs and acceptance evidence.
+
+### Risks
+- Worktree still contains unrelated legacy/untracked changes. Stage only this task's files.
+- No-login lab must remain restricted to synthetic/static research-demo data until a separate access-control decision is made.

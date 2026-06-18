@@ -561,7 +561,8 @@ label span {
 }
 
 .primary-btn,
-.ghost-btn {
+.ghost-btn,
+.lab-entry-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -577,9 +578,20 @@ label span {
   box-shadow: 0 12px 26px rgba(21, 122, 119, 0.24);
 }
 
-.ghost-btn {
+.ghost-btn,
+.lab-entry-btn {
   color: var(--teal);
   background: var(--teal-soft);
+}
+
+.lab-entry-btn {
+  text-decoration: none;
+  border: 1px solid rgba(15, 118, 110, 0.18);
+}
+
+.top-link-btn {
+  min-height: 42px;
+  text-decoration: none;
 }
 
 .full {

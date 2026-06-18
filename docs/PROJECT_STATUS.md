@@ -245,3 +245,34 @@ Operational notes:
 - MNE still emits `pick_types()` legacy warnings during tests; these are non-blocking but should be considered for a later MNE API modernization pass.
 - Test runs generated runtime files under `data/state`, `data/uploads`, `data/derivatives`, `data/reports`, and `work/acceptance`; these should not be committed except for intentional source/test/reporting scripts.
 - Unified output-contract adapter remains the next product-development target; this round focused on production stability, state consistency, and validation.
+
+## 14. No-login Analysis Lab for standalone module trials
+
+Date: 2026-06-18
+
+A formal no-login Analysis Lab entry was added for standalone EEG module trials and parallel development.
+
+- Entry pages: `frontend/index.html`, `frontend/expert-entry-demo.html`, and `frontend/research-modules.html` now link to `frontend/module-lab.html`.
+- Lab overview: `frontend/module-lab.html` renders six module cards from `research_module_manifest.json`.
+- Module URLs: `frontend/module-lab.html?module=qc`, `psd`, `erp`, `tfr`, `pac`, `connectivity`.
+- Each module page shows inputs, parameters, MNE methods, outputs, visual artifacts, file deliverables, acceptance matrix, research guardrails, and parallel-development handoff notes.
+- Cover background asset was replaced with a higher-resolution neuron-firing network illustration and reused by the lab hero.
+- V01 enabled modules remain QC / PSD / ERP; TFR / PAC / Connectivity remain preview-only research designs.
+
+Validation:
+
+```powershell
+node --check frontend\module-lab.js
+node --check scriptscceptance_research_modules_static.mjs
+python scripts\check_no_mojibake.py
+node scriptscceptance_research_modules_static.mjs
+```
+
+Result:
+- Static/lab acceptance: passed, 189 checks, 6 lab module pages.
+- Report: `work/acceptance/research_modules_static_latest.json`.
+- External review: DeepSeek consultant call succeeded; output recorded at `.ai/module-lab-review/deepseek_review.md`. Console rendering had encoding noise, so actionable conclusions were cross-checked against local evidence.
+
+Risks:
+- The worktree still contains unrelated legacy changes under `outputs/eeglab-mne-mvp/` and untracked files. Commit this task with precise staging only.
+- The Analysis Lab is no-login by design and must continue to expose only static synthetic/research-demo assets unless a separate access-control decision is made.
