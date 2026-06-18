@@ -2,6 +2,7 @@ from fastapi import APIRouter
 
 from backend.models.data_preparation import (
     DataPreparationPlanCreate,
+    DataPreparationPlanForFileSave,
     DataPreparationPlanRead,
     DataPreparationPlanUpdate,
     DataPreparationTaskReferenceCreate,
@@ -35,3 +36,18 @@ def update_data_preparation_plan(plan_id: str, payload: DataPreparationPlanUpdat
 @router.post("/data-preparation/plans/{plan_id}/task-reference", response_model=DataPreparationTaskReferenceRead)
 def create_data_preparation_task_reference(plan_id: str, payload: DataPreparationTaskReferenceCreate) -> DataPreparationTaskReferenceRead:
     return data_preparation_service.create_task_reference(plan_id, payload)
+
+
+@router.get("/eeg/files/{file_id}/data-preparation-plan", response_model=DataPreparationPlanRead)
+def get_current_data_preparation_plan_for_file(file_id: str) -> DataPreparationPlanRead:
+    return data_preparation_service.get_current_plan_for_file(file_id)
+
+
+@router.post("/eeg/files/{file_id}/data-preparation-plan", response_model=DataPreparationPlanRead)
+def save_current_data_preparation_plan_for_file(file_id: str, payload: DataPreparationPlanForFileSave) -> DataPreparationPlanRead:
+    return data_preparation_service.save_current_plan_for_file(file_id, payload)
+
+
+@router.get("/eeg/files/{file_id}/data-preparation-plans", response_model=list[DataPreparationPlanRead])
+def list_data_preparation_plans_for_file(file_id: str) -> list[DataPreparationPlanRead]:
+    return data_preparation_service.list_plans(input_file_id=file_id)

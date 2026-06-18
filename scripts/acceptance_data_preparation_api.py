@@ -46,10 +46,15 @@ def main() -> None:
         assert created.status_code == 200, created.text
         plan = created.json()
         assert plan["revision"] == 1
+        assert plan["schema_version"] == "qlanalyser-data-preparation-v0.2"
 
         read_back = client.get(f"/api/data-preparation/plans/{plan['id']}")
         assert read_back.status_code == 200
         assert read_back.json()["id"] == plan["id"]
+
+        current_for_file = client.get("/api/eeg/files/eeg_api/data-preparation-plan")
+        assert current_for_file.status_code == 200
+        assert current_for_file.json()["id"] == plan["id"]
 
         updated = client.put(f"/api/data-preparation/plans/{plan['id']}", json={
             "expected_revision": 1,
@@ -63,6 +68,7 @@ def main() -> None:
             "description": "stale",
         })
         assert conflict.status_code == 409
+        assert conflict.json()["detail"]["error_code"] == "PLAN_REVISION_CONFLICT"
 
         reference = client.post(f"/api/data-preparation/plans/{plan['id']}/task-reference", json={
             "module_name": "psd",
@@ -72,6 +78,31 @@ def main() -> None:
         assert reference.status_code == 200, reference.text
         body = reference.json()
         assert body["parameters_json"]["data_preparation_plan_id"] == plan["id"]
+
+        default_eeg = eeg_model.EEGFileRead(
+            id="eeg_file_route", project_id="proj_api", original_filename="file-route.edf",
+            stored_path=root / "uploads" / "file-route.edf", detected_format="edf",
+        )
+        state_store.upsert_item("eeg_files", default_eeg)
+        default_response = client.get("/api/eeg/files/eeg_file_route/data-preparation-plan")
+        assert default_response.status_code == 200
+        assert default_response.json()["is_default"] is True
+        saved_for_file = client.post("/api/eeg/files/eeg_file_route/data-preparation-plan", json={
+            "project_id": "proj_api",
+            "base_revision": 0,
+            "bad_channels": [{"name": "Fp1", "reason": "muscle_artifact"}],
+        })
+        assert saved_for_file.status_code == 200, saved_for_file.text
+        file_plan = saved_for_file.json()
+        assert file_plan["revision"] == 1
+        assert file_plan["bad_channels"][0]["name"] == "Fp1"
+        stale_file_update = client.post("/api/eeg/files/eeg_file_route/data-preparation-plan", json={
+            "project_id": "proj_api",
+            "base_revision": 0,
+            "description": "stale",
+        })
+        assert stale_file_update.status_code == 409
+        assert stale_file_update.json()["detail"]["error_code"] == "PLAN_REVISION_CONFLICT"
 
         print(json.dumps({"status": "passed", "plan_id": plan["id"], "revision": 2}, ensure_ascii=False, indent=2))
 

@@ -52,9 +52,12 @@ def main() -> None:
             psd_json={"bands": {"alpha": [8, 12]}},
         ))
         assert created.revision == 1
+        assert created.schema_version == data_preparation_service.CONTRACT_VERSION
         assert created.artifact_root is not None
         assert (created.artifact_root / "reproducibility" / "data_preparation_plan.json").exists()
         assert (created.artifact_root / "reproducibility" / "data_preparation_artifact_contract.json").exists()
+        contract = json.loads((created.artifact_root / "reproducibility" / "data_preparation_artifact_contract.json").read_text(encoding="utf-8"))
+        assert contract["contract_version"] == "qlanalyser-data-preparation-v0.2"
 
         read_back = data_preparation_service.get_plan(created.id)
         assert read_back.id == created.id
@@ -72,9 +75,26 @@ def main() -> None:
             ))
         except HTTPException as exc:
             assert exc.status_code == 409
-            assert exc.detail["error_code"] == "data_preparation_revision_conflict"
+            assert exc.detail["error_code"] == "PLAN_REVISION_CONFLICT"
+            assert exc.detail["legacy_error_code"] == "data_preparation_revision_conflict"
         else:
             raise AssertionError("stale revision update should fail")
+
+        default_plan = data_preparation_service.get_current_plan_for_file("eeg_acceptance")
+        assert default_plan.id == created.id
+        assert default_plan.is_default is False
+
+        eeg_default = eeg_model.EEGFileRead(
+            id="eeg_default",
+            project_id="proj_acceptance",
+            original_filename="default.edf",
+            stored_path=root / "uploads" / "default.edf",
+            detected_format="edf",
+        )
+        state_store.upsert_item("eeg_files", eeg_default)
+        new_default = data_preparation_service.get_current_plan_for_file("eeg_default")
+        assert new_default.is_default is True
+        assert new_default.revision == 0
 
         ref = data_preparation_service.create_task_reference(created.id, prep_model.DataPreparationTaskReferenceCreate(
             module_name="psd",
