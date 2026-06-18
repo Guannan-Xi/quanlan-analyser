@@ -708,3 +708,18 @@ python scripts/acceptance_v01_full.py
 1. Implement explicit PSD parameter validation and user-readable errors.
 2. Add PSD failure-path acceptance cases.
 3. Add PSD visual/table rendering acceptance after validation is hardened.
+
+## 2026-06-18 Analysis Lab feature selection guide
+
+### Completed
+- Reworked the Analysis Lab feature experience section into a concise research workflow guide.
+- Replaced repeated internal checklist rows with customer-facing rows for QC, PSD, ERP, TFR, PAC, Connectivity, and overall deliverables.
+- Kept the existing filter behavior for all, enabled, and preview functions.
+
+### Validation
+- `node --check frontend/module-lab.js`: passed.
+- `python scripts/check_no_mojibake.py`: passed.
+
+### Next
+1. Visually review `module-lab.html` in the browser and check whether the five-column table feels too dense on laptop width.
+2. If needed, convert the guide from a table into stacked decision cards for lower cognitive load.

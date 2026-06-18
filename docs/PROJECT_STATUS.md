@@ -479,3 +479,18 @@ Next step:
 1. Add explicit PSD parameter validation for `fmin`, `fmax`, `l_freq`, `h_freq`, and `notch_freq`.
 2. Add PSD failure-path acceptance for no EEG channel, all bad channels, illegal frequency range, and invalid notch.
 3. Add PSD chart/table UI or report-level visual acceptance after parameter failures are covered.
+
+## 23. Analysis Lab feature selection guide
+
+Date: 2026-06-18
+
+Scope:
+
+- Simplified the Analysis Lab review table from an internal experience checklist into a customer-facing feature selection guide.
+- The guide now maps research questions to recommended modules, required inputs, expected outputs, and review advice.
+- Removed repeated entry/local-access wording so the page focuses on what QC, PSD, ERP, TFR, PAC, and Connectivity can help researchers decide.
+
+Validation:
+
+- `node --check frontend/module-lab.js`: passed.
+- `python scripts/check_no_mojibake.py`: passed.

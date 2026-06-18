@@ -47,14 +47,13 @@ const LAB_STAGES = [
 ];
 
 const REVIEW_ROWS = [
-  ["all", "入口方式", "不登录也能先进入体验区，正式项目数据仍在登录后的工作台管理", "从入口进入分析实验室，再返回正式入口", "建议先看"],
-  ["all", "首屏理解", "能立刻看到可体验的最新功能、功能状态和下载内容", "浏览页面上方的体验说明", "建议先看"],
-  ["enabled", "已可体验", "QC / PSD / ERP 展示输入、参数、输出和结果文件", "逐个打开功能页，查看图表、表格和方法说明", "重点查看"],
-  ["preview", "即将上线", "TFR / PAC / Connectivity 展示产品方向和需要确认的科研边界", "根据课题需求查看预览功能", "按需查看"],
-  ["all", "参数理解", "核心参数与 MNE 对应方法同时出现，便于研究者判断是否合理", "检查参数、MNE 方法和输出三段是否能互相对应", "重点查看"],
-  ["all", "下载文件", "图表、CSV、JSON、方法说明和结果包都有明确入口", "点击功能页的文件和结果包链接", "重点查看"],
-  ["all", "科研边界", "临床禁用、统计风险和人工复核边界可见", "查看每个功能页的风险说明", "必看"],
-  ["all", "本地可访问", "静态页面、图片、CSV、JSON、文档和实验室入口都能正常打开", "直接在浏览器中打开相关链接", "建议先看"],
+  ["enabled", "先看数据能不能用", "QC 质控", "EEG 文件、通道信息、采样率和需要查看的时间窗", "波形预览、质量摘要、异常提示、质控图和可下载结果包", "正式分析前先做"],
+  ["enabled", "看频段功率分布", "PSD 频谱", "静息态或任务态 EEG、频段范围、通道选择和分析时间段", "功率谱图、频段功率表、参数记录和方法说明", "比较组别或条件前先确认"],
+  ["enabled", "看事件相关反应", "ERP", "连续 EEG、事件表、刺激编码、基线窗和分段时间窗", "平均波形、条件对比图、峰值指标、drop log 和结果文件", "适合 P300 / N400 等任务"],
+  ["preview", "看时频变化", "TFR", "事件分段、频率范围、baseline、decimation 和内存预算", "时频图、功率变化矩阵和参数记录", "先用于方案确认"],
+  ["preview", "看跨频耦合", "PAC", "相位频段、振幅频段、时间窗、替代检验和统计阈值", "耦合热图、显著性说明和方法边界", "需要人工复核"],
+  ["preview", "看脑区连接关系", "Connectivity", "分区或通道方案、连接指标、频段、参考方式和体积传导控制", "连接矩阵、网络图、指标表和风险提示", "只作预研展示"],
+  ["all", "确认科研交付物", "所有功能", "研究目的、数据类型、参数选择和复核人", "科研级图表、CSV、JSON、方法说明和完整下载包", "下载前核对参数"],
 ];
 
 const moduleTests = {
@@ -226,9 +225,9 @@ function renderReviewPlan() {
   return `<section class="review-band" id="review-plan" data-review-matrix>
     <div class="section-head row-head">
       <div>
-        <p class="eyebrow">Feature experience</p>
-        <h2>功能体验说明</h2>
-        <p>用这一页快速了解每个功能能处理什么数据、需要哪些参数、会输出哪些图表和文件</p>
+        <p class="eyebrow">Research workflow</p>
+        <h2>先试哪个功能</h2>
+        <p>按研究目的选择模块，先确认数据要求、关键参数、输出图表和科研边界</p>
       </div>
       <div class="segmented" role="group" aria-label="体验范围过滤">
         <button class="active" type="button" data-review-filter="all">全部</button>
@@ -238,9 +237,9 @@ function renderReviewPlan() {
     </div>
     <div class="table-wrap">
       <table class="review-table">
-        <thead><tr><th>体验项</th><th>你可以确认</th><th>操作方式</th><th>建议</th></tr></thead>
+        <thead><tr><th>研究问题</th><th>推荐模块</th><th>需要准备</th><th>可获得结果</th><th>建议</th></tr></thead>
         <tbody>
-          ${REVIEW_ROWS.map(([scope, item, standard, action, gate]) => `<tr data-review-scope="${scope}"><td><strong>${h(item)}</strong><small>${scope === "all" ? "全模块" : scope === "enabled" ? "QC / PSD / ERP" : "TFR / PAC / Connectivity"}</small></td><td>${h(standard)}</td><td>${h(action)}</td><td><span class="gate">${h(gate)}</span></td></tr>`).join("")}
+          ${REVIEW_ROWS.map(([scope, question, moduleName, inputs, outputs, gate]) => `<tr data-review-scope="${scope}"><td><strong>${h(question)}</strong><small>${scope === "all" ? "全模块" : scope === "enabled" ? "已可体验" : "预研功能"}</small></td><td>${h(moduleName)}</td><td>${h(inputs)}</td><td>${h(outputs)}</td><td><span class="gate">${h(gate)}</span></td></tr>`).join("")}
         </tbody>
       </table>
     </div>
