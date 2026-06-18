@@ -564,3 +564,24 @@ Consolidate QLanalyser Online architecture design and version-by-version detaile
 - Did not modify runtime code.
 - Did not touch existing untracked frontend Open Design demo files.
 - Did not claim live Feishu synchronization.
+
+## GitHub baseline sync skill for parallel development
+
+Date: 2026-06-18
+
+### Goal
+Add a required GitHub baseline synchronization workflow so all parallel QLanalyser Online development conversations use the latest remote state and canonical architecture/version/module docs.
+
+### Changes
+- Added project skill `qlanalyser-github-baseline-sync`.
+- Registered the skill in `AGENTS.md`.
+- Recorded the decision in `docs/DECISIONS.md`.
+- Updated `docs/AI_HANDOFF_CURRENT.md` with start/finish GitHub baseline checks.
+- Updated `docs/PROJECT_STATUS.md` with the new guardrail.
+
+### Validation
+- Documentation-only change; run `git diff --check` and `python scripts/check_no_mojibake.py`.
+
+### Boundary
+- Does not automatically pull, merge, rebase, reset, overwrite, or force push.
+- Does not touch existing untracked frontend Open Design demo files.

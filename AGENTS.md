@@ -149,7 +149,7 @@ Codex 不应假设自己掌握全部产品背景。
 
 ## Project AI Handoff Skills
 
-This project uses three local AI collaboration skills.
+This project uses four local AI collaboration skills.
 
 ### 1. qlanalyser-close-chat-handoff
 
@@ -205,3 +205,21 @@ Canonical docs:
 - `docs/TASK_LOG.md`
 - `docs/architecture/*.md`
 - `docs/modules/*.md`
+
+### qlanalyser-github-baseline-sync
+
+Purpose:
+
+- Before every development/design task, fetch GitHub `origin/main` and confirm this workspace is not behind or diverged.
+- Require all parallel conversations to read the latest canonical architecture, version, and module design docs before editing.
+- Before commit and before push, fetch again and stop if GitHub has newer or conflicting changes.
+- After a completed task, push when the remote check is clean; if local and GitHub differ, explain the affected files and ask the user before merge, rebase, reset, overwrite, or push.
+- Never force-push or overwrite remote/local work automatically.
+
+Required canonical docs for architecture/module/version work:
+
+- `docs/architecture/system_architecture.md`
+- `docs/architecture/version_detailed_design.md`
+- `docs/modules/analysis_modules_design_matrix.md`
+- `docs/DECISIONS.md`
+- `docs/PROJECT_STATUS.md`

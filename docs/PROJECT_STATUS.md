@@ -346,3 +346,24 @@ Current architecture basis:
 - v0.1 Pilot remains a single-node research MVP with static frontend, FastAPI API, JSON state store, local filesystem storage, and MNE-Python `eeg_core` analysis modules.
 - QC / PSD / ERP are the v0.1 executable modules; TFR / PAC / Connectivity remain preview-only until scientific and statistical prerequisites are satisfied.
 - Architecture changes and module implementation tasks should use these docs as their starting basis.
+
+## 18. GitHub baseline sync guard for parallel conversations
+
+Date: 2026-06-18
+
+Scope:
+
+- Added `qlanalyser-github-baseline-sync` as the required guard for parallel QLanalyser Online development conversations.
+- All development/design tasks must fetch GitHub `origin/main` before starting, before committing, and before pushing.
+- Architecture/module/version work must re-check canonical docs before editing:
+  - `docs/architecture/system_architecture.md`
+  - `docs/architecture/version_detailed_design.md`
+  - `docs/modules/analysis_modules_design_matrix.md`
+  - `docs/DECISIONS.md`
+  - `docs/PROJECT_STATUS.md`
+- If local and GitHub differ, or if canonical docs changed remotely, the assistant must pause and ask the user before merge/rebase/reset/overwrite/push.
+
+Current boundary:
+
+- This workflow does not automatically pull, merge, rebase, overwrite, or force push.
+- Existing untracked frontend Open Design demo files remain local and outside this documentation/sync workflow unless explicitly requested.

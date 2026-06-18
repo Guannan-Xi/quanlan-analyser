@@ -1,4 +1,4 @@
-﻿# QLanalyser Online 当前 AI 接力依据
+# QLanalyser Online 当前 AI 接力依据
 
 更新时间：2026-06-18
 
@@ -36,7 +36,15 @@ QLanalyser Online 是面向科研团队的 EEG 数据管理、分析交付与复
 
 实验室保持免登录；正式工作台保持登录 / 注册。
 
-## 4. 当前同步规则
+## 4. GitHub 最新基线规则
+
+- 每个开发/设计对话开始前必须 `git fetch origin` 并确认本地不是 behind/diverged。
+- 每个开发/设计对话必须读取最新架构、版本、模块设计文档。
+- commit 前和 push 前必须再次 fetch。
+- 如果 GitHub 有更新、文件冲突、设计文档变化或需要覆盖，必须停下来询问用户。
+- 不自动 merge、rebase、reset、force push 或覆盖文件。
+
+## 5. 当前同步规则
 
 - 架构和模块设计写入仓库 docs。
 - 飞书从仓库摘要生成。
@@ -44,7 +52,7 @@ QLanalyser Online 是面向科研团队的 EEG 数据管理、分析交付与复
 - 重要结论写入 `docs/DECISIONS.md`。
 - 任务完成写入 `docs/TASK_LOG.md` 和必要的状态文档。
 
-## 5. 当前架构设计依据
+## 6. 当前架构设计依据
 
 本项目当前总纲级开发依据：
 
@@ -54,7 +62,7 @@ QLanalyser Online 是面向科研团队的 EEG 数据管理、分析交付与复
 
 后续架构、版本和模块开发应先对齐这些文件，再进入代码实现。
 
-## 6. 新对话启动提示词
+## 7. 新对话启动提示词
 
 ```text
 请继续 QLanalyser Online 项目。
@@ -73,8 +81,8 @@ QLanalyser Online 是面向科研团队的 EEG 数据管理、分析交付与复
 协作规则：
 - 仓库 Markdown 文档是唯一开发依据。
 - 飞书只作为同步和评审窗口。
-- 先运行 git status --short --branch 和 git diff --stat。
-- 不覆盖无关改动。
+- 先运行 git fetch origin、git status --short --branch 和 git diff --stat。
+- 不覆盖无关改动；如 GitHub 和本地有差异，必须先询问用户。
 - 重要设计结论必须固化到仓库文档。
 - 完成后给出修改文件、验证结果、风险点和下一步建议。
 ```
