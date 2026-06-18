@@ -545,3 +545,26 @@ Validation:
 - `python scripts/check_no_mojibake.py`: passed.
 - `git diff --check`: passed.
 - `node scripts/acceptance_research_modules_static.mjs`: passed, 212 checks, 6 module pages.
+
+## 25. Experience Center customer-facing copy
+
+Date: 2026-06-18
+
+Scope:
+
+- Customer-visible lab wording is now consolidated around `体验中心`.
+- The no-login page uses project-oriented labels such as `体验项目`, `详情`, `检查清单`, `体验清单`, and `结果包`.
+- QC / PSD / ERP remain labeled `已可体验`; TFR / PAC / Connectivity remain `预览` / `即将开放`.
+- The static acceptance script now checks the Experience Center wording and rejects the old customer-facing lab-name/status language.
+
+Boundary:
+
+- Internal filenames and routes remain unchanged: `frontend/module-lab.html`, `module-lab.html?module=...`, `frontend/research-modules.html`, and `research-module/*`.
+- No backend API, authentication, route, task runner, or EEG algorithm behavior changed.
+- Formal workbench login/register remains separate from the no-login Experience Center.
+
+Validation:
+
+- `node --check frontend/module-lab.js`: passed.
+- `node scripts/acceptance_research_modules_static.mjs`: passed, 212 checks, 6 module pages.
+- `python scripts/check_no_mojibake.py`: passed.

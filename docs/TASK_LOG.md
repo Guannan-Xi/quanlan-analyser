@@ -771,3 +771,28 @@ Align the main product frame, left navigation, and no-login preview area with th
 1. Visually review the left navigation and `module-lab.html` in the browser for cognitive load.
 2. If the workflow table remains dense, convert it to stacked decision cards on small screens.
 3. Keep ERP algorithm changes in a separate task/commit after validation.
+
+## 2026-06-18 Experience Center customer-facing copy
+
+### Goal
+Consolidate the customer-visible former Analysis Lab wording as `体验中心` while keeping internal files and URLs stable.
+
+### Changes
+- Updated `frontend/module-lab.js` visible labels, workflow step copy, status labels, detail buttons, and side navigation to use Experience Center project wording.
+- Updated `frontend/research-modules.html` visible heading/navigation copy to remove internal research-module/testbench wording.
+- Updated `scripts/acceptance_research_modules_static.mjs` so static acceptance asserts the Experience Center wording and old-status guardrails.
+
+### Boundaries
+- Did not rename `frontend/module-lab.html`, `frontend/research-modules.html`, `module-lab.html?module=...`, or `research-module/*` URLs.
+- Did not change backend APIs, authentication, task runners, EEG algorithms, or the formal workbench login/register flow.
+- No customer data, API keys, logs, raw EEG, or local runtime output were committed.
+
+### Validation
+- `node --check frontend/module-lab.js`: passed.
+- `node scripts/acceptance_research_modules_static.mjs`: passed, 212 checks, 6 module pages.
+- `python scripts/check_no_mojibake.py`: passed.
+
+### Next
+1. Visually review `module-lab.html` and `research-modules.html` after deployment for final customer tone.
+2. Keep URL/file renaming out of scope until explicitly approved.
+3. Continue QC/PSD/ERP service work separately from this copy-only pass.
