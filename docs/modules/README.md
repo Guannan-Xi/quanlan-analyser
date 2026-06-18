@@ -16,3 +16,8 @@ Rules:
 - Each module design should define inputs, parameters, MNE/algorithm mapping, outputs, chart quality standards, risks, and acceptance criteria.
 - Experimental Analysis Lab modules should be specified here before being merged into the formal workbench flow.
 - Feishu summaries are generated from these docs and are not the canonical source.
+
+
+## Current canonical module docs
+
+- `docs/modules/analysis_modules_design_matrix.md`: QC / PSD / ERP / TFR / PAC / Connectivity module status, input/output, MNE mapping, risk, and promotion criteria.

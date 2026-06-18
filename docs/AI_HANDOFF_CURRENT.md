@@ -1,4 +1,4 @@
-# QLanalyser Online 当前 AI 接力依据
+﻿# QLanalyser Online 当前 AI 接力依据
 
 更新时间：2026-06-18
 
@@ -13,7 +13,10 @@
 3. `docs/DECISIONS.md`
 4. `docs/PROJECT_STATUS.md`
 5. `docs/TASK_LOG.md` 最近记录
-6. 当前任务相关的 `docs/architecture/*.md` 或 `docs/modules/*.md`
+6. `docs/architecture/system_architecture.md`
+7. `docs/architecture/version_detailed_design.md`
+8. `docs/modules/analysis_modules_design_matrix.md`
+9. 与当前任务相关的其他 `docs/architecture/*.md` 或 `docs/modules/*.md`
 
 ## 2. 当前产品边界
 
@@ -41,7 +44,17 @@ QLanalyser Online 是面向科研团队的 EEG 数据管理、分析交付与复
 - 重要结论写入 `docs/DECISIONS.md`。
 - 任务完成写入 `docs/TASK_LOG.md` 和必要的状态文档。
 
-## 5. 新对话启动提示词
+## 5. 当前架构设计依据
+
+本项目当前总纲级开发依据：
+
+- `docs/architecture/system_architecture.md`
+- `docs/architecture/version_detailed_design.md`
+- `docs/modules/analysis_modules_design_matrix.md`
+
+后续架构、版本和模块开发应先对齐这些文件，再进入代码实现。
+
+## 6. 新对话启动提示词
 
 ```text
 请继续 QLanalyser Online 项目。
@@ -52,7 +65,10 @@ QLanalyser Online 是面向科研团队的 EEG 数据管理、分析交付与复
 3. docs/DECISIONS.md
 4. docs/PROJECT_STATUS.md
 5. docs/TASK_LOG.md 最近记录
-6. 与当前任务相关的 docs/architecture 或 docs/modules 文档
+6. docs/architecture/system_architecture.md
+7. docs/architecture/version_detailed_design.md
+8. docs/modules/analysis_modules_design_matrix.md
+9. 与当前任务相关的其他 docs/architecture 或 docs/modules 文档
 
 协作规则：
 - 仓库 Markdown 文档是唯一开发依据。

@@ -323,3 +323,26 @@ Current rule:
 
 - Architecture and module design should be written under `docs/architecture/` and `docs/modules/` before implementation work proceeds in parallel conversations.
 - Feishu summaries should be copied from repository-generated summaries unless a real Feishu integration is added later.
+
+
+## 17. Canonical architecture and version design documents
+
+Date: 2026-06-18
+
+Scope:
+
+- Added canonical system architecture design for QLanalyser Online.
+- Added version-by-version detailed design covering Legacy Static MVP, v0.1 Pilot, v0.2 hardening, v0.3 public beta, v1.0 research platform, and v1.x commercial/scale evolution.
+- Added analysis module design matrix covering QC, PSD, ERP, TFR, PAC, and Connectivity.
+
+Canonical docs:
+
+- `docs/architecture/system_architecture.md`
+- `docs/architecture/version_detailed_design.md`
+- `docs/modules/analysis_modules_design_matrix.md`
+
+Current architecture basis:
+
+- v0.1 Pilot remains a single-node research MVP with static frontend, FastAPI API, JSON state store, local filesystem storage, and MNE-Python `eeg_core` analysis modules.
+- QC / PSD / ERP are the v0.1 executable modules; TFR / PAC / Connectivity remain preview-only until scientific and statistical prerequisites are satisfied.
+- Architecture changes and module implementation tasks should use these docs as their starting basis.

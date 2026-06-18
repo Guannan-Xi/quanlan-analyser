@@ -541,3 +541,26 @@ Create a reusable workflow so architecture design, module detailed design, and c
 ### Boundary
 - Did not touch existing untracked frontend Open Design demo files.
 - Did not claim any live Feishu synchronization.
+
+
+## Architecture and version detailed design consolidation
+
+Date: 2026-06-18
+
+### Goal
+Consolidate QLanalyser Online architecture design and version-by-version detailed design into canonical repository docs for multi-conversation development.
+
+### Changes
+- Added `docs/architecture/system_architecture.md` as the system architecture source of truth.
+- Added `docs/architecture/version_detailed_design.md` for Legacy Static MVP, v0.1 Pilot, v0.2 hardening, v0.3 public beta, v1.0, and v1.x boundaries.
+- Added `docs/modules/analysis_modules_design_matrix.md` for QC / PSD / ERP / TFR / PAC / Connectivity status, I/O, output contracts, risk, and promotion criteria.
+- Updated architecture/module README files and `docs/AI_HANDOFF_CURRENT.md` so new conversations read the canonical design docs.
+- Updated `docs/PROJECT_STATUS.md` with the new architecture documentation basis.
+
+### Validation
+- Documentation-only change; run `git diff --check` and `python scripts/check_no_mojibake.py`.
+
+### Boundary
+- Did not modify runtime code.
+- Did not touch existing untracked frontend Open Design demo files.
+- Did not claim live Feishu synchronization.
