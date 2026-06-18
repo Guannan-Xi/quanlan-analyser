@@ -97,6 +97,7 @@ sequenceDiagram
 | 参数 | 类型 | 当前默认 | 说明 |
 | --- | --- | --- | --- |
 | `event_id` | object/null | 从 annotations 自动发现 | condition 名到事件编码的映射，例如 `{"target": 2}`。 |
+| `event_id_confirmed` | bool | `false` | 用户或实验记录是否已确认事件语义；未确认时结果只能作为待复核结果。 |
 | `l_freq` | float/null | `0.1` | ERP 前高通滤波下限。 |
 | `h_freq` | float/null | `30.0` | ERP 前低通滤波上限。 |
 | `reference` | string/list/null | `average` | 当前默认平均参考；传 null/空值则不重参考。 |
@@ -105,6 +106,7 @@ sequenceDiagram
 | `baseline` | list/null | `[null, 0.0]` | baseline correction 区间。 |
 | `reject_eeg_uv` | float/null | null | EEG epoch reject 阈值，单位 microvolt，内部转为 volt。 |
 | `components` | object/null | N100/P200/P300 默认窗口 | 成分名到秒级时间窗的映射。 |
+| `roi_channels` / `roi` | list/object/null | 按成分默认 ROI | 通道列表，或成分到通道列表的映射。 |
 
 当前默认成分窗口：
 
@@ -114,13 +116,23 @@ sequenceDiagram
 | P200 | 0.16-0.26 | 160-260 ms |
 | P300 | 0.28-0.45 | 280-450 ms |
 
+当前默认 ROI：
+
+| component | 默认 ROI |
+| --- | --- |
+| N100 | `Fz,Cz` |
+| P200 | `Fz,Cz,Pz` |
+| P300 | `Pz,P3,P4` |
+
+如果默认 ROI 通道不存在，runner 会退回可用 EEG 通道，并在 `missing_roi_channels` 与 `roi_by_component` 中记录实际口径。
+
 ### v0.2 待显式开放参数
 
 - 事件来源选择：annotations / stim channel / 上传事件表。
 - event preview 和 event_id 映射确认 UI。
-- ROI 通道，例如 Pz/P3/P4 或用户自定义通道组。
+- ROI 通道选择 UI，例如 Pz/P3/P4 或用户自定义通道组。
 - 每个 component 的极性、搜索策略、均值/峰值策略。
-- reject / flat 规则、drop log 导出策略。
+- reject / flat 规则的前端解释与 drop log 展示。
 - condition contrast，例如 target-standard。
 
 ## 6. MNE 和算法映射
@@ -140,8 +152,8 @@ sequenceDiagram
 11. 构造 `mne.Epochs(raw, events, event_id=selected, tmin, tmax, baseline, reject, preload=True)`。
 12. 如果 epoching/rejection 后没有有效 epoch，失败。
 13. 对每个 condition 执行 `epochs[condition].average()` 得到 `Evoked`。
-14. 对每个 component 时间窗提取所有 EEG 通道平均波形中的 peak amplitude 和 latency。
-15. 写出 metrics、summary、方法说明、复现文件和统一输出契约。
+14. 对每个 component 使用对应 ROI 通道平均波形，提取 peak amplitude 和 latency。
+15. 写出 event confirmation、drop log、metrics、summary、方法说明、复现文件和统一输出契约。
 
 ## 7. 输出设计
 
@@ -156,6 +168,8 @@ data/derivatives/{project_id}/{task_id}/
 ```text
 tables/erp_metrics.csv
 reproducibility/erp_summary.json
+reproducibility/event_confirmation.json
+reproducibility/drop_log_summary.json
 reproducibility/parameters.json
 reproducibility/method_description.txt
 reproducibility/software_versions.json
@@ -177,6 +191,9 @@ log.txt
 - `amplitude_uv`
 - `latency_ms`
 - `n_epochs`
+- `reference`
+- `roi_name`
+- `roi_channels`
 
 ### `reproducibility/erp_summary.json`
 
@@ -187,15 +204,39 @@ log.txt
 - `events_total`
 - `event_id`
 - `epochs_total`
-- `sfreq`
+- `drop_log`
+- `event_confirmation`
+- `roi_by_component`
+- `missing_roi_channels`
 - `conditions`
 - `parameters`
 
 `conditions` 当前记录每个 condition 的：
 
 - `n_epochs`
-- `n_channels`
-- `comment`
+- `channels`
+- `reference`
+- `roi_channels_by_component`
+
+### `reproducibility/event_confirmation.json`
+
+必须包含：
+
+- `source`：当前为 `annotations`。
+- `discovered_event_id`：MNE 自动发现的事件映射。
+- `selected_event_id`：本次实际参与 ERP 的事件映射。
+- `confirmed`：用户或实验记录是否确认事件语义。
+- `note`：解释前必须核对事件语义的提示。
+
+### `reproducibility/drop_log_summary.json`
+
+必须包含：
+
+- `total_input_events`
+- `kept_epochs`
+- `dropped_epochs`
+- `drop_rate`
+- `reasons`
 
 ### `method_description.txt`
 
@@ -204,8 +245,8 @@ log.txt
 - 使用 MNE annotations/events 建立 epoch。
 - 对 epoch 做 baseline correction。
 - 按 condition 平均为 Evoked。
-- 提取 N100/P200/P300 窗口的幅值和潜伏期。
-- marker timing 和 condition 语义必须在解释前确认。
+- 按 ROI 提取 N100/P200/P300 窗口的幅值和潜伏期。
+- marker timing、condition 语义、reference 和 ROI 必须在解释前确认。
 
 ## 8. 校验规则
 
@@ -232,11 +273,11 @@ log.txt
 - epoching/rejection 后无有效 epoch 失败。
 - 无可用 EEG 通道做 metrics 失败。
 
-当前实现待补：
+当前实现已输出、前端仍待补：
 
 - 对 `tmin/tmax/baseline/components/reject/filter/reference` 做显式用户级错误信息。
-- 输出 drop log 或 rejected epoch 数。
-- 区分 “文件无事件” 和 “事件存在但语义未确认”。
+- 展示 drop log 或 rejected epoch 数。
+- 区分 “文件无事件” 和 “事件存在但语义未确认”，并将未确认状态展示给用户。
 - 支持 stim channel 或上传事件表，不只依赖 annotations。
 
 ## 9. 失败模式与用户提示
@@ -260,9 +301,9 @@ v0.1 当前后端主要输出 metrics 表和复现文件。体验中心或正式
 
 - 事件摘要：condition、event code、事件数量。
 - epoch 摘要：每个 condition 的有效 epoch 数和 rejection 提示。
-- ERP 波形：每个 condition 一条曲线，默认显示主要 ROI 或全通道平均。
+- ERP 波形：每个 condition 一条曲线，默认显示主要 ROI；全通道平均只能作为专家展开项。
 - component 表：N100、P200、P300 的 amplitude / latency。
-- 方法和参数：tmin/tmax、baseline、filter、reference、reject、event_id。
+- 方法和参数：tmin/tmax、baseline、filter、reference、reject、event_id、ROI。
 
 展示文案应强调“事件必须确认”：
 
@@ -277,7 +318,7 @@ ERP 报告必须提醒：
 - baseline 区间、滤波、参考方式和 reject 阈值会影响幅值和潜伏期。
 - trial 数过少时，平均波形不稳定。
 - 默认 N100/P200/P300 时间窗是通用模板，不适用于所有范式。
-- 当前指标是通道平均后的窗口峰值，不等同于已完成的 ROI/组统计分析。
+- 当前指标是 ROI-aware 的单文件窗口峰值，不等同于组水平统计结论。
 - 单文件 ERP 不能推出诊断结论。
 
 ## 12. 与 QC / PSD / TFR 的关系

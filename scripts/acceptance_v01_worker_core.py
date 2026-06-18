@@ -94,11 +94,13 @@ def main() -> None:
 
     erp_paths = run_erp(raw_path, work / "core_erp", {"tmin": -0.2, "tmax": 0.6, "baseline": [None, 0]})
     worker_erp_paths = worker_erp(raw_path, work / "worker_erp", {"tmin": -0.2, "tmax": 0.6, "baseline": [None, 0]})
-    erp_expected = {"tables/erp_metrics.csv", "reproducibility/erp_summary.json", "reproducibility/parameters.json", "reproducibility/method_description.txt", "reproducibility/software_versions.json", "reproducibility/workflow.json"}
+    erp_expected = {"tables/erp_metrics.csv", "reproducibility/erp_summary.json", "reproducibility/event_confirmation.json", "reproducibility/drop_log_summary.json", "reproducibility/parameters.json", "reproducibility/method_description.txt", "reproducibility/software_versions.json", "reproducibility/workflow.json"}
     for paths in [erp_paths, worker_erp_paths]:
-        require({"erp_metrics", "erp_summary", "parameters", "method_description", "software_versions", "workflow", "result", "manifest", "log"}.issubset(paths), str(paths))
+        require({"erp_metrics", "erp_summary", "event_confirmation", "drop_log_summary", "parameters", "method_description", "software_versions", "workflow", "result", "manifest", "log"}.issubset(paths), str(paths))
         for path in paths.values():
             require(Path(path).exists() and Path(path).stat().st_size > 0, str(path))
+        erp_header = Path(paths["erp_metrics"]).read_text(encoding="utf-8").splitlines()[0]
+        require("roi_channels" in erp_header and "reference" in erp_header, erp_header)
         require_output_contract(paths, "erp_p300", erp_expected)
 
     try:

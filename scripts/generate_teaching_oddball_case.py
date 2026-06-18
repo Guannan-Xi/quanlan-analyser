@@ -116,8 +116,8 @@ def run_case() -> dict:
 
     qc_paths = run_quality_check(edf_path, OUTPUTS / "qc", {})
     psd_paths = run_psd(edf_path, OUTPUTS / "psd", {"fmin": 1, "fmax": 40})
-    # Teaching mode uses no re-reference here because the current ERP metric averages all EEG channels.
-    # Average-reference + all-channel averaging cancels the synthetic topography and is documented as a design gap.
+    # Run both a no-reference teaching case and the current default average-reference case.
+    # ERP metrics are ROI-aware, so the default case should preserve the posterior P300 pattern.
     erp_paths = run_erp(
         edf_path,
         OUTPUTS / "erp_teaching_reference_none",
@@ -175,8 +175,8 @@ def run_case() -> dict:
             "epochs_total": erp_summary.get("epochs_total"),
             "conditions": erp_summary.get("conditions"),
             "p300_metrics_reference_none": p300,
-            "p300_metrics_average_reference_all_channel_current_gap": p300_average_ref,
-            "expected_reading": "target P300 amplitude should be larger than standard; current all-channel averaging after average reference can cancel this and must be fixed with ROI-aware metrics",
+            "p300_metrics_average_reference_roi_aware": p300_average_ref,
+            "expected_reading": "target P300 amplitude should be larger than standard; metrics must show the ROI channels, reference choice, event confirmation, and drop-log summary",
         },
         "outputs": {
             "qc": {k: str(v) for k, v in qc_paths.items()},

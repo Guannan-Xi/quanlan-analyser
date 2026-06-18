@@ -14,7 +14,9 @@
 
 MNE / 学习体验设计总依据：
 
-- `docs/modules/mne_analysis_function_design_basis.md`：所有 EEG 分析功能的 MNE 对象、API、输入输出、失败模式和科研风险基线。`r`n- `docs/modules/beginner_learning_analysis_design.md`：面向脑电分析新手的学习式流程、示例 EDF 验证结果和可靠性交付要求。
+- `docs/modules/mne_analysis_function_design_basis.md`：所有 EEG 分析功能的 MNE 对象、API、输入输出、失败模式和科研风险基线。
+- `docs/modules/beginner_learning_analysis_design.md`：面向脑电分析新手的学习式流程、示例 EDF 验证结果和可靠性交付要求。
+- `docs/modules/beginner_friendly_analysis_function_blueprint.md`：面向开发对话的 QC、PSD、ERP、TFR、PAC、Connectivity 新手友好功能蓝图。
 
 ## 2. 模块总览
 
@@ -22,7 +24,7 @@ MNE / 学习体验设计总依据：
 | --- | --- | --- | --- | --- | --- |
 | QC | stable | 已启用 | 已展示 | 应进入主流程 | 补独立设计文档和 contract 测试 |
 | PSD | stable | 已启用 | 已展示 | 应进入主流程 | 按 `docs/modules/psd_design.md` 补参数失败路径和图表验收 |
-| ERP | beta/stable when events exist | 已启用但依赖事件 | 已展示 | 条件进入主流程 | 按 `docs/modules/erp_design.md` 和学习式设计补 ROI、事件确认、drop log |
+| ERP | beta/stable when events exist | 已启用但依赖事件 | 已展示 | 条件进入主流程 | 前端补事件确认、ROI 选择和 drop log 展示 |
 | TFR | preview | 未启用 | 已展示 | 不进入 stable | 完成 epoch/baseline/statistics 设计 |
 | PAC | preview | 未启用 | 已展示 | 不进入 stable | 完成 surrogate/null model 设计 |
 | Connectivity | preview | 未启用 | 已展示 | 不进入 stable | 完成参考/体积传导/metric 审查 |
@@ -222,4 +224,4 @@ preview。v0.1 只展示设计，不承诺后端生产执行。
 2. `docs/modules/psd_design.md`
 3. `docs/modules/erp_design.md`（已建立，下一步补事件确认和 drop log）
 4. 基于 `docs/modules/mne_analysis_function_design_basis.md` 逐个补齐 PSD、ERP、TFR、PAC、Connectivity 的输入、参数、MNE API、输出、失败模式和验收脚本。
-5. 基于 `docs/modules/beginner_learning_analysis_design.md` 增加示例学习模式、结果解释卡片和可靠性检查。
+5. 基于 `docs/modules/beginner_friendly_analysis_function_blueprint.md` 增加示例学习模式、结果解释卡片和可靠性检查。

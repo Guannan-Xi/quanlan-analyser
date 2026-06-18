@@ -186,7 +186,7 @@ QC 通过：
 - “你看到 alpha 更高，是因为这个示例包含明显 10 Hz 节律。”
 - “真实数据中 alpha 高低需要结合睁闭眼、参考方式、伪迹和统计设计解释。”
 
-### 5.3 ERP 示例结果与重要风险发现
+### 5.3 ERP 示例结果与当前可靠性结论
 
 使用教学参数 `reference=None`，P300 结果：
 
@@ -197,22 +197,22 @@ QC 通过：
 
 解释：target P300 高于 standard，符合示例数据设计。
 
-但是，使用当前 ERP runner 默认 `reference="average"` 且随后做“所有 EEG 通道平均”时，P300 接近 0：
+当前 ERP runner 已改为 ROI-aware 指标，并保留默认平均参考。再跑默认设置后，P300 仍然保留 target > standard 的模式，且结果中会写明 `reference`、`roi_channels`、`event_confirmation` 和 `drop_log`。
 
 | condition | P300 amplitude_uv |
 | --- | --- |
-| standard | 约 0 |
-| target | 约 0 |
+| standard | 约 6.49 µV |
+| target | 约 7.51 µV |
 
-这是一个重要可靠性发现：平均参考后再对所有通道求平均，可能抵消空间分布明确的 ERP 成分。ERP 模块进入高可信交付前，必须改为 ROI-aware 指标，例如 Pz/P3/P4 或用户选择 ROI，并在报告中记录参考方式。
+这说明 ROI-aware 设计已经修复了“平均参考后全通道平均会把 P300 抵消”的问题。当前仍需人工确认事件语义，前端必须把 ROI、参考方式和 drop log 显示出来，才算高可信交付。
 
 ## 6. 可靠性改造要求
 
-### P0 必须补
+### P0 状态
 
-1. ERP 指标必须支持 ROI，不应默认所有 EEG 通道平均。
-2. ERP 报告必须展示 event_id 映射确认。
-3. ERP 输出必须增加 drop log / rejected epoch 摘要。
+1. ERP 后端已支持 ROI-aware 指标，前端必须展示实际 ROI。
+2. ERP 后端已输出 `event_confirmation.json`，前端必须增加事件语义确认步骤。
+3. ERP 后端已输出 `drop_log_summary.json`，前端必须展示有效 epoch 和丢弃原因。
 4. PSD 必须增加显式参数校验和用户可读错误。
 5. QC 结果必须给出“是否允许继续 PSD/ERP”的白话建议。
 
