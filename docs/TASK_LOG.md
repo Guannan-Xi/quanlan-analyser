@@ -796,3 +796,25 @@ Consolidate the customer-visible former Analysis Lab wording as `体验中心` w
 1. Visually review `module-lab.html` and `research-modules.html` after deployment for final customer tone.
 2. Keep URL/file renaming out of scope until explicitly approved.
 3. Continue QC/PSD/ERP service work separately from this copy-only pass.
+
+## 2026-06-18 Experience Center copy polish
+
+### Goal
+Finish the customer-visible Experience Center wording polish by removing remaining internal terms from the reviewed frontend surfaces.
+
+### Changes
+- Updated `frontend/module-lab.js` labels from `模块结果包`, `MNE 设计`, and `分析流程加载失败` to customer-facing Experience Center wording.
+- Updated `frontend/research-modules.html` action and checklist wording from `打开体验中心` / `高级方法启用前` to `进入体验中心` / `高级方法开放前`.
+
+### Boundaries
+- Did not rename `frontend/module-lab.html`, `frontend/research-modules.html`, `module-lab.html?module=...`, or `research-module/*` URLs.
+- Did not change backend APIs, authentication, task runners, EEG algorithms, or formal login/register behavior.
+
+### Validation
+- `node --check frontend/module-lab.js`: passed.
+- `node scripts/acceptance_research_modules_static.mjs`: passed, 212 checks, 6 module pages.
+- `python scripts/check_no_mojibake.py`: passed.
+
+### Next
+1. Deploy the static frontend after commit/push if public testing should use the latest copy.
+2. Continue QC/PSD/ERP service work separately from this copy-only pass.

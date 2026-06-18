@@ -568,3 +568,24 @@ Validation:
 - `node --check frontend/module-lab.js`: passed.
 - `node scripts/acceptance_research_modules_static.mjs`: passed, 212 checks, 6 module pages.
 - `python scripts/check_no_mojibake.py`: passed.
+
+## 26. Experience Center copy polish
+
+Date: 2026-06-18
+
+Scope:
+
+- Further polished the Experience Center customer-visible wording after the first rename pass.
+- Replaced remaining visible labels such as `模块结果包`, `MNE 设计`, `打开体验中心`, and `高级方法启用前` with `结果包`, `MNE 方法`, `进入体验中心`, and `高级方法开放前`.
+- Kept `体验中心`, `体验项目`, `已可体验`, `预览`, `即将开放`, `检查清单`, `体验清单`, and `结果包` as the visible copy baseline.
+
+Boundary:
+
+- No URL, filename, backend API, authentication, task runner, or EEG algorithm changes.
+- Formal workbench login/register and the no-login Experience Center boundary remain unchanged.
+
+Validation:
+
+- `node --check frontend/module-lab.js`: passed.
+- `node scripts/acceptance_research_modules_static.mjs`: passed, 212 checks, 6 module pages.
+- `python scripts/check_no_mojibake.py`: passed.

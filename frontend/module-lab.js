@@ -98,7 +98,7 @@ const moduleTests = {
   ],
   tfr: [
     ["预览边界", "标记为仅预览；V01 后端执行尚未开放。"],
-    ["MNE 设计", "frequencies、n_cycles、baseline 模式、decimation、ROI 和 ITC/power 选择均可见。"],
+    ["MNE 方法", "frequencies、n_cycles、baseline 模式、decimation、ROI 和 ITC/power 选择均可见。"],
     ["统计策略", "生产开放前必须复核 cluster/permutation 或多重比较策略。"],
   ],
   pac: [
@@ -315,7 +315,7 @@ function artifactCards(module) {
   const rows = [
     ...(module.tables || []).map((item) => ({ ...item, kind: "表格" })),
     ...(module.docs || []).map((item) => ({ ...item, kind: item.type === "json" ? "JSON" : "文档" })),
-    module.package ? { label: "模块结果包", src: module.package, kind: "ZIP" } : null,
+    module.package ? { label: "结果包", src: module.package, kind: "ZIP" } : null,
   ].filter(Boolean);
   if (!rows.length) return `<div class="empty">暂无文件</div>`;
   return rows.map((item) => `<a class="artifact" data-doc-preview href="${asset(item.src)}">
@@ -418,7 +418,7 @@ async function main() {
     if (!slug) bindIndexInteractions();
     if (window.lucide) window.lucide.createIcons();
   } catch (error) {
-    root.innerHTML = `<section class="lab-wrap"><div class="empty">分析流程加载失败：${h(error.message || error)}</div></section>`;
+    root.innerHTML = `<section class="lab-wrap"><div class="empty">体验中心加载失败：${h(error.message || error)}</div></section>`;
   }
 }
 
