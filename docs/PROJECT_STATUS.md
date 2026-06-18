@@ -441,3 +441,18 @@ Next step:
 1. Write `docs/modules/psd_design.md` using the MNE basis.
 2. Write `docs/modules/erp_design.md` with event mapping, baseline, reject, and drop-log rules.
 3. Expand `docs/modules/qc_design.md` failure-path coverage and preprocessing preview boundary.
+
+## 21. Customer entry value proposition copy
+
+Date: 2026-06-18
+
+Scope:
+
+- Updated the customer-facing Open Design entry value list to emphasize visual UI operation, no-code use, traceable results, and research-grade chart delivery.
+- Kept the simplified research-customer tone and preserved the registered brand mark in the entry page.
+- This is copy-only UI positioning work and does not change authentication, backend APIs, EEG algorithms, or lab-module behavior.
+
+Validation:
+
+- `git diff --check -- frontend/open-design-entry-demo.html`: passed.
+- `python scripts/check_no_mojibake.py`: passed.

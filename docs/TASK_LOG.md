@@ -675,3 +675,19 @@ python scripts/acceptance_v01_full.py
 1. Draft `docs/modules/psd_design.md` from the new MNE basis.
 2. Draft `docs/modules/erp_design.md` from the new MNE basis.
 3. Continue expanding QC failure-path and preprocessing-preview rules.
+
+## 2026-06-18 Customer entry value proposition copy
+
+### Completed
+- Updated `frontend/open-design-entry-demo.html` so the main value points read as no-code visual operation, traceable results, and research-grade chart delivery.
+- Preserved the concise research-customer tone, the `®` brand mark, and the existing login/register/lab entry structure.
+- Did not modify backend logic, EEG analysis code, authentication behavior, lab modules, or deployment configuration.
+
+### Validation
+- `git diff --check -- frontend/open-design-entry-demo.html`: passed.
+- `python scripts/check_no_mojibake.py`: passed.
+- Sensitive-text scan found only the password input field in the entry form and historical documentation references to secret/token risk wording; no key contents were printed or staged.
+
+### Next
+1. Review the entry page visually in the browser after the local static server refreshes.
+2. Decide whether the same three customer value points should be promoted from the Open Design demo into the formal production entry page.
