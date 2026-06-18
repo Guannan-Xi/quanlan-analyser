@@ -11,11 +11,57 @@ const SECTION_ANCHORS = [
   { id: "risks", label: "风险" },
 ];
 
+const LAB_STAGES = [
+  {
+    id: "entry",
+    icon: "door-open",
+    title: "免登录入口",
+    subtitle: "实验室和正式工作台分离",
+    body: "Open Design 入口直接进入独立模块实验室；正式工作台仍保留登录、注册和管理员入口。",
+    evidence: ["module-lab.html 可直接访问", "index.html 只保留跳转链接", "不调用后端鉴权接口"],
+  },
+  {
+    id: "choose",
+    icon: "layout-grid",
+    title: "选择模块",
+    subtitle: "QC / PSD / ERP 已启用，TFR / PAC / Connectivity 为预研",
+    body: "模块卡片只读取静态 manifest 和审核资产，适合客户、PI、算法同事在合并前逐项确认。",
+    evidence: ["6 个模块入口", "启用/预研状态可见", "每个模块可单独打开"],
+  },
+  {
+    id: "review",
+    icon: "clipboard-check",
+    title: "UI/交互评审",
+    subtitle: "围绕研究者要判断的内容组织界面",
+    body: "评审重点覆盖输入、参数、MNE 对齐、输出证据、失败状态、风险边界和响应式表现。",
+    evidence: ["评审矩阵可过滤", "模块详情页有验收表", "风险提示不进入正式结论"],
+  },
+  {
+    id: "handoff",
+    icon: "package-check",
+    title: "证据包交付",
+    subtitle: "先审 demo，再合并正式页面",
+    body: "每个模块保留图像、CSV、JSON、方法说明和压缩包链接，作为本轮 UI 审核和后续实现交接材料。",
+    evidence: ["静态文件存在性检查", "文案无损坏检查", "Playwright 页面验收"],
+  },
+];
+
+const REVIEW_ROWS = [
+  ["all", "入口边界", "实验室免登录可访问，正式工作台仍要求登录/注册", "从首页进入实验室，再返回正式入口；不出现预登录 demo 项目按钮", "必须通过"],
+  ["all", "Open Design 首屏", "首屏展示真实模块选择、审核状态和证据包，不做营销页", "切换入口 demo 阶段，检查当前状态是否清晰", "必须通过"],
+  ["enabled", "已启用模块", "QC / PSD / ERP 的输入、参数、输出和文件证据可审核", "逐个打开模块详情页，核对图像、表格、方法说明和压缩包", "必须通过"],
+  ["preview", "预研模块", "TFR / PAC / Connectivity 明确标记预研边界", "检查预研模块是否避免给出生产可用承诺", "必须通过"],
+  ["all", "参数理解", "核心参数与 MNE 对象名称同时出现，研究者能判断方法是否合理", "检查参数、MNE 方法、输出三段是否能互相对应", "建议通过"],
+  ["all", "交互状态", "按钮、筛选、详情页导航和下载链接有明确目标", "键盘切换焦点，确认悬停和选中状态稳定", "建议通过"],
+  ["all", "风险说明", "科研边界、临床禁用、统计风险和人工复核边界可见", "检查风险段落是否出现在每个模块详情页", "必须通过"],
+  ["all", "本地验收", "静态页面、图片、CSV、JSON、文档和实验室入口均可本地验证", "运行 research modules 静态验收脚本", "必须通过"],
+];
+
 const moduleTests = {
   qc: [
-    ["文件接入", "EDF/BDF/FIF/BrainVision/SET/CNT 可读取；空文件、缺失通道和不支持格式要给出清晰失败原因。"],
+    ["文件接入", "EDF/BDF/FIF/BrainVision/SET/CNT 可读；空文件、缺失通道和不支持格式给出清晰失败原因。"],
     ["信号质量", "展示采样率、时长、通道类型、平线/极端通道、注释、疑似坏道和可分析性。"],
-    ["决策门槛", "明确 PSD/ERP 是否可继续，并说明为什么仍需要人工复核。"],
+    ["决策门槛", "说明 PSD/ERP 是否可继续，并标注哪些结论仍需人工复核。"],
   ],
   psd: [
     ["PSD 方法", "Welch 参数、fmin/fmax、窗长、重叠、picks、参考方式和频段定义均可见。"],
@@ -39,7 +85,7 @@ const moduleTests = {
   ],
   connectivity: [
     ["预览边界", "标记为仅预览；指标、参考方式和体积传导控制是前置条件。"],
-    ["矩阵契约", "metric、band、窗长、节点/ROI、阈值和 null model 均可见。"],
+    ["矩阵契约", "metric、band、窗长、节点 ROI、阈值和 null model 均可见。"],
     ["交付物", "矩阵、网络图、边 CSV、图指标和敏感性说明均有链接。"],
   ],
 };
@@ -58,31 +104,25 @@ function icon(name) {
 }
 
 function h(value) {
-  return String(value ?? "").replace(/[&<>'"]/g, (ch) => ({
-    "&": "&amp;",
-    "<": "&lt;",
-    ">": "&gt;",
-    "'": "&#39;",
-    '"': "&quot;",
-  }[ch]));
-}
-
-function statusClass(module) {
-  return module.statusLevel === "enabled" ? "enabled" : "preview";
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
 }
 
 function asset(url) {
-  if (!url) return "#";
-  if (url.startsWith("http") || url.startsWith("./") || url.startsWith("../")) return url;
-  return url.startsWith("/") ? `.${url}` : `./${url}`;
+  if (!url) return "";
+  if (url.startsWith("http")) return url;
+  if (url.startsWith("/")) return `.${url}`;
+  return `./${url.replace(/^\.\//, "")}`;
 }
 
 function currentSlug() {
-  const params = new URLSearchParams(location.search);
-  const fromQuery = params.get("module");
-  if (fromQuery) return fromQuery;
-  const hash = location.hash.replace(/^#/, "");
-  return hash || "";
+  const params = new URLSearchParams(window.location.search);
+  const requested = params.get("module") || window.location.hash.replace("#", "");
+  return MODULE_ORDER.includes(requested) ? requested : "";
 }
 
 async function loadManifest() {
@@ -96,62 +136,137 @@ function modules(manifest) {
   return MODULE_ORDER.map((key) => source[key]).filter(Boolean);
 }
 
-function moduleFigure(module) {
-  return module.figures?.[0]?.src || "./assets/qlanalyser-neuron-firing-bg.png";
+function statusLabel(module) {
+  return module.status || (module.statusLevel === "enabled" ? "V01 已启用" : "预研预览");
 }
 
-function renderHero(manifest) {
+function statusClass(module) {
+  return module.statusLevel === "enabled" ? "enabled" : "preview";
+}
+
+function moduleFigure(module) {
+  return module.figures?.[0]?.src || "/assets/research-modules/figures/overview-main-figure.png";
+}
+
+function firstEnabledModule(manifest) {
+  return modules(manifest).find((module) => module.statusLevel === "enabled") || modules(manifest)[0];
+}
+
+function renderTopbar(manifest, compact = false) {
+  return `<nav class="lab-nav ${compact ? "compact" : ""}">
+    <a class="brand" href="./module-lab.html" aria-label="QLanalyser 分析实验室">
+      <span class="brand-mark">QL</span>
+      <span><strong>QLanalyser 分析实验室</strong><small>Open Design 免登录入口 demo</small></span>
+    </a>
+    <div class="quick">
+      <a href="./index.html">${icon("home")}正式入口</a>
+      <a href="./research-modules.html">${icon("layout-dashboard")}研究模块总览</a>
+      <a class="pill" href="${asset(manifest.shared?.reviewer_checklist)}">${icon("clipboard-check")}评审清单</a>
+    </div>
+  </nav>`;
+}
+
+function renderOpenDesignDemo(manifest) {
   const allModules = modules(manifest);
   const enabled = allModules.filter((module) => module.statusLevel === "enabled").length;
   const preview = allModules.length - enabled;
-  return `<header class="lab-hero">
-    <nav class="lab-nav">
-      <a class="brand" href="./module-lab.html" aria-label="QLanalyser 分析实验室">
-        <span class="brand-mark">QL</span>
-        <span><strong>QLanalyser 分析实验室</strong><small>免登录独立模块试用</small></span>
-      </a>
-      <div class="quick">
-        <a href="./index.html">${icon("home")}产品入口</a>
-        <a href="./research-modules.html">${icon("layout-dashboard")}研究模块总览</a>
-        <a class="pill" href="${asset(manifest.shared?.reviewer_checklist)}">${icon("clipboard-check")}评审清单</a>
-      </div>
-    </nav>
-    <section class="lab-hero-grid">
-      <div>
-        <p class="eyebrow">参考 MNE 规范 | EEG 独立模块实验室</p>
-        <h1>独立分析模块实验室</h1>
-        <p>QC、PSD、ERP、TFR、PAC 和 Connectivity 已拆成稳定的免登录模块页面。每个页面都展示科研用户需要检查的输入、参数、MNE 对象、输出、图像、文件、风险和并行开发交接点。</p>
-      </div>
-      <aside class="hero-card">
-        <strong>${allModules.length} 个模块入口</strong>
-        <span>${enabled} 个 V01 已启用模块 | ${preview} 个预览模块</span>
-        <ul>
-          <li>客户试用单个分析模块无需登录。</li>
-          <li>每个模块都有稳定 URL，便于并行开发和评审。</li>
-          <li>合成数据仅用于科研流程测试，不用于临床诊断。</li>
-        </ul>
+  const featured = firstEnabledModule(manifest);
+  return `<section class="demo-band" data-open-design-demo>
+    <div class="section-head">
+      <p class="eyebrow">Open Design entrance demo</p>
+      <h1>独立分析模块实验室</h1>
+      <p>先把入口、模块 UI、交互状态和科研边界作为可审核 demo 固定下来；你确认后，再决定哪些内容合并到正式页面。</p>
+    </div>
+    <div class="demo-workbench">
+      <aside class="stage-rail" aria-label="Open Design demo 阶段">
+        ${LAB_STAGES.map((stage, index) => `<button class="stage-button ${index === 0 ? "active" : ""}" type="button" data-stage="${stage.id}">
+          ${icon(stage.icon)}
+          <span><strong>${h(stage.title)}</strong><small>${h(stage.subtitle)}</small></span>
+        </button>`).join("")}
       </aside>
-    </section>
-  </header>`;
+      <article class="demo-canvas">
+        <div class="canvas-toolbar">
+          <span class="status enabled">免登录实验室</span>
+          <span>${enabled} 个已启用</span>
+          <span>${preview} 个预研</span>
+        </div>
+        <div class="open-design-panel">
+          <div>
+            <p class="eyebrow">Current review state</p>
+            <h2 id="stageTitle">${h(LAB_STAGES[0].title)}</h2>
+            <p id="stageBody">${h(LAB_STAGES[0].body)}</p>
+          </div>
+          <ul id="stageEvidence" class="evidence-list">
+            ${LAB_STAGES[0].evidence.map((item) => `<li>${h(item)}</li>`).join("")}
+          </ul>
+        </div>
+        <div class="module-strip" aria-label="模块快速入口">
+          ${allModules.map((module) => `<a href="./module-lab.html?module=${h(module.slug)}" class="module-chip ${statusClass(module)}">
+            <strong>${h(module.slug.toUpperCase())}</strong><span>${h(statusLabel(module))}</span>
+          </a>`).join("")}
+        </div>
+        <div class="canvas-actions">
+          <a class="btn primary" href="./module-lab.html?module=${h(featured?.slug || "qc")}">${icon("play")}打开 ${h((featured?.slug || "qc").toUpperCase())} demo</a>
+          <a class="btn" href="#review-plan">${icon("list-checks")}查看评审方案</a>
+        </div>
+      </article>
+      <aside class="handoff-panel">
+        <h2>本轮审核边界</h2>
+        <dl>
+          <div><dt>不改</dt><dd>正式入口、后端接口、算法执行链路</dd></div>
+          <div><dt>保留</dt><dd>实验室免登录，正式工作台登录/注册</dd></div>
+          <div><dt>产出</dt><dd>可审核 demo 页面、模块 UI 清单、静态验收报告</dd></div>
+        </dl>
+      </aside>
+    </div>
+  </section>`;
 }
 
-function renderIndex(manifest) {
-  return `${renderHero(manifest)}<section class="lab-wrap">
-    <div class="lab-section-head">
-      <h2>选择一个分析模块</h2>
-      <p>这些 URL 可用于下午并行开发，也可用于让客户单独试用某个模块。</p>
+function renderReviewPlan() {
+  return `<section class="review-band" id="review-plan" data-review-matrix>
+    <div class="section-head row-head">
+      <div>
+        <p class="eyebrow">UI / interaction review</p>
+        <h2>实验室模块 UI/交互评审方案</h2>
+        <p>用同一张矩阵确认入口边界、模块状态、研究证据和风险提示，避免 demo 阶段把预研内容误合并进正式工作台。</p>
+      </div>
+      <div class="segmented" role="group" aria-label="评审范围过滤">
+        <button class="active" type="button" data-review-filter="all">全部</button>
+        <button type="button" data-review-filter="enabled">已启用</button>
+        <button type="button" data-review-filter="preview">预研</button>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table class="review-table">
+        <thead><tr><th>评审项</th><th>通过标准</th><th>操作方式</th><th>结论门槛</th></tr></thead>
+        <tbody>
+          ${REVIEW_ROWS.map(([scope, item, standard, action, gate]) => `<tr data-review-scope="${scope}"><td><strong>${h(item)}</strong><small>${scope === "all" ? "全模块" : scope === "enabled" ? "QC / PSD / ERP" : "TFR / PAC / Connectivity"}</small></td><td>${h(standard)}</td><td>${h(action)}</td><td><span class="gate">${h(gate)}</span></td></tr>`).join("")}
+        </tbody>
+      </table>
+    </div>
+  </section>`;
+}
+
+function renderModuleGrid(manifest) {
+  return `<section class="module-band">
+    <div class="section-head">
+      <p class="eyebrow">Module demos</p>
+      <h2>模块入口</h2>
+      <p>每个入口都是独立静态页面，只读取研究模块 manifest 和本地样例资产，适合先审 UI、交互和交付物。</p>
     </div>
     <div class="module-grid">
       ${modules(manifest).map((module) => `<article class="module-card">
-        <img src="${asset(moduleFigure(module))}" alt="${h(module.title)} 预览图" />
+        <img src="${asset(moduleFigure(module))}" alt="${h(module.title)}" />
         <div class="body">
-          <span class="status ${statusClass(module)}">${h(module.status)}</span>
+          <div class="module-card-top">
+            <span class="status ${statusClass(module)}">${h(statusLabel(module))}</span>
+            <span>${h(module.slug.toUpperCase())}</span>
+          </div>
           <h2>${h(module.title)}</h2>
-          <p>${h(module.subtitle)}</p>
-          <p>${h(module.scenario)}</p>
+          <p>${h(module.subtitle || module.scenario)}</p>
           <div class="actions">
-            <a class="btn primary" href="./module-lab.html?module=${h(module.slug)}">${icon("external-link")}打开模块实验室</a>
-            <a class="btn" href="./research-module/${h(module.page)}">${icon("package-open")}静态交付页面</a>
+            <a class="btn primary" href="./module-lab.html?module=${h(module.slug)}">${icon("external-link")}打开 demo</a>
+            <a class="btn" href="${asset(module.package)}">${icon("archive")}证据包</a>
           </div>
         </div>
       </article>`).join("")}
@@ -159,66 +274,112 @@ function renderIndex(manifest) {
   </section>`;
 }
 
+function renderIndex(manifest) {
+  return `<header class="lab-hero">${renderTopbar(manifest)}</header>
+    <main class="lab-wrap">
+      ${renderOpenDesignDemo(manifest)}
+      ${renderReviewPlan()}
+      ${renderModuleGrid(manifest)}
+    </main>`;
+}
+
 function list(items, cls = "") {
-  const content = (items || []).map((item) => `<li>${h(item)}</li>`).join("") || `<li>待补充</li>`;
-  return `<ul class="list ${cls}">${content}</ul>`;
+  if (!items?.length) return `<div class="empty">暂无内容</div>`;
+  return `<ul class="list ${cls}">${items.map((item) => `<li>${h(item)}</li>`).join("")}</ul>`;
 }
 
 function artifactCards(module) {
-  const cards = [];
-  for (const table of module.tables || []) cards.push({ label: table.label, src: table.src, type: "CSV 表格" });
-  for (const doc of module.docs || []) cards.push({ label: doc.label, src: doc.src, type: doc.type || "文档" });
-  if (module.package) cards.push({ label: "模块测试包", src: module.package, type: "ZIP 包" });
-  return cards.map((card) => `<a class="artifact" href="${asset(card.src)}" data-doc-preview="${h(card.type)}">
-    <strong>${h(card.label)}</strong>
-    <span>${h(card.type)}</span><br />
-    <small>${h(card.src)}</small>
+  const rows = [
+    ...(module.tables || []).map((item) => ({ ...item, kind: "表格" })),
+    ...(module.docs || []).map((item) => ({ ...item, kind: item.type === "json" ? "JSON" : "文档" })),
+    module.package ? { label: "模块证据包", src: module.package, kind: "ZIP" } : null,
+  ].filter(Boolean);
+  if (!rows.length) return `<div class="empty">暂无文件</div>`;
+  return rows.map((item) => `<a class="artifact" data-doc-preview href="${asset(item.src)}">
+    <span>${h(item.kind)}</span>
+    <strong>${h(item.label)}</strong>
+    <small>${h(item.src)}</small>
   </a>`).join("");
 }
 
 function testRows(slug) {
-  return (moduleTests[slug] || []).map(([name, detail]) => `<tr><td>${h(name)}</td><td>${h(detail)}</td></tr>`).join("");
+  return (moduleTests[slug] || []).map(([name, rule]) => `<tr><td><strong>${h(name)}</strong></td><td>${h(rule)}</td></tr>`).join("");
 }
 
 function renderSide(manifest, slug) {
-  const moduleLinks = modules(manifest).map((module) => `<a class="${module.slug === slug ? "active" : ""}" href="./module-lab.html?module=${h(module.slug)}"><span>${h(module.slug.toUpperCase())}</span><small>${module.statusLevel === "enabled" ? "V01" : "预览"}</small></a>`).join("");
-  const sectionLinks = SECTION_ANCHORS.map((section) => `<a href="#${h(section.id)}"><span>${h(section.label)}</span><small>#${h(section.id)}</small></a>`).join("");
-  return `<aside class="side"><h2>模块导航</h2>${moduleLinks}<h2>页面结构</h2>${sectionLinks}</aside>`;
+  return `<aside class="side">
+    <h2>模块导航</h2>
+    <nav>
+      ${modules(manifest).map((module) => `<a class="${module.slug === slug ? "active" : ""}" href="./module-lab.html?module=${h(module.slug)}"><span>${h(module.title)}</span><strong>${h(module.slug.toUpperCase())}</strong></a>`).join("")}
+    </nav>
+    <hr />
+    ${SECTION_ANCHORS.map((anchor) => `<a href="#${anchor.id}"><span>${h(anchor.label)}</span>${icon("chevron-right")}</a>`).join("")}
+  </aside>`;
 }
 
 function renderDetail(manifest, slug) {
   const module = manifest.modules?.[slug];
-  if (!module) {
-    return `${renderHero(manifest)}<section class="lab-wrap"><div class="empty">未找到模块：${h(slug)}。请返回实验室总览。</div></section>`;
-  }
-  return `${renderHero(manifest)}<section class="lab-wrap detail-shell">
+  if (!module) return renderIndex(manifest);
+  return `<header class="lab-hero detail-top">${renderTopbar(manifest, true)}</header>
+  <main class="lab-wrap detail-shell">
     ${renderSide(manifest, slug)}
     <div class="content">
       <section class="module-hero">
-        <span class="status ${statusClass(module)}">${h(module.status)}</span>
+        <span class="status ${statusClass(module)}">${h(statusLabel(module))}</span>
+        <p class="eyebrow">${h(module.slug.toUpperCase())} independent module demo</p>
         <h1>${h(module.title)}</h1>
-        <p>${h(module.subtitle)}</p>
-        <p>${h(module.scenario)}</p>
+        <p>${h(module.scenario || module.subtitle)}</p>
         <div class="module-links">
-          <a class="btn primary" href="./module-lab.html?module=${h(module.slug)}">${icon("link")}当前独立 URL</a>
-          <a class="btn" href="./module-lab.html">${icon("grid-3x3")}返回实验室总览</a>
-          <a class="btn" href="./research-module/${h(module.page)}">${icon("package-open")}静态交付页面</a>
+          <a class="btn primary" href="${asset(module.package)}">${icon("archive")}下载证据包</a>
+          <a class="btn" href="${asset(manifest.shared?.reviewer_checklist)}">${icon("clipboard-check")}评审清单</a>
+          <a class="btn" href="./module-lab.html#review-plan">${icon("arrow-left")}返回实验室</a>
         </div>
       </section>
-      <section class="panel grid-2">
-        <div id="inputs"><h2>输入</h2>${list(module.inputs)}</div>
-        <div id="controls"><h2>参数 / 控件</h2>${list(module.controls)}</div>
+      <section class="panel grid-2" id="inputs">
+        <div><h2>输入</h2>${list(module.inputs)}</div>
+        <div id="controls"><h2>参数</h2>${list(module.controls)}</div>
       </section>
-      <section class="panel grid-2">
-        <div id="mne"><h2>MNE 对象 / 方法</h2>${list(module.mneObjects)}</div>
+      <section class="panel grid-2" id="mne">
+        <div><h2>MNE 方法</h2>${list(module.mneObjects)}</div>
         <div id="outputs"><h2>输出</h2>${list(module.outputs)}</div>
       </section>
       <section class="panel" id="figures"><h2>图像输出</h2><div class="figure-grid">${(module.figures || []).map((fig) => `<figure class="figure"><img src="${asset(fig.src)}" alt="${h(fig.alt || fig.label)}" /><figcaption>${h(fig.label)}</figcaption></figure>`).join("")}</div></section>
       <section class="panel" id="artifacts"><h2>文件与交付物</h2><div class="artifact-grid">${artifactCards(module)}</div></section>
-      <section class="panel" id="tests"><h2>模块验收矩阵</h2><table class="test-matrix"><thead><tr><th>检查项</th><th>验收规则</th></tr></thead><tbody>${testRows(slug)}</tbody></table></section>
+      <section class="panel" id="tests"><h2>模块验收矩阵</h2><div class="table-wrap"><table class="test-matrix"><thead><tr><th>检查项</th><th>验收规则</th></tr></thead><tbody>${testRows(slug)}</tbody></table></div></section>
       <section class="panel callout" id="risks"><h2>科研边界与风险</h2>${list(module.risks, "risk")}<p><strong>并行开发交接：</strong>${h(handoff[slug])}</p><p><strong>共享边界：</strong>${h(manifest.researchGuardrail)}</p></section>
     </div>
-  </section>`;
+  </main>`;
+}
+
+function bindIndexInteractions() {
+  const stageButtons = [...document.querySelectorAll("[data-stage]")];
+  const title = document.querySelector("#stageTitle");
+  const body = document.querySelector("#stageBody");
+  const evidence = document.querySelector("#stageEvidence");
+  stageButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      const stage = LAB_STAGES.find((item) => item.id === button.dataset.stage);
+      if (!stage) return;
+      stageButtons.forEach((item) => item.classList.toggle("active", item === button));
+      title.textContent = stage.title;
+      body.textContent = stage.body;
+      evidence.innerHTML = stage.evidence.map((item) => `<li>${h(item)}</li>`).join("");
+      if (window.lucide) window.lucide.createIcons();
+    });
+  });
+
+  const filterButtons = [...document.querySelectorAll("[data-review-filter]")];
+  const rows = [...document.querySelectorAll("[data-review-scope]")];
+  filterButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      const filter = button.dataset.reviewFilter;
+      filterButtons.forEach((item) => item.classList.toggle("active", item === button));
+      rows.forEach((row) => {
+        const visible = filter === "all" || row.dataset.reviewScope === "all" || row.dataset.reviewScope === filter;
+        row.hidden = !visible;
+      });
+    });
+  });
 }
 
 async function main() {
@@ -227,6 +388,7 @@ async function main() {
     const manifest = await loadManifest();
     const slug = currentSlug();
     root.innerHTML = slug ? renderDetail(manifest, slug) : renderIndex(manifest);
+    if (!slug) bindIndexInteractions();
     if (window.lucide) window.lucide.createIcons();
   } catch (error) {
     root.innerHTML = `<section class="lab-wrap"><div class="empty">分析实验室加载失败：${h(error.message || error)}</div></section>`;

@@ -118,8 +118,20 @@ async function main() {
   const labIndex = await browser.newPage();
   const labBody = await pageOk(labIndex, `${BASE_URL}/module-lab.html`);
   const labCards = await labIndex.locator(".module-card").count();
+  const openDesignDemo = await labIndex.locator("[data-open-design-demo]").count();
+  const reviewMatrix = await labIndex.locator("[data-review-matrix]").count();
+  const stageButtons = await labIndex.locator("[data-stage]").count();
   check("lab overview heading", labBody.includes("\u72ec\u7acb\u5206\u6790\u6a21\u5757\u5b9e\u9a8c\u5ba4") || labBody.includes("QLanalyser \u5206\u6790\u5b9e\u9a8c\u5ba4"));
   check("lab overview module cards", labCards === EXPECTED.length, { labCards });
+  check("lab has open design entry demo", openDesignDemo === 1, { openDesignDemo });
+  check("lab has UI interaction review matrix", reviewMatrix === 1, { reviewMatrix });
+  check("lab has review stage controls", stageButtons >= 4, { stageButtons });
+  await labIndex.locator('[data-stage="review"]').click();
+  const stageTitle = await labIndex.locator("#stageTitle").innerText();
+  check("lab open design stage switch", stageTitle.includes("UI") || stageTitle.includes("\u8bc4\u5ba1"), { stageTitle });
+  await labIndex.locator('[data-review-filter="preview"]').click();
+  const hiddenRows = await labIndex.locator('[data-review-scope="enabled"][hidden]').count();
+  check("lab review matrix filter", hiddenRows >= 1, { hiddenRows });
   await labIndex.close();
 
   for (const slug of EXPECTED) {
