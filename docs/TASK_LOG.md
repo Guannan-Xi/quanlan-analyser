@@ -723,3 +723,20 @@ python scripts/acceptance_v01_full.py
 ### Next
 1. Visually review `module-lab.html` in the browser and check whether the five-column table feels too dense on laptop width.
 2. If needed, convert the guide from a table into stacked decision cards for lower cognitive load.
+
+## 2026-06-18 ERP detailed design
+
+### Completed
+- Added `docs/modules/erp_design.md`.
+- Linked ERP from `docs/modules/analysis_modules_design_matrix.md`.
+- Documented current event input, parameters, MNE mapping, outputs, failure modes, interpretation boundaries, acceptance standards, and next implementation tasks.
+
+### Current baseline
+- ERP is event-conditioned beta/stable under workflow id `erp_p300`.
+- Current runner uses `mne.events_from_annotations`, `mne.Epochs`, condition averages, and windowed N100/P200/P300 metrics.
+- ERP must fail or require review when event markers are missing or marker semantics are unclear.
+
+### Next
+1. Implement explicit ERP parameter validation and user-readable errors.
+2. Add drop log / rejected epoch summaries.
+3. Add event-id confirmation and ERP waveform/table rendering acceptance.

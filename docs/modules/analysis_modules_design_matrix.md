@@ -22,7 +22,7 @@ MNE 设计总依据：
 | --- | --- | --- | --- | --- | --- |
 | QC | stable | 已启用 | 已展示 | 应进入主流程 | 补独立设计文档和 contract 测试 |
 | PSD | stable | 已启用 | 已展示 | 应进入主流程 | 按 `docs/modules/psd_design.md` 补参数失败路径和图表验收 |
-| ERP | beta/stable when events exist | 已启用但依赖事件 | 已展示 | 条件进入主流程 | 强化事件语义和失败提示 |
+| ERP | beta/stable when events exist | 已启用但依赖事件 | 已展示 | 条件进入主流程 | 按 `docs/modules/erp_design.md` 补事件确认、drop log 和参数失败路径 |
 | TFR | preview | 未启用 | 已展示 | 不进入 stable | 完成 epoch/baseline/statistics 设计 |
 | PAC | preview | 未启用 | 已展示 | 不进入 stable | 完成 surrogate/null model 设计 |
 | Connectivity | preview | 未启用 | 已展示 | 不进入 stable | 完成参考/体积传导/metric 审查 |
@@ -104,6 +104,10 @@ MNE 设计总依据：
 - 解释边界必须提示参考、滤波、肌电和个体 alpha peak 风险。
 
 ## 5. ERP 模块设计
+
+详细设计文档：
+
+- `docs/modules/erp_design.md`
 
 ### 用户目标
 
@@ -216,5 +220,5 @@ preview。v0.1 只展示设计，不承诺后端生产执行。
 
 1. `docs/modules/qc_design.md`
 2. `docs/modules/psd_design.md`
-3. `docs/modules/erp_design.md`
+3. `docs/modules/erp_design.md`（已建立，下一步补事件确认和 drop log）
 4. 基于 `docs/modules/mne_analysis_function_design_basis.md` 逐个补齐 PSD、ERP、TFR、PAC、Connectivity 的输入、参数、MNE API、输出、失败模式和验收脚本。

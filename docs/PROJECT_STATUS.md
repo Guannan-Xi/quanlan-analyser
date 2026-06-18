@@ -494,3 +494,26 @@ Validation:
 
 - `node --check frontend/module-lab.js`: passed.
 - `python scripts/check_no_mojibake.py`: passed.
+
+## 23. ERP detailed design
+
+Date: 2026-06-18
+
+Scope:
+
+- Added `docs/modules/erp_design.md` as the detailed design for event-conditioned ERP / P300 workflow.
+- Linked the ERP design from `docs/modules/analysis_modules_design_matrix.md`.
+- Clarified the conditional status: ERP is enabled only when events/annotations exist and marker semantics are verified.
+
+Current ERP baseline:
+
+- Current runner: `eeg_core/analysis/erp.py`.
+- Current workflow id: `erp_p300`.
+- Current MNE flow: `events_from_annotations`, filtering/reference, `mne.Epochs`, condition `Evoked`, and N100/P200/P300 metric extraction.
+- Current required outputs: `tables/erp_metrics.csv`, `reproducibility/erp_summary.json`, reproducibility files, `result.json`, `manifest.json`, and `log.txt`.
+
+Next step:
+
+1. Add explicit ERP parameter validation for `tmin`, `tmax`, `baseline`, `components`, `reject_eeg_uv`, filter, and reference.
+2. Add drop log / rejected epoch summaries to ERP outputs.
+3. Add an event-id confirmation surface before treating ERP results as scientifically interpretable.
