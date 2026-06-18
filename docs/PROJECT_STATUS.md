@@ -456,3 +456,26 @@ Validation:
 
 - `git diff --check -- frontend/open-design-entry-demo.html`: passed.
 - `python scripts/check_no_mojibake.py`: passed.
+
+## 22. PSD detailed design
+
+Date: 2026-06-18
+
+Scope:
+
+- Added `docs/modules/psd_design.md` as the detailed design for the stable v0.1 PSD workflow.
+- Linked the PSD design from `docs/modules/analysis_modules_design_matrix.md`.
+- Clarified the current runner contract around `resting_psd`, MNE Welch PSD, band power tables, reproducibility outputs, validation gaps, and next implementation tasks.
+
+Current PSD baseline:
+
+- Current runner: `eeg_core/analysis/psd.py`.
+- Current workflow id: `resting_psd`.
+- Current MNE method: `Raw.compute_psd(method="welch")` after EEG channel picking and optional filter/notch preview parameters.
+- Current required outputs: `tables/band_power.csv`, `tables/channel_band_power.csv`, `reproducibility/psd_summary.json`, reproducibility files, `result.json`, `manifest.json`, and `log.txt`.
+
+Next step:
+
+1. Add explicit PSD parameter validation for `fmin`, `fmax`, `l_freq`, `h_freq`, and `notch_freq`.
+2. Add PSD failure-path acceptance for no EEG channel, all bad channels, illegal frequency range, and invalid notch.
+3. Add PSD chart/table UI or report-level visual acceptance after parameter failures are covered.

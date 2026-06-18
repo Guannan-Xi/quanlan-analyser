@@ -21,7 +21,7 @@ MNE 设计总依据：
 | 模块 | 当前状态 | v0.1 后端 | 实验室 | 主流程 | 下一步 |
 | --- | --- | --- | --- | --- | --- |
 | QC | stable | 已启用 | 已展示 | 应进入主流程 | 补独立设计文档和 contract 测试 |
-| PSD | stable | 已启用 | 已展示 | 应进入主流程 | 稳定 Welch 参数和 bandpower 交付 |
+| PSD | stable | 已启用 | 已展示 | 应进入主流程 | 按 `docs/modules/psd_design.md` 补参数失败路径和图表验收 |
 | ERP | beta/stable when events exist | 已启用但依赖事件 | 已展示 | 条件进入主流程 | 强化事件语义和失败提示 |
 | TFR | preview | 未启用 | 已展示 | 不进入 stable | 完成 epoch/baseline/statistics 设计 |
 | PAC | preview | 未启用 | 已展示 | 不进入 stable | 完成 surrogate/null model 设计 |
@@ -64,6 +64,10 @@ MNE 设计总依据：
 - 输出文件可进入报告包。
 
 ## 4. PSD 模块设计
+
+详细设计文档：
+
+- `docs/modules/psd_design.md`
 
 ### 用户目标
 

@@ -691,3 +691,20 @@ python scripts/acceptance_v01_full.py
 ### Next
 1. Review the entry page visually in the browser after the local static server refreshes.
 2. Decide whether the same three customer value points should be promoted from the Open Design demo into the formal production entry page.
+
+## 2026-06-18 PSD detailed design
+
+### Completed
+- Added `docs/modules/psd_design.md`.
+- Linked PSD from `docs/modules/analysis_modules_design_matrix.md`.
+- Documented current input, parameters, MNE mapping, outputs, failure modes, interpretation boundaries, acceptance standards, and next implementation tasks.
+
+### Current baseline
+- PSD is v0.1 stable under workflow id `resting_psd`.
+- Current runner uses MNE Welch PSD through `Raw.compute_psd(method="welch")`.
+- Current outputs include band power CSV, channel-band CSV, PSD summary JSON, reproducibility files, result, manifest, and log.
+
+### Next
+1. Implement explicit PSD parameter validation and user-readable errors.
+2. Add PSD failure-path acceptance cases.
+3. Add PSD visual/table rendering acceptance after validation is hardened.
