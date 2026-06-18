@@ -86,13 +86,25 @@ async function main() {
   const home = await browser.newPage();
   const homeBody = await pageOk(home, `${BASE_URL}/index.html`, { skipImages: true });
   const homeLabLinks = await home.locator('a[href*="module-lab.html"]').count();
+  const homeRegisterTabs = await home.locator('[data-login-tab="customerRegister"]').count();
+  const homeDemoButtons = await home.locator('#demoEntryBtn').count();
+  const homeAdminTabs = await home.locator('[data-login-tab="adminLogin"]').count();
   check("home has no-login lab entry", homeLabLinks >= 1, { homeLabLinks, text: homeBody.slice(0, 1000) });
+  check("home has customer register tab", homeRegisterTabs === 1, { homeRegisterTabs });
+  check("home hides pre-login demo project", homeDemoButtons === 0, { homeDemoButtons });
+  check("home has one admin entry", homeAdminTabs === 1, { homeAdminTabs });
   await home.close();
 
   const entry = await browser.newPage();
   const entryBody = await pageOk(entry, `${BASE_URL}/expert-entry-demo.html`, { skipImages: true });
   const entryLabLinks = await entry.locator('a[href*="module-lab.html"]').count();
+  const entryRegisterTabs = await entry.locator('[data-login-tab="customerRegister"]').count();
+  const entryDemoButtons = await entry.locator('#demoEntryBtn').count();
+  const entryAdminTabs = await entry.locator('[data-login-tab="adminLogin"]').count();
   check("entry has no-login lab entry", entryLabLinks >= 1, { entryLabLinks, text: entryBody.slice(0, 1000) });
+  check("entry has customer register tab", entryRegisterTabs === 1, { entryRegisterTabs });
+  check("entry hides pre-login demo project", entryDemoButtons === 0, { entryDemoButtons });
+  check("entry has one admin entry", entryAdminTabs === 1, { entryAdminTabs });
   await entry.close();
 
   const index = await browser.newPage();
@@ -106,7 +118,7 @@ async function main() {
   const labIndex = await browser.newPage();
   const labBody = await pageOk(labIndex, `${BASE_URL}/module-lab.html`);
   const labCards = await labIndex.locator(".module-card").count();
-  check("lab overview heading", labBody.includes("Standalone analysis module lab") || labBody.includes("QLanalyser Analysis Lab"));
+  check("lab overview heading", labBody.includes("\u72ec\u7acb\u5206\u6790\u6a21\u5757\u5b9e\u9a8c\u5ba4") || labBody.includes("QLanalyser \u5206\u6790\u5b9e\u9a8c\u5ba4"));
   check("lab overview module cards", labCards === EXPECTED.length, { labCards });
   await labIndex.close();
 
@@ -126,12 +138,12 @@ async function main() {
     const tableRows = await page.locator("table tbody tr").count();
     const docs = await page.locator("[data-doc-preview], .artifact").count();
     check(`lab module heading ${slug}`, heading.length > 0, { heading });
-    check(`lab module input section ${slug}`, body.includes("Inputs"), { slug });
-    check(`lab module controls section ${slug}`, body.includes("Parameters"), { slug });
+    check(`lab module input section ${slug}`, body.includes("Inputs") || body.includes("\u8f93\u5165"), { slug });
+    check(`lab module controls section ${slug}`, body.includes("Parameters") || body.includes("\u53c2\u6570"), { slug });
     check(`lab module mne section ${slug}`, body.includes("MNE"), { slug });
-    check(`lab module output section ${slug}`, body.includes("Outputs"), { slug });
-    check(`lab module tests section ${slug}`, body.includes("Module acceptance matrix") || body.includes("Acceptance"), { slug });
-    check(`lab module risks section ${slug}`, body.includes("Research guardrails") || body.includes("Risks"), { slug });
+    check(`lab module output section ${slug}`, body.includes("Outputs") || body.includes("\u8f93\u51fa"), { slug });
+    check(`lab module tests section ${slug}`, body.includes("Module acceptance matrix") || body.includes("Acceptance") || body.includes("\u6a21\u5757\u9a8c\u6536\u77e9\u9635"), { slug });
+    check(`lab module risks section ${slug}`, body.includes("Research guardrails") || body.includes("Risks") || body.includes("\u79d1\u7814\u8fb9\u754c\u4e0e\u98ce\u9669"), { slug });
     check(`lab module panels ${slug}`, panels >= 6, { panels });
     check(`lab module test rows ${slug}`, tableRows >= 3, { tableRows });
     check(`lab module artifacts ${slug}`, docs >= 4, { docs });

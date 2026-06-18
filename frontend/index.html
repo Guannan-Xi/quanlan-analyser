@@ -12,32 +12,41 @@
     <section class="login-screen" id="loginScreen">
       <button class="admin-corner" type="button" data-login-tab="adminLogin" aria-label="管理员入口"><i data-lucide="settings"></i><span>管理</span></button>
       <div class="login-brand" aria-label="QLanalyser 脑电分析平台封面图">
+        <div class="entry-brand-lockup">
+          <span class="entry-kicker">全澜脑科学 | QuanLan BrainScience</span>
+          <strong>QLanalyser Online</strong>
+          <small>面向科研团队的 EEG 数据管理、分析交付与复现记录平台。</small>
+        </div>
         <div class="cover-copy">
           <p>让脑电数据管理更清晰，让分析流程更简单，让研究结果更容易交付。</p>
+          <div class="entry-value-grid" aria-label="产品价值">
+            <article><strong>数据归档</strong><span>原始数据、事件表、参数与结果统一留痕。</span></article>
+            <article><strong>分析流程</strong><span>从质控、预处理到统计导出，按科研流程推进。</span></article>
+            <article><strong>交付复核</strong><span>图表、表格、方法说明和审计记录可一起交付。</span></article>
+          </div>
         </div>
       </div>
 
       <div class="login-panel">
         <div class="account-title">
-          <span>全澜脑科学<sup class="registered-mark">®</sup> · QuanLan BrainScience<sup class="registered-mark">®</sup></span>
+          <span>账号入口</span>
           <strong>QLanalyser Online</strong>
-          <small>清晰管理 EEG 数据，规范执行分析流程，稳定交付可复核研究结果。</small>
+          <small>登录或注册后进入正式工作台；分析实验室可免登录单独试用。</small>
         </div>
 
         <div class="login-tabs account-tabs" role="tablist" aria-label="客户账户">
           <button class="active" type="button" data-login-tab="customerLogin">登录</button>
+          <button type="button" data-login-tab="customerRegister">注册</button>
         </div>
 
         <form class="login-form active" id="customerLoginForm">
           <label><span>邮箱 / 手机号</span><input id="customerEmail" type="text" value="" autocomplete="username" placeholder="输入已注册邮箱或体验手机号" /></label>
-          <label><span>密码</span><input id="customerPassword" type="password" autocomplete="current-password" placeholder="正式账户密码，或留空体验沙盒" /></label>
+          <label><span>密码</span><input id="customerPassword" type="password" autocomplete="current-password" placeholder="请输入账户密码" /></label>
           <label class="checkline"><input id="rememberCustomer" type="checkbox" checked /> 记住登录状态</label>
           <button class="primary-btn full" type="submit"><i data-lucide="log-in"></i><span>登录</span></button>
-          <button class="ghost-btn full" type="button" id="demoEntryBtn"><i data-lucide="play-circle"></i><span>体验演示项目</span></button>
           <a class="lab-entry-btn full" href="./module-lab.html"><i data-lucide="flask-conical"></i><span>分析实验室（免登录）</span></a>
           <div class="login-links">
             <button type="button" id="forgotPasswordBtn">忘记密码？</button>
-            <button type="button" data-login-tab="adminLogin">管理员入口</button>
           </div>
           <small>进入工作台后，可创建项目、上传 EEG 数据并查看分析结果。</small>
         </form>

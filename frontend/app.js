@@ -429,15 +429,18 @@ function startDemoWorkspace(persist = true) {
 
 function loginCustomer(email, password, remember) {
   const customer = getStoredCustomer();
-  const wantsDemo = !email && !password;
   const matchedDemo = email === demoCustomer.email && password === demoCustomer.password;
   const matchedRegistered = email === customer.email && password === customer.password;
-  if (wantsDemo || matchedDemo) {
+  if (!email || !password) {
+    setLoginMessage("请输入邮箱 / 手机号和密码；还没有账户时请先注册。", "error");
+    return;
+  }
+  if (matchedDemo) {
     startDemoWorkspace(remember);
     return;
   }
   if (!matchedRegistered) {
-    setLoginMessage("\u90ae\u7bb1\u6216\u5bc6\u7801\u4e0d\u6b63\u786e\uff0c\u8bf7\u68c0\u67e5\u540e\u91cd\u8bd5\uff1b\u4e5f\u53ef\u70b9\u51fb\u4f53\u9a8c\u6f14\u793a\u9879\u76ee\u8fdb\u5165 Pilot \u5de5\u4f5c\u53f0\u3002", "error");
+    setLoginMessage("邮箱或密码不正确，请检查后重试；还没有账户时请先注册。", "error");
     return;
   }
   rememberSession("customer", remember);

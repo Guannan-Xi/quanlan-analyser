@@ -2461,6 +2461,38 @@ select {
   padding: 28px;
 }
 
+.entry-brand-lockup {
+  display: grid;
+  gap: 8px;
+  max-width: 620px;
+  padding: 24px 28px;
+  border: 1px solid rgba(190, 234, 234, 0.22);
+  border-radius: 18px;
+  background: rgba(2, 18, 22, 0.38);
+  box-shadow: 0 18px 48px rgba(0, 20, 28, 0.22);
+  backdrop-filter: blur(10px);
+}
+
+.entry-brand-lockup strong {
+  color: #f4ffff;
+  font-size: clamp(28px, 3.2vw, 46px);
+  letter-spacing: -0.055em;
+  line-height: 1;
+}
+
+.entry-brand-lockup small,
+.entry-kicker {
+  color: rgba(221, 244, 246, 0.82);
+  line-height: 1.6;
+}
+
+.entry-kicker {
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
 .cover-copy {
   gap: 18px;
   padding: 42px 32px;
