@@ -622,3 +622,25 @@ Validation:
 - `node --check frontend/app.js frontend/module-lab.js frontend/research-modules.js scripts/acceptance_research_modules_static.mjs`: passed.
 - `node scripts/acceptance_research_modules_static.mjs`: passed, 212 checks, 6 module pages.
 - Removed stale acceptance wording that treated the new Analysis Lab name as invalid.
+
+## 2026-06-18 QC/PSD common data preparation plan service
+
+Scope:
+
+- Added a shared `data_preparation_plan` service for QC and PSD before changing PSD algorithm details.
+- Supports plan save/read/update, optimistic revision conflict detection, task parameter validation, task reference generation, and artifact contract files.
+- Registered `/api/data-preparation/plans` routes and connected task creation to optional `data_preparation_plan_id` / `data_preparation_revision` parameters.
+
+Output contract:
+
+- `reproducibility/data_preparation_plan.json`
+- `reproducibility/data_preparation_task_reference.json`
+- `reproducibility/data_preparation_artifact_contract.json`
+- Contract version: `qlanalyser-data-preparation-v0.1`
+
+Validation:
+
+- `python -m py_compile backend/models/data_preparation.py backend/services/data_preparation_service.py backend/api/data_preparation.py backend/services/task_service.py backend/main.py scripts/acceptance_data_preparation_plan.py scripts/acceptance_data_preparation_api.py`: passed.
+- `python scripts/acceptance_data_preparation_plan.py`: passed.
+- `python scripts/acceptance_data_preparation_api.py`: passed.
+- `eeg_core/analysis/psd.py` was not modified.

@@ -860,3 +860,25 @@ Remove customer-facing information noise from the workbench and keep the page fo
 
 ### Notes
 - Unrelated dirty files were left unstaged: `eeg_core/preprocess/qc_preview.py`, `backend/models/data_preparation.py`, `docs/FOUR_CONVERSATION_WORKFLOW.md`, and `docs/modules/qc_common_data_preparation_requirements.md`.
+
+## 2026-06-18 QC/PSD common data preparation plan service
+
+### Goal
+Implement the common `data_preparation_plan` foundation used by QC and PSD before changing PSD algorithm details.
+
+### Completed
+- Added `backend/models/data_preparation.py` for plan, update, and task-reference schemas.
+- Added `backend/services/data_preparation_service.py` with JSON registry persistence, artifact contract output, task reference output, and revision conflict checks.
+- Added `backend/api/data_preparation.py` and registered the router in `backend/main.py`.
+- Connected `backend/services/task_service.py` so QC/PSD tasks can validate `data_preparation_plan_id` and `data_preparation_revision` and register plan-reference artifacts.
+- Added service/API acceptance scripts.
+
+### Validation
+- `python -m py_compile backend/models/data_preparation.py backend/services/data_preparation_service.py backend/api/data_preparation.py backend/services/task_service.py backend/main.py scripts/acceptance_data_preparation_plan.py scripts/acceptance_data_preparation_api.py`: passed.
+- `python scripts/acceptance_data_preparation_plan.py`: passed.
+- `python scripts/acceptance_data_preparation_api.py`: passed.
+- Confirmed `eeg_core/analysis/psd.py` has no diff.
+
+### Notes
+- This pass intentionally does not change PSD algorithm internals.
+- Existing unrelated dirty frontend/QC files were not part of this service implementation.

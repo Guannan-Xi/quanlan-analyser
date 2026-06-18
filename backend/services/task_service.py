@@ -5,7 +5,8 @@ from fastapi import HTTPException
 from backend.models.analysis_task import AnalysisTaskCreate, AnalysisTaskRead
 from backend.models.artifact import ArtifactRead
 from backend.models.base import utc_now
-from backend.services import state_store, storage_service
+from backend.models.data_preparation import DataPreparationTaskReferenceCreate
+from backend.services import data_preparation_service, state_store, storage_service
 from eeg_core.analysis.erp import run_erp
 from eeg_core.analysis.psd import run_psd
 from eeg_core.preprocess.quality import run_quality_check
@@ -90,9 +91,41 @@ def _save_artifacts() -> None:
         state_store.upsert_item("artifacts", artifact)
 
 
+def _register_data_preparation_artifacts(task_id: str, artifact_root: Path) -> None:
+    for relative, label in (
+        ("reproducibility/data_preparation_plan.json", "Data preparation plan"),
+        ("reproducibility/data_preparation_task_reference.json", "Data preparation task reference"),
+        ("reproducibility/data_preparation_artifact_contract.json", "Data preparation artifact contract"),
+    ):
+        path = artifact_root / relative
+        if not path.exists():
+            continue
+        artifact = ArtifactRead(
+            task_id=task_id,
+            artifact_type="json",
+            label=label,
+            path=path,
+            mime_type="application/json",
+        )
+        _artifacts[artifact.id] = artifact
+        state_store.upsert_item("artifacts", artifact)
+
+
 def create_task(payload: AnalysisTaskCreate) -> AnalysisTaskRead:
     eeg_file = storage_service.get_eeg_file(payload.input_file_id)
+    data_preparation_plan = data_preparation_service.validate_task_parameters(payload.module_name, payload.parameters_json)
     task = AnalysisTaskRead(**payload.model_dump(), status="running", progress=10, started_at=utc_now())
+    if data_preparation_plan is not None:
+        data_preparation_reference = data_preparation_service.create_task_reference(
+            data_preparation_plan.id,
+            DataPreparationTaskReferenceCreate(
+                module_name=payload.module_name,
+                workflow_id=payload.workflow_id,
+                expected_revision=data_preparation_plan.revision,
+                task_id=task.id,
+            ),
+        )
+        _register_data_preparation_artifacts(task.id, data_preparation_reference.artifact_root)
     _tasks[task.id] = task
     state_store.upsert_item("tasks", task)
 
