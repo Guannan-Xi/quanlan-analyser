@@ -185,7 +185,7 @@ svg { width: 16px; height: 16px; stroke-width: 2.2; }
 .module-chip.preview { border-color: #f3d4c7; background: #fff8f4; }
 .canvas-actions, .actions, .module-links { display: flex; gap: 10px; flex-wrap: wrap; }
 .handoff-panel { padding: 18px; }
-.handoff-panel h2 { margin: 0 0 14px; font-size: 22px; }
+.handoff-panel h2 { margin: 0 0 14px; font-size: 20px; }
 .handoff-panel dl { display: grid; gap: 10px; margin: 0; }
 .handoff-panel div { padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel-soft); }
 .handoff-panel dt { font-weight: 900; color: var(--teal-dark); }

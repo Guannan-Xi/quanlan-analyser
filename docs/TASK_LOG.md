@@ -841,3 +841,22 @@ Use Image2 to generate a neuron-firing medical teaching illustration for the log
 - Early attempts through the old process-level `OPENAI_*` route could not see image models.
 - The user-level Image2 route worked after retry; transient `RemoteDisconnected` occurred before success.
 - Unrelated untracked file `docs/modules/qc_common_data_preparation_requirements.md` was not modified.
+
+## 2026-06-18 UI information noise cleanup
+
+### Goal
+Remove customer-facing information noise from the workbench and keep the page focused on the actual EEG workflow.
+
+### Completed
+- Deleted the top explanatory flow note and three-column value cards from `frontend/index.html`.
+- Deleted the repeated "??????" panel.
+- Removed the now-unused `.boss-brief` and `.central-config-note` CSS.
+- Updated the static acceptance check so the customer-facing "?????" naming is accepted.
+
+### Validation
+- `node --check frontend/app.js frontend/module-lab.js frontend/research-modules.js scripts/acceptance_research_modules_static.mjs`: passed.
+- `node scripts/acceptance_research_modules_static.mjs`: passed, 212 checks, 6 module pages.
+- `git diff --check` on changed frontend and acceptance files: passed.
+
+### Notes
+- Unrelated dirty files were left unstaged: `eeg_core/preprocess/qc_preview.py`, `backend/models/data_preparation.py`, `docs/FOUR_CONVERSATION_WORKFLOW.md`, and `docs/modules/qc_common_data_preparation_requirements.md`.

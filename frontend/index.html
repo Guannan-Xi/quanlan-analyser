@@ -31,7 +31,7 @@
         <div class="account-title">
           <span>账号</span>
           <strong>QLanalyser Online</strong>
-          <small>登录或注册后进入正式工作台；体验中心可免登录单独试用。</small>
+          <small>登录或注册后进入正式工作台；分析实验室可免登录单独试用。</small>
         </div>
 
         <div class="login-tabs account-tabs" role="tablist" aria-label="客户账户">
@@ -44,7 +44,7 @@
           <label><span>密码</span><input id="customerPassword" type="password" autocomplete="current-password" placeholder="请输入账户密码" /></label>
           <label class="checkline"><input id="rememberCustomer" type="checkbox" checked /> 记住登录状态</label>
           <button class="primary-btn full" type="submit"><i data-lucide="log-in"></i><span>登录</span></button>
-          <a class="lab-entry-btn full" href="./module-lab.html"><i data-lucide="flask-conical"></i><span>体验中心（免登录）</span></a>
+          <a class="lab-entry-btn full" href="./module-lab.html"><i data-lucide="flask-conical"></i><span>分析实验室（免登录）</span></a>
           <div class="login-links">
             <button type="button" id="forgotPasswordBtn">忘记密码？</button>
           </div>
@@ -113,43 +113,17 @@
       <main class="main">
         <header class="topbar">
           <div>
-            <p class="eyebrow" id="topEyebrow">QLanalyser Online v0.1 Pilot · 项目：客户 Oddball ERP / 5 份 EEG</p>
-            <h1 id="viewTitle">脑电数据分析总览</h1>
+            <p class="eyebrow" id="topEyebrow">QLanalyser Online v0.1 Pilot · EEG 主流程</p>
+            <h1 id="viewTitle">EEG 分析工作台</h1>
           </div>
           <div class="top-actions">
             <button class="icon-btn" id="knowledgeBtn" title="知识库"><i data-lucide="book-open"></i></button>
             <button class="icon-btn" id="auditBtn" title="审计日志"><i data-lucide="shield-check"></i><span class="dot"></span></button>
-            <button class="primary-btn" id="tutorialBtn" data-view-jump="journey"><i data-lucide="play"></i><span>跟着教程做</span></button>
-            <a class="ghost-btn top-link-btn" href="./module-lab.html"><i data-lucide="flask-conical"></i><span>体验</span></a>
+            <button class="primary-btn" id="tutorialBtn" data-view-jump="journey"><i data-lucide="play"></i><span>查看流程</span></button>
+            <a class="ghost-btn top-link-btn" href="./module-lab.html"><i data-lucide="flask-conical"></i><span>实验室</span></a>
             <button class="ghost-btn" id="logoutBtn"><i data-lucide="log-out"></i><span>退出</span></button>
           </div>
         </header>
-
-        <section class="central-config-note" aria-label="总控台托管说明">
-          <div>
-            <strong>流程平台</strong>
-            <p>脑电平台只展示上传、分析、统计、投稿图和计费流程；模型、Key、SMTP 与通用工具配置统一在总控台维护。</p>
-          </div>
-          <span>总控台</span>
-        </section>
-
-        <section class="boss-brief">
-          <div>
-            <span>当前状态</span>
-            <strong>这里展示脑电分析任务从上传、方法选择到结果报告的全过程。</strong>
-            <p>当前页面会把复杂的 EEG 流程拆成项目总览、分析、统计、投稿图和数据管理。</p>
-          </div>
-          <div>
-            <span>业务价值</span>
-            <strong>它帮助用户判断数据是否可分析、结果是否可交付。</strong>
-            <p>老板视角重点看任务是否完成、结果是否可下载、用户是否还卡在上传或方法选择。</p>
-          </div>
-          <div>
-            <span>现在可以做</span>
-            <strong>先看“项目总览”，再进入“开始分析”或“投稿图”。</strong>
-            <p>如果用户不会选方法，优先使用新手教程；如果结果已生成，直接查看统计结果和下载包。</p>
-          </div>
-        </section>
 
         <section class="view active" id="dashboard">
           <div class="metric-grid">
@@ -162,8 +136,8 @@
           <div class="work-grid">
             <section class="panel span-2">
               <div class="panel-head">
-                <div><h2>我的分析进度</h2><p>系统会按顺序带你完成上传、选择方法、生成图表、下载结果和申请开票。</p></div>
-                <button class="ghost-btn" data-view-jump="journey"><i data-lucide="arrow-right"></i><span>回到新手教程</span></button>
+                <div><h2>当前流程</h2><p>请按左侧顺序完成项目、数据、预览、分析、统计和下载。</p></div>
+                <button class="ghost-btn" data-view-jump="journey"><i data-lucide="arrow-right"></i><span>查看流程</span></button>
               </div>
               <div class="task-list" id="taskList"></div>
             </section>
@@ -200,15 +174,6 @@
               </div>
               <div class="real-downloads" id="realReportDownloads"></div>
             </section>
-            <section class="panel">
-              <div class="panel-head compact"><h2>新手安全护栏</h2></div>
-              <div class="checklist">
-                <label><input type="checkbox" checked /> 不知道分析方法时，先让系统按事件标签和范式推荐。</label>
-                <label><input type="checkbox" checked /> 只在 subject-level 指标表上做组统计。</label>
-                <label><input type="checkbox" checked /> 每张图绑定参数、软件版本、统计表和复现记录。</label>
-                <label><input type="checkbox" checked /> 下载包里会自动包含图、表、方法说明和复现记录。</label>
-              </div>
-            </section>
           </div>
 
           <section class="panel">
@@ -234,14 +199,14 @@
 
           <section class="panel">
             <div class="panel-head">
-              <div><h2>小白新手教程：照着 8 步点就能完成</h2><p>你不需要先懂 MNE、EEGLAB 或统计学。每一步都告诉你：为什么做、点哪里、默认选什么、完成后会得到什么。</p></div>
+              <div><h2>流程引导</h2><p>按项目、数据、预处理、分析、统计和下载六步完成一次 EEG 分析。</p></div>
               <button class="ghost-btn" data-view-jump="analysis"><i data-lucide="arrow-right"></i><span>直接开始</span></button>
             </div>
             <div class="journey-grid">
               <article class="journey-card active" role="button" tabindex="0" data-journey-step="0"><b>1</b><h3>先建项目</h3><p>给这次分析取一个名字，比如客户 Oddball ERP。不会填也没关系，系统会给你示例。</p><small>点哪里：进入“开始分析”，先确认项目名和数据数量。</small></article>
               <article class="journey-card" role="button" tabindex="0" data-journey-step="1"><b>2</b><h3>上传脑电</h3><p>把 EDF、SET 或 FIF 文件拖进去。系统会自动读取通道、采样率和事件标签。</p><small>默认怎么选：直接保留自动识别结果。</small></article>
               <article class="journey-card" role="button" tabindex="0" data-journey-step="2"><b>3</b><h3>看懂费用</h3><p>平台按脑电记录时长计费。5 份数据，每份 1 小时，就是 5 小时，费用 5 元。</p><small>点哪里：确认费用后点击“提交分析”。</small></article>
-              <article class="journey-card important" role="button" tabindex="0" data-journey-step="3"><b>4</b><h3>不会选方法</h3><p>选择“我不知道分析方法”。系统会看你的范式和事件标签，自动推荐 ERP/P300。</p><small>小白重点：不要自己硬猜算法。</small></article>
+              <article class="journey-card important" role="button" tabindex="0" data-journey-step="3"><b>4</b><h3>不会选方法</h3><p>选择“我不知道分析方法”。系统会看你的范式和事件标签，自动推荐 ERP/P300。</p><small>建议：不要自己硬猜算法。</small></article>
               <article class="journey-card" role="button" tabindex="0" data-journey-step="4"><b>5</b><h3>使用默认参数</h3><p>系统会给出适合新手的默认窗口、基线和通道。你可以先不改高级参数。</p><small>默认建议：epoch -0.2 到 0.8 秒。</small></article>
               <article class="journey-card" role="button" tabindex="0" data-journey-step="5"><b>6</b><h3>查看质控</h3><p>系统会告诉你有没有坏道、坏段、眨眼伪迹和试次数不足。</p><small>出错怎么办：看到红色提示时，先下载质控报告。</small></article>
               <article class="journey-card" role="button" tabindex="0" data-journey-step="6"><b>7</b><h3>生成图和表</h3><p>平台会自动生成主图、统计表、每位被试指标表和方法说明。</p><small>点哪里：进入“投稿图”下载结果包。</small></article>
@@ -390,7 +355,7 @@
             <article class="step-card"><b>5</b><h3>发表包</h3><p>导出图、表、方法说明、图注和复现记录。</p><small>结果：编辑可复核。</small></article>
           </div>
           <section class="panel">
-            <div class="panel-head"><div><h2>新手不知道选哪种分析时</h2><p>平台先问范式和事件标签，再把方法收敛到少数可解释选项。</p></div></div>
+            <div class="panel-head"><div><h2>分析分支</h2><p>按研究问题进入 QC、PSD、ERP、TFR、PAC 或 Connectivity。</p></div></div>
             <div class="mapping-grid">
               <div><strong>Oddball</strong><span>target/standard -> ERP P300，后顶区 280-420 ms。</span></div>
               <div><strong>Stroop</strong><span>congruent/incongruent -> ERP N2/P3 或时频 theta。</span></div>
@@ -611,7 +576,7 @@
             <section class="panel">
               <div class="panel-head compact"><h2>最新注册客户</h2></div>
               <div class="profile-card">
-                <div><span>姓名</span><strong id="adminCustomerName">Oddball 小白用户</strong></div>
+                <div><span>姓名</span><strong id="adminCustomerName">Oddball 试用用户</strong></div>
                 <div><span>邮箱</span><strong id="adminCustomerEmail">399467826@qq.com</strong></div>
                 <div><span>单位</span><strong id="adminCustomerOrg">认知神经科学实验室</strong></div>
                 <div><span>注册时间</span><strong id="adminCustomerRegisteredAt">2026-06-06 09:00</strong></div>

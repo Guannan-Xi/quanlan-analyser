@@ -60,87 +60,6 @@ button {
   box-shadow: 0 10px 28px rgba(15, 23, 42, 0.24);
 }
 
-.boss-brief {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-  margin-bottom: 18px;
-}
-
-.boss-brief div {
-  border: 1px solid var(--line);
-  border-left: 3px solid #14b8a6;
-  border-radius: 8px;
-  background: var(--panel);
-  padding: 16px;
-  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.055);
-}
-
-.boss-brief span {
-  color: var(--teal);
-  display: block;
-  font-size: 12px;
-  font-weight: 900;
-  margin-bottom: 8px;
-}
-
-.boss-brief strong {
-  display: block;
-  line-height: 1.4;
-  margin-bottom: 8px;
-}
-
-.boss-brief p {
-  color: var(--muted);
-  font-size: 13px;
-  line-height: 1.55;
-  margin: 0;
-}
-
-.central-config-note {
-  align-items: center;
-  background: linear-gradient(90deg, #ecfdf7 0%, #ffffff 100%);
-  border: 1px solid rgba(15, 118, 110, 0.22);
-  border-left: 4px solid var(--teal);
-  border-radius: 8px;
-  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.055);
-  display: flex;
-  gap: 14px;
-  justify-content: space-between;
-  margin-bottom: 14px;
-  min-width: 0;
-  padding: 14px 16px;
-}
-
-.central-config-note strong {
-  color: var(--teal);
-  display: block;
-  font-size: 14px;
-  margin-bottom: 4px;
-}
-
-.central-config-note p {
-  color: var(--muted);
-  font-size: 13px;
-  line-height: 1.55;
-  margin: 0;
-  overflow-wrap: anywhere;
-}
-
-.central-config-note span {
-  align-items: center;
-  background: var(--teal-soft);
-  border: 1px solid rgba(15, 118, 110, 0.18);
-  border-radius: 999px;
-  color: var(--teal);
-  display: inline-flex;
-  flex: 0 0 auto;
-  font-size: 12px;
-  font-weight: 900;
-  min-height: 28px;
-  padding: 0 10px;
-}
-
 .login-screen {
   position: relative;
   display: grid;
@@ -2327,10 +2246,6 @@ select {
     flex-direction: column;
   }
 
-  .central-config-note {
-    align-items: flex-start;
-    flex-direction: column;
-  }
 
   .metric-grid,
   .analysis-layout,

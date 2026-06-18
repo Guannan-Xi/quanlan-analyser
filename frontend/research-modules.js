@@ -106,7 +106,7 @@ function renderModule(manifest, slug) {
   const pages = Object.values(manifest.modules);
   app.innerHTML = `<header class="module-header">
     <nav class="module-nav">
-      <a href="../research-modules.html">${icon("arrow-left")} 返回体验中心</a>
+      <a href="../research-modules.html">${icon("arrow-left")} 返回分析实验室</a>
       <div>${pages.map((p)=>`<a href="./${p.page}">${h(p.slug.toUpperCase())}</a>`).join("")}</div>
     </nav>
     <section class="module-title">
@@ -117,7 +117,7 @@ function renderModule(manifest, slug) {
       <div class="quick-links">
         <a class="primary" href="${asset(m.package)}">${icon("download")}下载结果包</a>
         <a class="secondary" href="${asset(manifest.shared.mne_reference)}">${icon("book-open")}MNE 参考清单</a>
-        <a class="secondary" href="${asset(manifest.shared.reviewer_checklist)}">${icon("clipboard-check")}体验清单</a>
+        <a class="secondary" href="${asset(manifest.shared.reviewer_checklist)}">${icon("clipboard-check")}复核清单</a>
       </div>
     </section>
   </header>

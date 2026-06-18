@@ -194,14 +194,14 @@ function firstEnabledModule(manifest) {
 
 function renderTopbar(manifest, compact = false) {
   return `<nav class="lab-nav ${compact ? "compact" : ""}">
-    <a class="brand" href="./module-lab.html" aria-label="体验中心">
+    <a class="brand" href="./module-lab.html" aria-label="分析实验室">
       <span class="brand-mark">QL</span>
-      <span><strong>体验中心</strong><small>免费试用最新项目</small></span>
+      <span><strong>分析实验室</strong><small>免登录查看流程</small></span>
     </a>
     <div class="quick">
       <a href="./index.html">${icon("home")}正式工作台</a>
       <a href="./research-modules.html">${icon("layout-dashboard")}项目总览</a>
-      <a class="pill" href="${asset(manifest.shared?.reviewer_checklist)}">${icon("clipboard-check")}体验清单</a>
+      <a class="pill" href="${asset(manifest.shared?.reviewer_checklist)}">${icon("clipboard-check")}复核清单</a>
     </div>
   </nav>`;
 }
@@ -213,9 +213,9 @@ function renderOpenDesignDemo(manifest) {
   const featured = firstEnabledModule(manifest);
   return `<section class="demo-band" data-open-design-demo>
     <div class="section-head">
-      <p class="eyebrow">体验流程</p>
-      <h1>体验中心</h1>
-      <p>不用登录，先体验 EEG 质控、频谱和 ERP，看清输入、输出和结果文件</p>
+      <p class="eyebrow">免登录体验</p>
+      <h1>分析实验室</h1>
+      <p>按 EEG 主流程查看项目建立、数据导入、预览、分析、统计和下载</p>
     </div>
     <div class="demo-workbench">
       <aside class="stage-rail" aria-label="项目体验步骤">
@@ -226,7 +226,7 @@ function renderOpenDesignDemo(manifest) {
       </aside>
       <article class="demo-canvas">
         <div class="canvas-toolbar">
-          <span class="status enabled">免费体验</span>
+          <span class="status enabled">免登录</span>
           <span>${enabled} 个已可体验</span>
           <span>${preview} 个即将开放</span>
         </div>
@@ -247,14 +247,14 @@ function renderOpenDesignDemo(manifest) {
         </div>
         <div class="canvas-actions">
           <a class="btn primary" href="./module-lab.html?module=${h(featured?.slug || "qc")}">${icon("play")}体验 ${h((featured?.slug || "qc").toUpperCase())}</a>
-          <a class="btn" href="#review-plan">${icon("list-checks")}查看体验说明</a>
+          <a class="btn" href="#review-plan">${icon("list-checks")}查看使用边界</a>
         </div>
       </article>
       <aside class="handoff-panel">
-        <h2>体验说明</h2>
+        <h2>使用边界</h2>
         <dl>
           <div><dt>正式项目</dt><dd>登录后管理真实项目数据</dd></div>
-          <div><dt>免费体验</dt><dd>不用注册即可先看最新项目</dd></div>
+          <div><dt>免登录</dt><dd>可先看流程、输入、参数和下载文件</dd></div>
           <div><dt>可查看</dt><dd>输入、参数、结果图表和下载文件</dd></div>
         </dl>
       </aside>
@@ -266,9 +266,9 @@ function renderReviewPlan() {
   return `<section class="review-band" id="review-plan" data-review-matrix>
     <div class="section-head row-head">
       <div>
-        <p class="eyebrow">体验顺序</p>
-        <h2>先试哪个项目</h2>
-        <p>按研究目的选择项目，先确认数据要求、关键参数、输出图表和科研边界</p>
+        <p class="eyebrow">流程顺序</p>
+        <h2>按什么顺序看</h2>
+        <p>先确认数据、参数、输出和边界，再决定是否进入正式流程</p>
       </div>
       <div class="segmented" role="group" aria-label="体验范围过滤">
         <button class="active" type="button" data-review-filter="all">全部</button>
@@ -290,9 +290,9 @@ function renderReviewPlan() {
 function renderModuleGrid(manifest) {
   return `<section class="module-band">
     <div class="section-head">
-      <p class="eyebrow">体验项目</p>
-      <h2>体验项目</h2>
-      <p>QC / PSD / ERP 已可体验；TFR / PAC / Connectivity 即将开放</p>
+      <p class="eyebrow">可体验项目</p>
+      <h2>已开放的项目</h2>
+      <p>先看 QC、PSD、ERP；其余项目保持预览状态</p>
     </div>
     <div class="module-grid">
       ${modules(manifest).map((module) => `<article class="module-card">
@@ -403,8 +403,8 @@ function renderDetail(manifest, slug) {
         <div class="module-links">
           ${slug === "qc" ? `<a class="btn primary" href="./qc-lab.html">${icon("activity")}体验 QC 预览</a>` : ""}
           <a class="btn primary" href="${asset(module.package)}">${icon("archive")}下载结果包</a>
-          <a class="btn" href="${asset(manifest.shared?.reviewer_checklist)}">${icon("clipboard-check")}体验清单</a>
-          <a class="btn" href="./module-lab.html#review-plan">${icon("arrow-left")}返回体验中心</a>
+          <a class="btn" href="${asset(manifest.shared?.reviewer_checklist)}">${icon("clipboard-check")}复核清单</a>
+          <a class="btn" href="./module-lab.html#review-plan">${icon("arrow-left")}返回分析实验室</a>
         </div>
       </section>
       ${renderBackendDemo(module)}
@@ -486,7 +486,7 @@ async function main() {
     if (slug) bindDemoRunner();
     if (window.lucide) window.lucide.createIcons();
   } catch (error) {
-    root.innerHTML = `<section class="lab-wrap"><div class="empty">体验中心加载失败：${h(error.message || error)}</div></section>`;
+    root.innerHTML = `<section class="lab-wrap"><div class="empty">分析实验室加载失败：${h(error.message || error)}</div></section>`;
   }
 }
 

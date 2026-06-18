@@ -608,3 +608,17 @@ Risks / notes:
 
 - Keep API keys in user environment only; do not commit keys, tokens, request logs, or generated debug output.
 - `docs/modules/qc_common_data_preparation_requirements.md` was present as an unrelated untracked file and was not touched.
+
+## 2026-06-18 UI information noise cleanup
+
+Scope:
+
+- Removed internal explanatory cards from the logged-in workbench entry area.
+- Removed the "new user safety guard" panel that repeated method and output rules already covered elsewhere.
+- Kept the customer path focused on the actual EEG workflow and the Analysis Lab entry.
+
+Validation:
+
+- `node --check frontend/app.js frontend/module-lab.js frontend/research-modules.js scripts/acceptance_research_modules_static.mjs`: passed.
+- `node scripts/acceptance_research_modules_static.mjs`: passed, 212 checks, 6 module pages.
+- Removed stale acceptance wording that treated the new Analysis Lab name as invalid.

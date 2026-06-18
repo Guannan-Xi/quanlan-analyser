@@ -124,10 +124,10 @@ async function main() {
   const openDesignDemo = await labIndex.locator("[data-open-design-demo]").count();
   const reviewMatrix = await labIndex.locator("[data-review-matrix]").count();
   const stageButtons = await labIndex.locator("[data-stage]").count();
-  check("experience center copy avoids old lab name", !labBody.includes("\u5206\u6790\u5b9e\u9a8c\u5ba4") && !labBody.includes("Open Design"), { text: labBody.slice(0, 1000) });
+  check("analysis lab copy uses customer-facing name", labBody.includes("\u5206\u6790\u5b9e\u9a8c\u5ba4") && !labBody.includes("Open Design"), { text: labBody.slice(0, 1000) });
   check("experience center labels stable items", labBody.includes("\u5df2\u53ef\u4f53\u9a8c") && !labBody.includes("\u5df2\u542f\u7528"), { text: labBody.slice(0, 1000) });
   check("experience center labels preview items", labBody.includes("\u5373\u5c06\u5f00\u653e") && !labBody.includes("\u9884\u7814"), { text: labBody.slice(0, 1000) });
-  check("experience center heading", labBody.includes("\u4f53\u9a8c\u4e2d\u5fc3"));
+  check("analysis lab heading", labBody.includes("\u5206\u6790\u5b9e\u9a8c\u5ba4"));
   check("experience center project cards", labCards === EXPECTED.length, { labCards });
   check("experience center has early access panel", openDesignDemo === 1, { openDesignDemo });
   check("experience center has checklist table", reviewMatrix === 1, { reviewMatrix });

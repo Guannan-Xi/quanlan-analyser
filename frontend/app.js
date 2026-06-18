@@ -84,17 +84,17 @@ const paradigms = [
 ];
 
 const titles = {
-  dashboard: "我的脑电分析项目",
-  journey: "新手教程：一步一步完成脑电分析",
-  analysis: "开始脑电分析",
-  workflow: "新手交互式分析向导",
-  paradigms: "20 个常见脑电范式",
-  statistics: "科研统计与待统计数据",
-  publication: "发表级图像后处理",
-  upload: "上传脑电数据",
-  storage: "我的线上数据",
-  billing: "支付与计时计费",
-  invoice: "在线申请开票",
+  dashboard: "工作台总览",
+  journey: "流程引导",
+  analysis: "上传与预览",
+  workflow: "分析分支",
+  paradigms: "范式参考",
+  statistics: "统计与结果",
+  publication: "图表下载",
+  upload: "数据导入",
+  storage: "数据资产",
+  billing: "计费",
+  invoice: "开票",
   adminDashboard: "后台总览",
   adminOperations: "任务运营",
   adminFinance: "订单开票管理",
@@ -167,7 +167,7 @@ const journeyDetails = [
   {
     title: "第 5 步：使用默认参数",
     body: "系统给出 epoch -0.2~0.8 s、baseline -0.2~0 s、P300 280-420 ms、Pz/P3/P4、target-standard。",
-    action: "小白用户先用默认参数即可，后续再让专家调整高级参数。",
+    action: "先使用默认参数，后续再让专家调整高级参数。",
     view: "analysis",
   },
   {
@@ -197,7 +197,7 @@ const modalContent = {
       <p>这里会解释脑电分析中的常见概念：事件锁定分析、连续片段选择、每位被试指标、统计校正、图像导出和复现记录。</p>
       <div class="modal-actions">
         <button class="ghost-btn" data-modal-view="workflow"><i data-lucide="route"></i><span>打开新手向导</span></button>
-        <button class="ghost-btn" data-modal-view="journey"><i data-lucide="clipboard-check"></i><span>查看新手教程</span></button>
+        <button class="ghost-btn" data-modal-view="journey"><i data-lucide="clipboard-check"></i><span>查看流程</span></button>
       </div>
     `,
   },
