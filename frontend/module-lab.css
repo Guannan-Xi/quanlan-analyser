@@ -305,6 +305,15 @@ svg { width: 16px; height: 16px; stroke-width: 2.2; }
 .artifact span { display: inline-flex; margin-bottom: 7px; padding: 3px 7px; border-radius: 999px; background: #e9f4f2; color: var(--teal-dark); font-size: 11px; font-weight: 900; }
 .artifact strong { display: block; margin-bottom: 5px; }
 .artifact small { color: var(--muted); word-break: break-all; }
+.demo-runner { border-color: rgba(13, 148, 136, 0.28); background: linear-gradient(135deg, #ffffff, #f0fdfa); }
+.runner-head { display: flex; justify-content: space-between; align-items: center; gap: 18px; }
+.runner-head p { margin-bottom: 0; }
+.demo-result { margin-top: 16px; }
+.demo-status { padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: #fff; color: var(--muted); display: grid; gap: 4px; }
+.demo-status strong { color: var(--ink); }
+.demo-status.ok { border-color: rgba(13, 148, 136, 0.35); background: #ecfdf5; color: #0f766e; }
+.demo-status.error { border-color: rgba(220, 38, 38, 0.25); background: #fff1f2; color: #b91c1c; }
+.artifact-grid.compact { margin-top: 12px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
 .callout { border-left: 5px solid var(--coral); background: #fff8f4; }
 .callout p { color: #344451; }
 .empty { padding: 20px; border: 1px dashed var(--line); border-radius: 8px; color: var(--muted); }
@@ -315,6 +324,7 @@ svg { width: 16px; height: 16px; stroke-width: 2.2; }
 }
 @media (max-width: 900px) {
   .lab-nav, .row-head { align-items: flex-start; flex-direction: column; }
+  .runner-head { align-items: stretch; flex-direction: column; }
   .quick { justify-content: flex-start; }
   .demo-workbench, .open-design-panel, .detail-shell, .module-grid, .grid-2, .figure-grid, .artifact-grid { grid-template-columns: 1fr; }
   .side { position: static; }

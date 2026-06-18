@@ -50,6 +50,7 @@ outputs/**/*.log
 outputs/**/customer*
 
 data/uploads/**
+data/demo/**
 data/derivatives/**
 data/reports/**
 data/state/**

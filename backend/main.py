@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.api import admin, artifacts, billing, data_crud, eeg_files, health, projects, reports, subjects, tasks, templates, workflow
+from backend.api import admin, artifacts, billing, data_crud, eeg_files, health, lab_demo, projects, reports, subjects, tasks, templates, workflow
 
 app = FastAPI(
     title="QuanLan Analyser API",
@@ -20,6 +20,7 @@ app.add_middleware(
         "http://127.0.0.1:4173",
         "http://127.0.0.1:8765",
         "http://localhost:8765",
+        "http://39.97.248.225",
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -27,6 +28,7 @@ app.add_middleware(
 )
 
 app.include_router(health.router, prefix="/api", tags=["health"])
+app.include_router(lab_demo.router, prefix="/api", tags=["lab-demo"])
 app.include_router(projects.router, prefix="/api", tags=["projects"])
 app.include_router(subjects.router, prefix="/api", tags=["subjects"])
 app.include_router(eeg_files.router, prefix="/api", tags=["eeg-files"])

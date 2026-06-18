@@ -52,6 +52,12 @@ def create_project(payload: ProjectCreate) -> ProjectRead:
     return project
 
 
+def upsert_project(project: ProjectRead) -> ProjectRead:
+    _projects[project.id] = project
+    state_store.upsert_item("projects", project)
+    return project
+
+
 def list_projects() -> list[ProjectRead]:
     _refresh_projects()
     return list(_projects.values())
@@ -108,6 +114,13 @@ async def create_eeg_file(project_id: str, subject_id: str | None, upload: Uploa
         stored_path=stored_path,
         detected_format=suffix,
     )
+    _eeg_files[eeg_file.id] = eeg_file
+    state_store.upsert_item("eeg_files", eeg_file)
+    return eeg_file
+
+
+def register_eeg_file(eeg_file: EEGFileRead) -> EEGFileRead:
+    get_project(eeg_file.project_id)
     _eeg_files[eeg_file.id] = eeg_file
     state_store.upsert_item("eeg_files", eeg_file)
     return eeg_file

@@ -1,5 +1,8 @@
 const MANIFEST_URL = "./assets/research-modules/reproducibility/research_module_manifest.json";
+const DEFAULT_API_BASE = ["localhost", "127.0.0.1"].includes(window.location.hostname) ? "http://127.0.0.1:8000/api" : "/api";
+const API_BASE = new URLSearchParams(window.location.search).get("api") || DEFAULT_API_BASE;
 const MODULE_ORDER = ["qc", "psd", "erp", "tfr", "pac", "connectivity"];
+const DEMO_MODULES = new Set(["qc", "psd", "erp"]);
 const SECTION_ANCHORS = [
   { id: "inputs", label: "数据输入" },
   { id: "controls", label: "参数与预处理" },
@@ -133,6 +136,20 @@ function h(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
+}
+
+function api(path) {
+  return `${API_BASE}${path}`;
+}
+
+async function apiJson(path, options = {}) {
+  const response = await fetch(api(path), options);
+  if (!response.ok) {
+    let detail = await response.text();
+    try { detail = JSON.parse(detail).detail || detail; } catch {}
+    throw new Error(detail || `HTTP ${response.status}`);
+  }
+  return response.json();
 }
 
 function asset(url) {
@@ -329,6 +346,34 @@ function testRows(slug) {
   return (moduleTests[slug] || []).map(([name, rule]) => `<tr><td><strong>${h(name)}</strong></td><td>${h(rule)}</td></tr>`).join("");
 }
 
+function renderBackendDemo(module) {
+  if (!DEMO_MODULES.has(module.slug)) {
+    return `<section class="panel demo-runner"><h2>后端服务</h2><p>该项目目前是方法预览，后端执行开放前会先完成统计、参数和风险评审。</p></section>`;
+  }
+  return `<section class="panel demo-runner" id="backend-demo" data-demo-module="${h(module.slug)}">
+    <div class="runner-head">
+      <div>
+        <p class="eyebrow">后端示例</p>
+        <h2>运行内置教学数据</h2>
+        <p>使用合成 oddball EDF 跑 ${h(module.slug.toUpperCase())}，返回任务状态、结果文件和复现材料。</p>
+      </div>
+      <button class="btn primary" type="button" data-demo-run="${h(module.slug)}">${icon("play")}运行示例</button>
+    </div>
+    <div class="demo-result" data-demo-result>还没有运行。点击按钮后会调用后端服务。</div>
+  </section>`;
+}
+
+function renderDemoResult(task, artifacts) {
+  const links = artifacts.slice(0, 8).map((item) => `<a class="artifact" href="${api(`/artifacts/${item.id}/download`)}" target="_blank" rel="noopener">
+    <span>${h(item.artifact_type)}</span><strong>${h(item.label)}</strong><small>${h(item.path)}</small>
+  </a>`).join("");
+  return `<div class="demo-status ok">
+    <strong>任务完成：${h(task.module_name.toUpperCase())}</strong>
+    <span>task_id：${h(task.id)} · workflow：${h(task.workflow_id)} · status：${h(task.status)}</span>
+  </div>
+  <div class="artifact-grid compact">${links || `<div class="empty">暂无产物</div>`}</div>`;
+}
+
 function renderSide(manifest, slug) {
   return `<aside class="side">
     <h2>流程导航</h2>
@@ -362,6 +407,7 @@ function renderDetail(manifest, slug) {
           <a class="btn" href="./module-lab.html#review-plan">${icon("arrow-left")}返回体验中心</a>
         </div>
       </section>
+      ${renderBackendDemo(module)}
       <section class="panel grid-2" id="inputs">
         <div><h2>输入</h2>${list(module.inputs)}</div>
         <div id="controls"><h2>参数</h2>${list(module.controls)}</div>
@@ -376,6 +422,27 @@ function renderDetail(manifest, slug) {
       <section class="panel callout" id="risks"><h2>科研边界与风险</h2>${list(module.risks, "risk")}<p><strong>当前状态：</strong>${h(handoff[slug])}</p><p><strong>共享边界：</strong>${h(manifest.researchGuardrail)}</p></section>
     </div>
   </main>`;
+}
+
+function bindDemoRunner() {
+  document.querySelectorAll("[data-demo-run]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const module = button.dataset.demoRun;
+      const box = document.querySelector("[data-demo-result]");
+      button.disabled = true;
+      if (box) box.innerHTML = `<div class="demo-status">正在运行 ${h(module.toUpperCase())} 示例，请稍候...</div>`;
+      try {
+        const task = await apiJson(`/lab/demo/run/${encodeURIComponent(module)}`, { method: "POST" });
+        const artifacts = await apiJson(`/tasks/${encodeURIComponent(task.id)}/artifacts`);
+        if (box) box.innerHTML = renderDemoResult(task, artifacts);
+      } catch (error) {
+        if (box) box.innerHTML = `<div class="demo-status error">运行失败：${h(error.message || error)}</div>`;
+      } finally {
+        button.disabled = false;
+        if (window.lucide) window.lucide.createIcons();
+      }
+    });
+  });
 }
 
 function bindIndexInteractions() {
@@ -416,6 +483,7 @@ async function main() {
     const slug = currentSlug();
     root.innerHTML = slug ? renderDetail(manifest, slug) : renderIndex(manifest);
     if (!slug) bindIndexInteractions();
+    if (slug) bindDemoRunner();
     if (window.lucide) window.lucide.createIcons();
   } catch (error) {
     root.innerHTML = `<section class="lab-wrap"><div class="empty">体验中心加载失败：${h(error.message || error)}</div></section>`;
