@@ -276,3 +276,25 @@ Result:
 Risks:
 - The worktree still contains unrelated legacy changes under `outputs/eeglab-mne-mvp/` and untracked files. Commit this task with precise staging only.
 - The Analysis Lab is no-login by design and must continue to expose only static synthetic/research-demo assets unless a separate access-control decision is made.
+
+## 15. Aliyun deployment for no-login Analysis Lab
+
+Date: 2026-06-18
+
+The no-login Analysis Lab was deployed to Aliyun for user testing.
+
+- Public base: `http://39.97.248.225`
+- Lab entry: `http://39.97.248.225/module-lab.html`
+- Module URLs: `module-lab.html?module=qc`, `psd`, `erp`, `tfr`, `pac`, `connectivity`.
+- Formal workbench/login remains separate: the public root still renders the normal login form and only links to the lab as a no-login static trial.
+- Remote static root: `/opt/qlanalyser/outputs/aliyun-static-lite`
+- Remote service: `qlanalyser.service`
+- Remote backup: `/opt/qlanalyser/backups/module-lab-static.20260618_131208.tar.gz`
+
+Validation:
+- Remote service restart: passed.
+- Public root `/`: 200, login form present, lab links present.
+- Public lab `/module-lab.html`: 200, six module cards rendered.
+- Public lab module URLs for QC / PSD / ERP / TFR / PAC / Connectivity: 200 and include inputs, parameters, MNE methods, outputs, acceptance matrix, and research guardrails.
+- Public virtual users: passed, min_score 1.0.
+

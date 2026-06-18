@@ -494,3 +494,29 @@ Result:
 ### Risks
 - Worktree still contains unrelated legacy/untracked changes. Stage only this task's files.
 - No-login lab must remain restricted to synthetic/static research-demo data until a separate access-control decision is made.
+
+## Aliyun deployment for no-login Analysis Lab
+
+Date: 2026-06-18
+
+### Task goal
+Deploy the newly committed no-login Analysis Lab to Aliyun while keeping the formal workbench login boundary intact.
+
+### Deployment
+- Public base: `http://39.97.248.225`
+- Lab: `http://39.97.248.225/module-lab.html`
+- Remote static root: `/opt/qlanalyser/outputs/aliyun-static-lite`
+- Remote backup: `/opt/qlanalyser/backups/module-lab-static.20260618_131208.tar.gz`
+- Remote wrapper patched with explicit routes for `/module-lab.html`, `/module-lab.css`, and `/module-lab.js`.
+- Service restarted: `qlanalyser.service`.
+
+### Validation
+- `/`: 200, formal login form still present, lab link present.
+- `/research-modules.html`: 200, lab link present.
+- `/module-lab.html`: 200, six module cards rendered.
+- `/module-lab.html?module=qc|psd|erp|tfr|pac|connectivity`: all 200, no broken lab images, required sections present.
+- `python scripts/launch_v01_public_virtual_users.py http://39.97.248.225`: passed, min_score 1.0.
+
+### Boundary
+The no-login behavior is only for the static Analysis Lab. The formal workbench/login flow remains separate.
+
