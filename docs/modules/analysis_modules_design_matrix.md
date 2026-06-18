@@ -12,6 +12,10 @@
 - beta：条件满足时可执行，但解释边界更严格。
 - preview：实验室展示和设计评审，不承诺后端生产执行。
 
+MNE 设计总依据：
+
+- `docs/modules/mne_analysis_function_design_basis.md`：所有 EEG 分析功能的 MNE 对象、API、输入输出、失败模式和科研风险基线。
+
 ## 2. 模块总览
 
 | 模块 | 当前状态 | v0.1 后端 | 实验室 | 主流程 | 下一步 |
@@ -209,3 +213,4 @@ preview。v0.1 只展示设计，不承诺后端生产执行。
 1. `docs/modules/qc_design.md`
 2. `docs/modules/psd_design.md`
 3. `docs/modules/erp_design.md`
+4. 基于 `docs/modules/mne_analysis_function_design_basis.md` 逐个补齐 PSD、ERP、TFR、PAC、Connectivity 的输入、参数、MNE API、输出、失败模式和验收脚本。

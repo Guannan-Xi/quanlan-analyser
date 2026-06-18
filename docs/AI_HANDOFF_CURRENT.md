@@ -76,7 +76,8 @@ QLanalyser Online 是面向科研团队的 EEG 数据管理、分析交付与复
 6. docs/architecture/system_architecture.md
 7. docs/architecture/version_detailed_design.md
 8. docs/modules/analysis_modules_design_matrix.md
-9. 与当前任务相关的其他 docs/architecture 或 docs/modules 文档
+9. docs/modules/mne_analysis_function_design_basis.md
+10. 与当前任务相关的其他 docs/architecture 或 docs/modules 文档
 
 协作规则：
 - 仓库 Markdown 文档是唯一开发依据。
@@ -97,3 +98,10 @@ As of 2026-06-18, the Analysis Lab is no longer only a static module review surf
 - Acceptance: `python scripts/acceptance_qc_preview_service.py`
 
 The lab remains a customer-facing free early-access area. Formal project management, customer data management, and production workbench flows remain behind login. Do not deploy the no-login live upload/service page for real customer data without an explicit access-control decision.
+
+## 9. Current design note: MNE analysis function basis
+
+As of 2026-06-18, every analysis-function design conversation should read `docs/modules/mne_analysis_function_design_basis.md` before drafting or implementing module behavior.
+
+- Current stable design targets: QC, preprocessing preview, PSD, and event-conditioned ERP.
+- Preview / future targets: TFR, PAC, Connectivity, statistics, and BIDS.

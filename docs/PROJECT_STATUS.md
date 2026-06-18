@@ -412,3 +412,32 @@ Risks and boundaries:
 - The no-login lab now includes a live upload/service page, so public deployment must avoid real customer data exposure and must keep formal project management behind login.
 - Failure-path coverage for invalid preview parameters still needs to be expanded.
 - Local runtime outputs under `data/` and `work/` must not be committed.
+
+## 20. MNE analysis function design basis
+
+Date: 2026-06-18
+
+Scope:
+
+- Distilled MNE documentation review and multi-model consultation into a canonical project design basis for EEG analysis functions.
+- Added `docs/modules/mne_analysis_function_design_basis.md` as the required starting document for QC, preprocessing, PSD, ERP, TFR, PAC, Connectivity, statistics, reports, and BIDS planning.
+- Linked the new basis from `docs/modules/analysis_modules_design_matrix.md` so future module design conversations can find it from the module index.
+
+Current design baseline:
+
+- Current dependency contract is `mne>=1.8`; local verification was run against `mne 1.10.1`.
+- Core MNE APIs verified locally: `Raw.compute_psd`, `Epochs.compute_psd`, `Epochs.compute_tfr`, `mne.Epochs`, `mne.Evoked`, `mne.events_from_annotations`, `mne.find_events`, `mne.preprocessing.ICA`, and `mne.Report`.
+- `mne_connectivity` and `mne_bids` are not installed in the current environment; Connectivity and BIDS remain preview / roadmap items until dependencies and methods are explicitly approved.
+
+Current step:
+
+- QC, preprocessing preview, PSD, and event-conditioned ERP are the first concrete function-design targets.
+- TFR remains preview until epoch, baseline, frequency, decimation, memory, and statistics rules are specified.
+- PAC requires custom or external-method design; it must include surrogate/null-model controls before beta.
+- Connectivity requires dependency review and volume-conduction/reference-risk controls before beta.
+
+Next step:
+
+1. Write `docs/modules/psd_design.md` using the MNE basis.
+2. Write `docs/modules/erp_design.md` with event mapping, baseline, reject, and drop-log rules.
+3. Expand `docs/modules/qc_design.md` failure-path coverage and preprocessing preview boundary.

@@ -656,3 +656,22 @@ python scripts/acceptance_v01_full.py
 1. Add QC preview failure-path tests and improve UI error messages.
 2. Start the next lab module service implementation for PSD or ERP using the same input/output pattern.
 3. Review deployment policy for no-login service pages before pushing this live to Aliyun.
+
+## 2026-06-18 MNE analysis design basis
+
+### Completed
+- Reviewed the project architecture docs, module matrix, conversation sync rules, and the current MNE dependency contract.
+- Consolidated multi-model MNE consultation output into `docs/modules/mne_analysis_function_design_basis.md`.
+- Linked the new basis from `docs/modules/analysis_modules_design_matrix.md`.
+- Recorded the new design baseline in `docs/PROJECT_STATUS.md`.
+
+### Current baseline
+- v0.1 stable targets remain QC, PSD, and event-conditioned ERP.
+- TFR stays preview until baseline/frequency/decimation/statistics rules are locked.
+- PAC is custom-needed and must include surrogate/null-model controls.
+- Connectivity stays preview until `mne-connectivity` and risk controls are approved.
+
+### Next
+1. Draft `docs/modules/psd_design.md` from the new MNE basis.
+2. Draft `docs/modules/erp_design.md` from the new MNE basis.
+3. Continue expanding QC failure-path and preprocessing-preview rules.
