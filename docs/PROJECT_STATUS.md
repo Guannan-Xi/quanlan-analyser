@@ -517,3 +517,31 @@ Next step:
 1. Add explicit ERP parameter validation for `tmin`, `tmax`, `baseline`, `components`, `reject_eeg_uv`, filter, and reference.
 2. Add drop log / rejected epoch summaries to ERP outputs.
 3. Add an event-id confirmation surface before treating ERP results as scientifically interpretable.
+
+## 24. EEG workflow information architecture
+
+Date: 2026-06-18
+
+Scope:
+
+- Reorganized the customer-facing workbench navigation around the EEG research workflow: project setup, data import, preview/preprocessing, analysis branches, statistics, figures, downloads, data assets, guide, and reference material.
+- Reworked the no-login preview area so its main frame follows the same workflow from project setup through downloadable reproducibility artifacts.
+- Updated Analysis Lab detail navigation from generic input/output labels to workflow labels: data input, parameters/preprocessing, analysis method, metric outputs, figures, downloads, review, and boundaries.
+- Kept internal routes stable, including `frontend/module-lab.html`, `module-lab.html?module=...`, and `research-module/*`.
+
+Review basis:
+
+- MNE/project evidence supports the flow Raw import -> QC/preprocessing -> events/epochs or spectrum/evoked branches -> statistics -> figures/reports/artifacts.
+- External model calls were attempted for IA review: GPT route returned 503; GLM route returned token usage but an empty content file, so final decisions used repository MNE docs, prior review artifacts, and internal reverse review.
+
+Boundary:
+
+- No backend API, authentication, route, or EEG algorithm change is included in this UI information-architecture pass.
+- `eeg_core/analysis/erp.py` has a separate local algorithm change and must not be mixed into this commit.
+
+Validation:
+
+- `node --check frontend/app.js frontend/module-lab.js frontend/research-modules.js scripts/acceptance_research_modules_static.mjs`: passed.
+- `python scripts/check_no_mojibake.py`: passed.
+- `git diff --check`: passed.
+- `node scripts/acceptance_research_modules_static.mjs`: passed, 212 checks, 6 module pages.

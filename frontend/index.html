@@ -8,9 +8,9 @@
     <script src="./vendor/lucide.min.js"></script>
   </head>
   <body>
-    <a class="boss-home" href="./expert-entry-demo.html" data-entry-home>返回主入口</a>
+    <a class="boss-home" href="./expert-entry-demo.html" data-entry-home>返回首页</a>
     <section class="login-screen" id="loginScreen">
-      <button class="admin-corner" type="button" data-login-tab="adminLogin" aria-label="管理员入口"><i data-lucide="settings"></i><span>管理</span></button>
+      <button class="admin-corner" type="button" data-login-tab="adminLogin" aria-label="管理员"><i data-lucide="settings"></i><span>管理</span></button>
       <div class="login-brand" aria-label="QLanalyser 脑电分析平台封面图">
         <div class="entry-brand-lockup">
           <span class="entry-kicker">全澜脑科学 | QuanLan BrainScience</span>
@@ -29,9 +29,9 @@
 
       <div class="login-panel">
         <div class="account-title">
-          <span>账号入口</span>
+          <span>账号</span>
           <strong>QLanalyser Online</strong>
-          <small>登录或注册后进入正式工作台；分析实验室可免登录单独试用。</small>
+          <small>登录或注册后进入正式工作台；体验中心可免登录单独试用。</small>
         </div>
 
         <div class="login-tabs account-tabs" role="tablist" aria-label="客户账户">
@@ -44,7 +44,7 @@
           <label><span>密码</span><input id="customerPassword" type="password" autocomplete="current-password" placeholder="请输入账户密码" /></label>
           <label class="checkline"><input id="rememberCustomer" type="checkbox" checked /> 记住登录状态</label>
           <button class="primary-btn full" type="submit"><i data-lucide="log-in"></i><span>登录</span></button>
-          <a class="lab-entry-btn full" href="./module-lab.html"><i data-lucide="flask-conical"></i><span>分析实验室（免登录）</span></a>
+          <a class="lab-entry-btn full" href="./module-lab.html"><i data-lucide="flask-conical"></i><span>体验中心（免登录）</span></a>
           <div class="login-links">
             <button type="button" id="forgotPasswordBtn">忘记密码？</button>
           </div>
@@ -70,7 +70,7 @@
         </form>
 
         <form class="login-form admin-form" id="adminLoginForm">
-          <p class="admin-note">后台入口仅用于运营人员管理客户、订单、任务和系统状态。</p>
+          <p class="admin-note">后台仅用于运营人员管理客户、订单、任务和系统状态。</p>
           <label><span>管理员邮箱</span><input id="adminEmail" type="email" value="ops@quanlan.cn" /></label>
           <label><span>管理员密码</span><input id="adminPassword" type="password" /></label>
           <button class="primary-btn full" type="submit"><i data-lucide="shield-check"></i><span>进入后台</span></button>
@@ -85,18 +85,18 @@
           <div class="brand-mark">QL</div>
           <div><strong>QLanalyser Online</strong><span>v0.1 Pilot · QuanLan BrainScience<sup class="registered-mark">®</sup> · 全澜脑科学<sup class="registered-mark">®</sup></span></div>
         </div>
-        <nav class="nav" aria-label="主导航">
-          <button class="nav-item active" data-view="journey" data-role="customer"><i data-lucide="clipboard-check"></i><span>新手教程</span></button>
-          <button class="nav-item" data-view="dashboard" data-role="customer"><i data-lucide="layout-dashboard"></i><span>项目总览</span></button>
-          <button class="nav-item" data-view="analysis" data-role="customer"><i data-lucide="activity"></i><span>开始分析</span></button>
-          <button class="nav-item" data-view="workflow" data-role="customer"><i data-lucide="route"></i><span>方法向导</span></button>
-          <button class="nav-item" data-view="paradigms" data-role="customer"><i data-lucide="test-tube-2"></i><span>范式库</span></button>
-          <button class="nav-item" data-view="statistics" data-role="customer"><i data-lucide="sigma"></i><span>统计结果</span></button>
-          <button class="nav-item" data-view="publication" data-role="customer"><i data-lucide="file-chart-column"></i><span>投稿图</span></button>
-          <button class="nav-item" data-view="upload" data-role="customer"><i data-lucide="hard-drive-upload"></i><span>上传数据</span></button>
-          <button class="nav-item" data-view="storage" data-role="customer"><i data-lucide="database"></i><span>我的数据</span></button>
-          <button class="nav-item" data-view="billing" data-role="customer"><i data-lucide="wallet"></i><span>充值计费</span></button>
-          <button class="nav-item" data-view="invoice" data-role="customer"><i data-lucide="receipt-text"></i><span>申请开票</span></button>
+        <nav class="nav" aria-label="脑电分析主流程">
+          <button class="nav-item active" data-view="dashboard" data-role="customer"><i data-lucide="folder-plus"></i><span>项目建立</span></button>
+          <button class="nav-item" data-view="upload" data-role="customer"><i data-lucide="hard-drive-upload"></i><span>数据导入</span></button>
+          <button class="nav-item" data-view="analysis" data-role="customer"><i data-lucide="activity"></i><span>预览预处理</span></button>
+          <button class="nav-item" data-view="workflow" data-role="customer"><i data-lucide="git-branch"></i><span>分析分支</span></button>
+          <button class="nav-item" data-view="statistics" data-role="customer"><i data-lucide="sigma"></i><span>统计</span></button>
+          <button class="nav-item" data-view="publication" data-role="customer"><i data-lucide="file-chart-column"></i><span>绘图下载</span></button>
+          <button class="nav-item" data-view="storage" data-role="customer"><i data-lucide="database"></i><span>数据资产</span></button>
+          <button class="nav-item" data-view="journey" data-role="customer"><i data-lucide="clipboard-check"></i><span>操作指引</span></button>
+          <button class="nav-item" data-view="paradigms" data-role="customer"><i data-lucide="test-tube-2"></i><span>范式参考</span></button>
+          <button class="nav-item" data-view="billing" data-role="customer"><i data-lucide="wallet"></i><span>计费</span></button>
+          <button class="nav-item" data-view="invoice" data-role="customer"><i data-lucide="receipt-text"></i><span>开票</span></button>
           <button class="nav-item" data-view="adminDashboard" data-role="admin"><i data-lucide="monitor-dot"></i><span>后台总览</span></button>
           <button class="nav-item" data-view="adminOperations" data-role="admin"><i data-lucide="list-checks"></i><span>任务运营</span></button>
           <button class="nav-item" data-view="adminFinance" data-role="admin"><i data-lucide="landmark"></i><span>订单开票</span></button>
@@ -120,7 +120,7 @@
             <button class="icon-btn" id="knowledgeBtn" title="知识库"><i data-lucide="book-open"></i></button>
             <button class="icon-btn" id="auditBtn" title="审计日志"><i data-lucide="shield-check"></i><span class="dot"></span></button>
             <button class="primary-btn" id="tutorialBtn" data-view-jump="journey"><i data-lucide="play"></i><span>跟着教程做</span></button>
-            <a class="ghost-btn top-link-btn" href="./module-lab.html"><i data-lucide="flask-conical"></i><span>分析实验室</span></a>
+            <a class="ghost-btn top-link-btn" href="./module-lab.html"><i data-lucide="flask-conical"></i><span>体验</span></a>
             <button class="ghost-btn" id="logoutBtn"><i data-lucide="log-out"></i><span>退出</span></button>
           </div>
         </header>
@@ -130,7 +130,7 @@
             <strong>流程平台</strong>
             <p>脑电平台只展示上传、分析、统计、投稿图和计费流程；模型、Key、SMTP 与通用工具配置统一在总控台维护。</p>
           </div>
-          <span>总控台入口</span>
+          <span>总控台</span>
         </section>
 
         <section class="boss-brief">
@@ -286,7 +286,7 @@
             <section class="panel upload-panel">
               <div class="panel-head">
                 <div><h2>新建分析</h2><p>支持 EDF / BDF / SET / FIF / BrainVision，自动读取事件和采样率。</p></div>
-                <span class="badge">MNE + EEGLAB 等价功能</span>
+                <span class="badge">MNE + EEGLAB 对照能力</span>
               </div>
               <label class="dropzone" for="fileInput">
                 <input id="fileInput" type="file" multiple />

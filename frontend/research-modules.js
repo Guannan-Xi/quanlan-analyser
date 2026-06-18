@@ -57,7 +57,7 @@ function renderIndex(manifest) {
         <p>${h(m.subtitle)}</p>
         <p>${h(m.scenario)}</p>
         <div class="actions">
-          <a class="mini-btn main" href="./research-module/${m.page}">${icon("external-link")}打开页面</a>
+          <a class="mini-btn main" href="./research-module/${m.page}">${icon("external-link")}查看详情</a>
           <a class="mini-btn" href="${asset(m.package)}">${icon("download")}结果包</a>
         </div>
       </div>
@@ -106,7 +106,7 @@ function renderModule(manifest, slug) {
   const pages = Object.values(manifest.modules);
   app.innerHTML = `<header class="module-header">
     <nav class="module-nav">
-      <a href="../research-modules.html">${icon("arrow-left")} 返回测试台</a>
+      <a href="../research-modules.html">${icon("arrow-left")} 返回体验中心</a>
       <div>${pages.map((p)=>`<a href="./${p.page}">${h(p.slug.toUpperCase())}</a>`).join("")}</div>
     </nav>
     <section class="module-title">
@@ -115,9 +115,9 @@ function renderModule(manifest, slug) {
       <p>${h(m.subtitle)}</p>
       <p>${h(m.scenario)}</p>
       <div class="quick-links">
-        <a class="primary" href="${asset(m.package)}">${icon("download")}下载本模块结果包</a>
+        <a class="primary" href="${asset(m.package)}">${icon("download")}下载结果包</a>
         <a class="secondary" href="${asset(manifest.shared.mne_reference)}">${icon("book-open")}MNE 参考清单</a>
-        <a class="secondary" href="${asset(manifest.shared.reviewer_checklist)}">${icon("clipboard-check")}审稿检查项</a>
+        <a class="secondary" href="${asset(manifest.shared.reviewer_checklist)}">${icon("clipboard-check")}体验清单</a>
       </div>
     </section>
   </header>
@@ -125,7 +125,7 @@ function renderModule(manifest, slug) {
     <strong>${icon("database")}测试输入数据</strong>
     <a href="${asset(manifest.sampleData.source_edf)}">示例 EDF</a>
     <a href="${asset(manifest.sampleData.source_events)}">原始事件 TSV</a>
-    <a href="${asset(manifest.sampleData.events_tsv)}">模块事件 TSV</a>
+    <a href="${asset(manifest.sampleData.events_tsv)}">事件 TSV</a>
     <a href="${asset(manifest.sampleData.raw_preview_csv)}">Raw preview CSV</a>
     <a href="${asset(manifest.sampleData.subject_metrics_csv)}">Subject metrics CSV</a>
   </section>
@@ -145,7 +145,7 @@ function renderModule(manifest, slug) {
         <h2>输入、参数控件、输出</h2>
         <div class="grid-2">
           <div><h3>输入</h3>${list(m.inputs)}</div>
-          <div><h3>页面控件</h3>${list(m.controls)}</div>
+          <div><h3>参数控件</h3>${list(m.controls)}</div>
           <div><h3>输出</h3>${list(m.outputs)}</div>
           <div><h3>MNE 对应对象</h3><div>${pillList(m.mneObjects)}</div></div>
         </div>

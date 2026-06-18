@@ -22,7 +22,7 @@
       "page": "qc.html",
       "title": "QC 数据质量控制",
       "subtitle": "读取、完整性、通道、伪迹与可分析性审查",
-      "status": "V01 已启用",
+      "status": "已可体验",
       "statusLevel": "enabled",
       "scenario": "研究助理上传 EDF/FIF 后，先判断数据是否值得继续分析，并导出给 PI 的质控说明。",
       "mneObjects": [
@@ -102,7 +102,7 @@
       "page": "psd.html",
       "title": "PSD 静息态频谱 / 频段功率",
       "subtitle": "Welch 功率谱、频段汇总、alpha reactivity 与 topomap",
-      "status": "V01 已启用",
+      "status": "已可体验",
       "statusLevel": "enabled",
       "scenario": "静息态睁眼/闭眼范式，需要快速确认 alpha 峰、频段功率、受试者级统计表和投稿图。",
       "mneObjects": [
@@ -186,7 +186,7 @@
       "page": "erp.html",
       "title": "ERP 事件相关电位 / P300",
       "subtitle": "事件映射、Epoch、baseline、Evoked、成分窗口与 topomap",
-      "status": "V01 已启用",
+      "status": "已可体验",
       "statusLevel": "enabled",
       "scenario": "Oddball P300 客户需要确认事件、epoch 设置、P300 量化、差异波和可投稿图。",
       "mneObjects": [
@@ -271,9 +271,9 @@
     "tfr": {
       "slug": "tfr",
       "page": "tfr.html",
-      "title": "TFR / ERSP / ITC 时频分析预研页",
-      "subtitle": "Morlet 小波设计、baseline、ERSP、ITC、cluster 统计",
-      "status": "V01 预研，尚未启用",
+      "title": "TFR / ERSP / ITC 时频预览",
+      "subtitle": "Morlet 小波、baseline、ERSP、ITC、cluster 统计",
+      "status": "预览，即将开放",
       "statusLevel": "preview",
       "scenario": "ASSR、Stroop、运动想象等范式需要时频功率和锁相指标；本页用于确认科研交互和输出合同。",
       "mneObjects": [
@@ -302,7 +302,7 @@
         "ITC 曲线",
         "ROI summary CSV",
         "统计掩膜/cluster 表",
-        "方法说明、参数和预研结果包"
+        "方法说明、参数和预览结果包"
       ],
       "risks": [
         "V01 不应直接启用：需要先固化 wavelet 参数、baseline 策略、cluster 统计和伪迹控制。",
@@ -353,9 +353,9 @@
     "pac": {
       "slug": "pac",
       "page": "pac.html",
-      "title": "PAC / CFC 相位-振幅耦合预研页",
+      "title": "PAC / CFC 相位-振幅耦合预览",
       "subtitle": "theta phase × gamma amplitude、comodulogram、surrogate 检验",
-      "status": "V01 预研，尚未启用",
+      "status": "预览，即将开放",
       "statusLevel": "preview",
       "scenario": "麻醉苏醒、睡眠、记忆任务等客户可能关注 cross-frequency coupling；本页先定义完整输入输出与审稿风险。",
       "mneObjects": [
@@ -436,9 +436,9 @@
     "connectivity": {
       "slug": "connectivity",
       "page": "connectivity.html",
-      "title": "Connectivity 连接性预研页",
+      "title": "Connectivity 连接性预览",
       "subtitle": "coherence / PLV / wPLI、矩阵、网络图与边表",
-      "status": "V01 预研，尚未启用",
+      "status": "预览，即将开放",
       "statusLevel": "preview",
       "scenario": "静息态或任务态网络分析客户需要透明的边定义、阈值、矩阵、网络图和可复查边表。",
       "mneObjects": [
@@ -469,7 +469,7 @@
         "thresholded network graph",
         "edge table CSV",
         "graph metrics",
-        "参数、方法和预研结果包"
+        "参数、方法和预览结果包"
       ],
       "risks": [
         "参考方式与体积传导会显著影响连接性。",

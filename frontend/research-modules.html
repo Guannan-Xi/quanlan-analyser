@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>QLanalyser Research Modules Testbench</title>
+    <title>体验中心项目预览</title>
     <link rel="stylesheet" href="./research-modules.css?v=20260618" />
     <script src="./vendor/lucide.min.js"></script>
   </head>
@@ -12,28 +12,28 @@
       <nav class="topbar" aria-label="Research module navigation">
         <a class="brand" href="./research-modules.html" aria-label="QLanalyser Research Modules">
           <span class="brand-mark">QL</span>
-          <span><strong>QLanalyser Online</strong><small>Research modules static testbench</small></span>
+          <span><strong>QLanalyser Online</strong><small>体验中心项目预览</small></span>
         </a>
         <div class="top-actions">
-          <a href="./expert-entry-demo.html">返回主入口</a>
-          <a href="./module-lab.html">分析实验室</a>
-          <a class="pill" href="./assets/research-modules/packages/qlanalyser_research_modules_static_test_package.zip">下载总测试包</a>
+          <a href="./expert-entry-demo.html">返回首页</a>
+          <a href="./module-lab.html">体验中心</a>
+          <a class="pill" href="./assets/research-modules/packages/qlanalyser_research_modules_static_test_package.zip">下载示例包</a>
         </div>
       </nav>
       <section class="hero-grid">
         <div class="hero-copy">
           <p class="eyebrow">MNE-Python · 科研交付 · 明日测试版</p>
-          <h1>EEG 分析功能模块独立测试台</h1>
-          <p class="hero-lead">把 QC、PSD、ERP 以及 TFR / PAC / Connectivity 预研模块拆成独立静态页面，按科研客户的真实工作习惯展示输入、参数、图、表、导出包、复现记录和风险提示。</p>
+          <h1>体验中心</h1>
+          <p class="hero-lead">QC、PSD、ERP 已可体验；TFR、PAC 和 Connectivity 暂为预览。这里展示输入、参数、图表、结果包、复现记录和风险提示。</p>
           <div class="hero-actions">
-            <a class="primary" href="./research-module/qc.html"><i data-lucide="activity"></i>从 QC 开始测试</a>
-            <a class="secondary" href="./module-lab.html"><i data-lucide="flask-conical"></i>打开分析实验室</a>
+            <a class="primary" href="./research-module/qc.html"><i data-lucide="activity"></i>从 QC 开始体验</a>
+            <a class="secondary" href="./module-lab.html"><i data-lucide="flask-conical"></i>打开体验中心</a>
             <a class="secondary" href="./assets/research-modules/reproducibility/research_module_manifest.json"><i data-lucide="file-json"></i>查看 manifest</a>
           </div>
         </div>
         <aside class="hero-card">
-          <span class="tag good">V01 已启用：QC / PSD / ERP</span>
-          <span class="tag warn">预研审查：TFR / PAC / Connectivity</span>
+          <span class="tag good">已可体验：QC / PSD / ERP</span>
+          <span class="tag warn">即将开放：TFR / PAC / Connectivity</span>
           <img src="./assets/research-modules/figures/overview-main-figure.png" alt="Publication-ready EEG summary" />
           <p>所有示例均为合成科研测试数据；用于交互、结果包、图表和复现流程测试，不作为临床诊断依据。</p>
         </aside>
@@ -43,20 +43,20 @@
     <main class="page-wrap">
       <section class="section-head">
         <p class="eyebrow">Standalone pages</p>
-        <h2>六个可单独打开的模块页</h2>
-        <p>每个页面都包含输入清单、参数、科研输出、图表、CSV/JSON/方法说明下载和评审检查项。</p>
+        <h2>六个可单独查看的项目</h2>
+        <p>每个项目都包含输入清单、参数、科研输出、图表、CSV/JSON/方法说明下载和体验清单。</p>
       </section>
       <section class="module-grid" id="moduleGrid" aria-live="polite"></section>
 
       <section class="workflow-panel">
         <div>
           <p class="eyebrow">Research workflow</p>
-          <h2>建议明天测试顺序</h2>
+          <h2>建议明天体验顺序</h2>
           <ol class="timeline">
             <li><strong>QC</strong><span>先确认文件读取、通道、坏段和伪迹提示。</span></li>
             <li><strong>PSD</strong><span>确认频段定义、受试者级表格、alpha reactivity 和导出。</span></li>
             <li><strong>ERP</strong><span>确认事件映射、epoch、baseline、P300 指标和图注。</span></li>
-            <li><strong>预研页</strong><span>检查 TFR / PAC / Connectivity 的输入输出是否满足科研客户预期。</span></li>
+            <li><strong>预览项目</strong><span>检查 TFR / PAC / Connectivity 的输入输出是否满足科研客户预期。</span></li>
           </ol>
         </div>
         <div class="check-card">

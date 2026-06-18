@@ -740,3 +740,34 @@ python scripts/acceptance_v01_full.py
 1. Implement explicit ERP parameter validation and user-readable errors.
 2. Add drop log / rejected epoch summaries.
 3. Add event-id confirmation and ERP waveform/table rendering acceptance.
+
+## 2026-06-18 EEG workflow information architecture
+
+### Goal
+Align the main product frame, left navigation, and no-login preview area with the actual EEG analysis workflow instead of repeating generic lab/feature/entry wording.
+
+### Completed
+- Reordered the logged-in workbench left navigation around the EEG workflow: project setup, data import, preview/preprocessing, analysis branches, statistics, figures/downloads, data assets, guide, reference, billing, and invoice.
+- Rebuilt `module-lab.html` / `module-lab.js` homepage around project setup -> data import -> preview/preprocessing -> analysis branches -> statistics -> figures -> downloads.
+- Updated module detail side navigation to workflow labels: data input, parameters/preprocessing, analysis method, metric outputs, figures, downloads, review, and boundaries.
+- Updated research-module overview copy/status labels and the static acceptance script to match the workflow IA and no-login preview wording.
+
+### Multi-model / review record
+- GPT route via configured OpenAI-compatible endpoint: failed with HTTP 503.
+- GLM route `glm-5.2`: call returned usage metadata in about 25 s, but output content file was empty; not used as evidence.
+- Final decision basis: repository architecture docs, `docs/modules/mne_analysis_function_design_basis.md`, previous MNE review artifacts, and internal reverse review.
+
+### Boundaries
+- Did not change backend APIs, authentication behavior, public routes, or EEG algorithms.
+- `eeg_core/analysis/erp.py` has unrelated local algorithm changes and was intentionally excluded from this UI IA task.
+
+### Validation
+- `node --check frontend/app.js frontend/module-lab.js frontend/research-modules.js scripts/acceptance_research_modules_static.mjs`: passed.
+- `python scripts/check_no_mojibake.py`: passed.
+- `git diff --check`: passed.
+- `node scripts/acceptance_research_modules_static.mjs`: passed, 212 checks, 6 module pages.
+
+### Next
+1. Visually review the left navigation and `module-lab.html` in the browser for cognitive load.
+2. If the workflow table remains dense, convert it to stacked decision cards on small screens.
+3. Keep ERP algorithm changes in a separate task/commit after validation.
