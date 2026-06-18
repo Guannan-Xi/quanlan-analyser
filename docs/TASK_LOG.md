@@ -818,3 +818,26 @@ Finish the customer-visible Experience Center wording polish by removing remaini
 ### Next
 1. Deploy the static frontend after commit/push if public testing should use the latest copy.
 2. Continue QC/PSD/ERP service work separately from this copy-only pass.
+
+## 2026-06-18 Login background Image2 generation
+
+### Goal
+Use Image2 to generate a neuron-firing medical teaching illustration for the login page background.
+
+### Completed
+- Read the project rules and current UI files.
+- Confirmed existing login CSS already references `frontend/assets/qlanalyser-neuron-firing-bg.png`.
+- Injected user-level `GPT_IMAGE_2_BASE_URL`, `GPT_IMAGE_2_API_KEY`, and `GPT_IMAGE_2_MODEL` into the active command environment.
+- Verified `/v1/models` could see `gpt-image-2`.
+- Generated the new PNG via `/v1/images/generations`; the response used `b64_json`.
+- Replaced `frontend/assets/qlanalyser-neuron-firing-bg.png` with the generated image.
+- Visually inspected the output: blue medical-style neuron network with visible firing points and dark negative space suitable for white login copy.
+
+### Validation
+- `python scripts/check_no_mojibake.py`: passed.
+- `git diff --check -- frontend/assets/qlanalyser-neuron-firing-bg.png docs/PROJECT_STATUS.md docs/TASK_LOG.md`: passed.
+
+### Notes
+- Early attempts through the old process-level `OPENAI_*` route could not see image models.
+- The user-level Image2 route worked after retry; transient `RemoteDisconnected` occurred before success.
+- Unrelated untracked file `docs/modules/qc_common_data_preparation_requirements.md` was not modified.

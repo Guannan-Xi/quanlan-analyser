@@ -589,3 +589,22 @@ Validation:
 - `node --check frontend/module-lab.js`: passed.
 - `node scripts/acceptance_research_modules_static.mjs`: passed, 212 checks, 6 module pages.
 - `python scripts/check_no_mojibake.py`: passed.
+
+## 2026-06-18 Login background Image2 update
+
+Scope:
+
+- Generated a new login background illustration with the user-level `GPT_IMAGE_2_*` Image2 route.
+- Saved the generated neuron-firing medical teaching illustration to `frontend/assets/qlanalyser-neuron-firing-bg.png`.
+
+Image route evidence:
+
+- Base route: `https://llm-all.pro/v1/images/generations`.
+- Model: `gpt-image-2`.
+- `/v1/models` was reachable from the injected user-level environment and listed `gpt-image-2`.
+- Image generation returned `b64_json` after transient remote disconnects and retry.
+
+Risks / notes:
+
+- Keep API keys in user environment only; do not commit keys, tokens, request logs, or generated debug output.
+- `docs/modules/qc_common_data_preparation_requirements.md` was present as an unrelated untracked file and was not touched.
