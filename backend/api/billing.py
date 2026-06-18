@@ -1,23 +1,24 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 
 router = APIRouter()
 
 
 @router.get("/billing/wallet")
 def get_wallet() -> dict:
-    return {"balance": 1000.0, "frozen": 68.0, "currency": "CNY"}
+    return {
+        "enabled": False,
+        "balance": 0.0,
+        "frozen": 0.0,
+        "currency": "CNY",
+        "message": "V01 research release does not enable real billing. Connect a payment provider before production charging.",
+    }
 
 
 @router.post("/billing/recharge")
-def create_recharge_order(amount: float = 1000.0) -> dict:
-    return {"order_id": "recharge_demo_001", "amount": amount, "status": "pending_payment"}
+def create_recharge_order(amount: float = 0.0) -> dict:
+    raise HTTPException(status_code=501, detail="Recharge is not enabled in V01 research release")
 
 
 @router.get("/billing/ledger")
 def list_ledger() -> list[dict]:
-    return [
-        {"item": "recharge", "amount": 1000.0, "status": "posted"},
-        {"item": "metadata", "amount": -2.0, "status": "charged"},
-        {"item": "psd", "amount": -28.0, "status": "charged"},
-    ]
-
+    return []

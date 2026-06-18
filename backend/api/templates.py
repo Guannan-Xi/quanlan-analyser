@@ -1,7 +1,7 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 
-from backend.services.task_service import WORKFLOW_TEMPLATES
 from backend.services.product_catalog import ANALYSIS_TEMPLATES, PARADIGMS, RECOMMENDATION_RULES
+from backend.services.task_service import WORKFLOW_TEMPLATES
 
 router = APIRouter()
 
@@ -13,7 +13,10 @@ def list_templates() -> list[dict]:
 
 @router.get("/templates/{template_id}")
 def get_template(template_id: str) -> dict:
-    return next(template for template in WORKFLOW_TEMPLATES if template["id"] == template_id)
+    for template in WORKFLOW_TEMPLATES:
+        if template["id"] == template_id:
+            return template
+    raise HTTPException(status_code=404, detail="Template not found")
 
 
 @router.get("/analysis-templates")

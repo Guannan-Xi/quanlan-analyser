@@ -200,3 +200,48 @@ node scripts\acceptance_research_modules_static.mjs
 ```
 
 Result: `passed`, 130 checks, 6 module pages. Report: `work/acceptance/research_modules_static_latest.json`.
+
+## 13. Production-grade state/concurrency hardening and full validation
+
+Date: 2026-06-18
+
+Scope:
+
+- Hardened JSON registry persistence for concurrent/local multi-process use.
+- Added isolated state-root override, cross-process lock files, merge-on-save, single-item upsert/delete paths, and read-before-access refresh in services that keep in-memory registries.
+- Updated virtual-user acceptance checks so they validate the actual V01 frontend, research-module manifest, readiness limits, output contract, downloads, reproducibility assets, and mojibake guardrails.
+- Public Aliyun smoke/virtual-user check passed for `http://39.97.248.225` after the local acceptance scripts were aligned with current product signals.
+
+Validation completed:
+
+```powershell
+python -m py_compile backend\main.py backend\services\state_store.py backend\services\storage_service.py backend\services\task_service.py backend\services\report_service.py scripts\acceptance_state_store_concurrency.py scripts\launch_v01_virtual_users.py scripts\launch_v01_merge9_virtual_users_10rounds.py scripts\launch_v01_public_virtual_users.py
+python scripts\acceptance_state_store_concurrency.py
+python scripts\smoke_v01_api.py
+python scripts\acceptance_v01_worker_core.py
+python scripts\acceptance_v01_persistence.py
+python scripts\acceptance_v01_full.py
+node scripts\acceptance_research_modules_static.mjs
+python scripts\check_no_mojibake.py
+python scripts\launch_v01_virtual_users.py
+python scripts\launch_v01_merge9_virtual_users_10rounds.py 10
+python scripts\launch_v01_public_virtual_users.py
+```
+
+Result:
+
+- State concurrency acceptance: passed, 6 workers ? 12 rounds, 72 persisted records.
+- Smoke V01 API: passed.
+- Worker/core acceptance: passed.
+- Persistence acceptance: passed.
+- Full V01 acceptance: passed, 180 checks.
+- Research modules static acceptance: passed, 130 checks, 6 pages.
+- Virtual users: passed, 10/10 rounds, min score 1.0.
+- Public virtual users: passed against `http://39.97.248.225`, min score 1.0.
+- `python scripts\check_no_mojibake.py`: passed.
+
+Operational notes:
+
+- MNE still emits `pick_types()` legacy warnings during tests; these are non-blocking but should be considered for a later MNE API modernization pass.
+- Test runs generated runtime files under `data/state`, `data/uploads`, `data/derivatives`, `data/reports`, and `work/acceptance`; these should not be committed except for intentional source/test/reporting scripts.
+- Unified output-contract adapter remains the next product-development target; this round focused on production stability, state consistency, and validation.

@@ -383,3 +383,67 @@ Local static service used for browser validation: `http://127.0.0.1:4177/researc
 1. Commit and push this static testbench as a GitHub backup.
 2. Deploy the static pages to Aliyun and validate `http://39.97.248.225/research-modules.html`.
 3. Start the minimal unified output-contract adapter for QC/PSD/ERP result JSON, manifest, artifact list, and package index.
+
+---
+
+## Production-grade state/concurrency hardening and full validation
+
+### Date
+2026-06-18
+
+### Goal
+Stabilize QLanalyser Online before continuing the unified output-contract adapter: improve concurrency/state/data consistency behavior, align virtual-user acceptance with the current V01 product, and run a complete local plus public validation round.
+
+### Modified files
+- `backend/services/state_store.py`: added configurable state root, lock files, safer atomic replace, merge-on-save, single-item upsert/delete, and readiness status alias.
+- `backend/services/storage_service.py`: refreshed persistent registries before reads and used single-item state operations for create/update/delete.
+- `backend/services/task_service.py`: refreshed tasks/artifacts before reads and used upsert persistence for task/artifact writes.
+- `backend/services/report_service.py`: refreshed reports before reads and used upsert persistence for report writes.
+- `scripts/acceptance_state_store_concurrency.py`: added isolated multi-process state registry acceptance.
+- `scripts/launch_v01_virtual_users.py`: aligned checks with current frontend, research-module manifest, readiness limits, output contract, and robust mojibake detection.
+- `scripts/launch_v01_merge9_virtual_users_10rounds.py`: retained 10-round stability launcher for repeated virtual-user checks.
+- `scripts/launch_v01_public_virtual_users.py`: aligned public smoke checks with deployed product signals and robust mojibake detection.
+- `docs/PROJECT_STATUS.md`: recorded the production hardening and full validation result.
+- `docs/TASK_LOG.md`: recorded this task and validation matrix.
+
+### Completed
+- Fixed the Windows multi-process state-write issue and prevented stale in-memory registry snapshots from overwriting newer records.
+- Added/validated isolated state-root support for concurrency tests.
+- Verified V01 services refresh state before user-facing reads.
+- Repaired virtual-user acceptance so `checks` can be a list or count, and so production readiness limits use `known_v01_limits`.
+- Validated local and public user-facing flows, research-module pages, report packages, guardrails, and reproducibility assets.
+
+### Test commands
+
+```powershell
+python -m py_compile backend\main.py backend\services\state_store.py backend\services\storage_service.py backend\services\task_service.py backend\services\report_service.py scripts\acceptance_state_store_concurrency.py scripts\launch_v01_virtual_users.py scripts\launch_v01_merge9_virtual_users_10rounds.py scripts\launch_v01_public_virtual_users.py
+python scripts\acceptance_state_store_concurrency.py
+python scripts\smoke_v01_api.py
+python scripts\acceptance_v01_worker_core.py
+python scripts\acceptance_v01_persistence.py
+python scripts\acceptance_v01_full.py
+node scripts\acceptance_research_modules_static.mjs
+python scripts\check_no_mojibake.py
+python scripts\launch_v01_virtual_users.py
+python scripts\launch_v01_merge9_virtual_users_10rounds.py 10
+python scripts\launch_v01_public_virtual_users.py
+```
+
+### Test results
+- All local tests passed.
+- State concurrency: passed, 72 persisted records.
+- Full V01 acceptance: passed, 180 checks.
+- Research static acceptance: passed, 130 checks.
+- Virtual users: passed, 10/10 rounds, min score 1.0.
+- Public virtual users: passed against `http://39.97.248.225`, min score 1.0.
+- Mojibake/readiness text check: passed.
+
+### Risks
+- Worktree still contains many legacy uncommitted changes. Use exact path staging only; do not stage runtime `data/state/*`, `data/uploads/*`, `data/derivatives/*`, `data/reports/*`, or `work/*` outputs.
+- MNE `pick_types()` legacy warnings are visible but non-blocking; modernize MNE API usage later.
+- TFR/PAC/Connectivity remain preview-only and must not be marketed as backend-enabled V01 features.
+
+### Next recommendations
+1. Commit this production-stability slice with precise staging, then push GitHub backup if the staged diff is clean.
+2. Start the minimal unified output-contract adapter for QC/PSD/ERP.
+3. Add a future MNE modernization pass to replace legacy `pick_types()` calls after adapter work is stable.

@@ -5,81 +5,155 @@ from fastapi import HTTPException
 from backend.models.analysis_task import AnalysisTaskCreate, AnalysisTaskRead
 from backend.models.artifact import ArtifactRead
 from backend.models.base import utc_now
-from backend.services import storage_service
+from backend.services import state_store, storage_service
 from eeg_core.analysis.erp import run_erp
 from eeg_core.analysis.psd import run_psd
+from eeg_core.preprocess.quality import run_quality_check
 
 ROOT = Path(__file__).resolve().parents[2]
 DERIVATIVES_ROOT = ROOT / "data" / "derivatives"
 
 WORKFLOW_TEMPLATES = [
     {
+        "id": "metadata_qc",
+        "name": "Metadata and QC",
+        "module": "qc",
+        "outputs": ["reproducibility/qc_summary.json"],
+        "production_status": "v01_required",
+    },
+    {
         "id": "resting_psd",
         "name": "Resting-state PSD",
         "module": "psd",
-        "outputs": ["figures/psd.png", "tables/band_power.csv", "reproducibility/parameters.json"],
+        "outputs": ["tables/band_power.csv", "tables/channel_band_power.csv", "reproducibility/psd_summary.json", "reproducibility/parameters.json"],
+        "production_status": "v01_required",
     },
     {
         "id": "erp_p300",
         "name": "ERP / P300",
         "module": "erp",
-        "outputs": ["figures/erp_waveform.png", "tables/erp_metrics.csv", "reproducibility/parameters.json"],
+        "outputs": ["tables/erp_metrics.csv", "reproducibility/erp_summary.json", "reproducibility/parameters.json"],
+        "production_status": "v01_required_when_events_exist",
+    },
+    {
+        "id": "tfr_ersp_itc",
+        "name": "Time-frequency / ERSP / ITC",
+        "module": "tfr",
+        "outputs": [],
+        "production_status": "planned_requires_epoch_design",
+    },
+    {
+        "id": "pac_cfc",
+        "name": "PAC / Cross-frequency coupling",
+        "module": "pac",
+        "outputs": [],
+        "production_status": "planned_requires_artifact_control_surrogates",
+    },
+    {
+        "id": "connectivity",
+        "name": "Connectivity",
+        "module": "connectivity",
+        "outputs": [],
+        "production_status": "planned_requires_reference_and_volume_conduction_controls",
     },
 ]
 
-_tasks: dict[str, AnalysisTaskRead] = {}
-_artifacts: dict[str, ArtifactRead] = {}
+_tasks: dict[str, AnalysisTaskRead] = state_store.load_registry("tasks", AnalysisTaskRead)
+_artifacts: dict[str, ArtifactRead] = state_store.load_registry("artifacts", ArtifactRead)
+
+
+def _refresh_tasks() -> None:
+    _tasks.clear()
+    _tasks.update(state_store.load_registry("tasks", AnalysisTaskRead))
+
+
+def _refresh_artifacts() -> None:
+    _artifacts.clear()
+    _artifacts.update(state_store.load_registry("artifacts", ArtifactRead))
+
+
+def _save_tasks() -> None:
+    for task in _tasks.values():
+        state_store.upsert_item("tasks", task)
+
+
+def _save_artifacts() -> None:
+    for artifact in _artifacts.values():
+        state_store.upsert_item("artifacts", artifact)
 
 
 def create_task(payload: AnalysisTaskCreate) -> AnalysisTaskRead:
     eeg_file = storage_service.get_eeg_file(payload.input_file_id)
     task = AnalysisTaskRead(**payload.model_dump(), status="running", progress=10, started_at=utc_now())
     _tasks[task.id] = task
+    state_store.upsert_item("tasks", task)
 
     output_dir = DERIVATIVES_ROOT / payload.project_id / task.id
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    if payload.module_name == "psd":
-        result_paths = run_psd(eeg_file.stored_path, output_dir, payload.parameters_json)
-    elif payload.module_name == "erp":
-        result_paths = run_erp(eeg_file.stored_path, output_dir, payload.parameters_json)
-    else:
-        raise HTTPException(status_code=400, detail="Unsupported analysis module")
+    try:
+        if payload.module_name == "psd":
+            result_paths = run_psd(eeg_file.stored_path, output_dir, payload.parameters_json)
+        elif payload.module_name == "erp":
+            result_paths = run_erp(eeg_file.stored_path, output_dir, payload.parameters_json)
+        elif payload.module_name in {"qc", "preprocess"}:
+            result_paths = run_quality_check(eeg_file.stored_path, output_dir, payload.parameters_json)
+        elif payload.module_name in {"tfr", "pac", "connectivity"}:
+            raise ValueError(f"{payload.module_name} is not enabled in V01. Configure preprocessing, events, artifact control, and validation first.")
+        else:
+            raise ValueError(f"Unsupported analysis module: {payload.module_name}")
+    except Exception as exc:
+        task.status = "failed"
+        task.progress = 100
+        task.error_message = str(exc)
+        task.finished_at = utc_now()
+        _tasks[task.id] = task
+        state_store.upsert_item("tasks", task)
+        raise HTTPException(status_code=422, detail={"task_id": task.id, "error": str(exc)}) from exc
 
     for label, path in result_paths.items():
         artifact = ArtifactRead(
             task_id=task.id,
-            artifact_type="result",
+            artifact_type=path.suffix.lstrip(".") or "file",
             label=label,
             path=path,
             mime_type=_guess_mime(path),
         )
         _artifacts[artifact.id] = artifact
+        state_store.upsert_item("artifacts", artifact)
 
     task.status = "completed"
     task.progress = 100
     task.finished_at = utc_now()
+    _tasks[task.id] = task
+    state_store.upsert_item("tasks", task)
     return task
 
 
 def get_task(task_id: str) -> AnalysisTaskRead:
+    _refresh_tasks()
     try:
         return _tasks[task_id]
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Task not found") from exc
 
 
-def list_task_artifacts(task_id: str) -> list[dict]:
-    get_task(task_id)
-    return [artifact.model_dump(mode="json") for artifact in _artifacts.values() if artifact.task_id == task_id]
+def list_task_artifacts(task_id: str) -> list[ArtifactRead]:
+    _refresh_artifacts()
+    return [artifact for artifact in _artifacts.values() if artifact.task_id == task_id]
 
 
 def get_artifact_download_descriptor(artifact_id: str) -> dict:
-    try:
-        artifact = _artifacts[artifact_id]
-    except KeyError as exc:
-        raise HTTPException(status_code=404, detail="Artifact not found") from exc
-    return artifact.model_dump(mode="json")
+    _refresh_artifacts()
+    artifact = _artifacts.get(artifact_id)
+    if not artifact:
+        raise HTTPException(status_code=404, detail="Artifact not found")
+    return {
+        "artifact_id": artifact.id,
+        "label": artifact.label,
+        "path": str(artifact.path),
+        "mime_type": artifact.mime_type,
+    }
 
 
 def _guess_mime(path: Path) -> str:
@@ -91,5 +165,8 @@ def _guess_mime(path: Path) -> str:
         return "text/html"
     if path.suffix == ".txt":
         return "text/plain"
+    if path.suffix == ".png":
+        return "image/png"
+    if path.suffix == ".zip":
+        return "application/zip"
     return "application/octet-stream"
-
