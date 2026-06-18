@@ -1,4 +1,4 @@
-﻿# QLanalyser Online 任务日志
+# QLanalyser Online 任务日志
 
 ## 任务记录模板
 
@@ -520,3 +520,24 @@ Deploy the newly committed no-login Analysis Lab to Aliyun while keeping the for
 ### Boundary
 The no-login behavior is only for the static Analysis Lab. The formal workbench/login flow remains separate.
 
+
+## Conversation sync workflow for multi-dialog development
+
+Date: 2026-06-18
+
+### Goal
+Create a reusable workflow so architecture design, module detailed design, and cross-conversation conclusions become stable development inputs for all QLanalyser Online conversations.
+
+### Changes
+- Added project skill `qlanalyser-conversation-sync`.
+- Added `docs/AI_CONVERSATION_SYNC.md` as the canonical synchronization rule.
+- Added `docs/AI_HANDOFF_CURRENT.md` as the short startup basis for new conversations.
+- Added templates for conversation records, Feishu summaries, architecture docs, and module design docs.
+- Recorded the decision that repository Markdown docs are the single source of truth and Feishu is a review/sync mirror.
+
+### Validation
+- Documentation-only change; validation should include `git diff --check` and optional mojibake check.
+
+### Boundary
+- Did not touch existing untracked frontend Open Design demo files.
+- Did not claim any live Feishu synchronization.

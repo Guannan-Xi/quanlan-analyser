@@ -1,4 +1,4 @@
-﻿# QLanalyser Online 决策记录
+# QLanalyser Online 决策记录
 
 ## 1. 产品命名
 
@@ -115,3 +115,18 @@
 
 
 
+
+## 10. 多对话开发依据与飞书同步
+
+QLanalyser Online 的软件架构设计、模块详细设计、验收标准和跨对话开发依据，统一以 GitHub / 仓库 Markdown 文档为唯一依据。
+
+执行规则：
+
+- 仓库文档是 canonical source of truth。
+- 飞书只作为同步、评审和会议纪要窗口。
+- 如果飞书内容与仓库文档不一致，以仓库文档为准。
+- 对话中的重要结论必须先固化到仓库文档，再生成飞书可复制摘要。
+- 没有实际飞书 API / 工具调用成功时，只能输出“可复制到飞书的摘要”，不得声称已同步飞书。
+- 多个 AI 对话并行开发前，必须先读取 `docs/AI_CONVERSATION_SYNC.md` 与 `docs/AI_HANDOFF_CURRENT.md`。
+
+对应项目 skill：`qlanalyser-conversation-sync`。

@@ -1,4 +1,4 @@
-﻿# QLanalyser Online 项目状态
+# QLanalyser Online 项目状态
 
 ## 1. 当前目标
 
@@ -298,3 +298,28 @@ Validation:
 - Public lab module URLs for QC / PSD / ERP / TFR / PAC / Connectivity: 200 and include inputs, parameters, MNE methods, outputs, acceptance matrix, and research guardrails.
 - Public virtual users: passed, min_score 1.0.
 
+
+## 16. Multi-conversation design sync workflow
+
+Date: 2026-06-18
+
+Scope:
+
+- Added `qlanalyser-conversation-sync` as the project skill for fixing architecture/module-design conclusions into repository documents.
+- Established GitHub / repository Markdown docs as the single source of truth for multi-conversation development.
+- Established Feishu as a review and communication mirror, generated from repository summaries.
+- Added canonical sync docs and templates for architecture design, module detailed design, conversation records, and Feishu summaries.
+
+Canonical files:
+
+- `docs/AI_CONVERSATION_SYNC.md`
+- `docs/AI_HANDOFF_CURRENT.md`
+- `docs/templates/conversation_sync_record.md`
+- `docs/templates/feishu_sync_summary.md`
+- `docs/templates/architecture_design_doc.md`
+- `docs/templates/module_design_doc.md`
+
+Current rule:
+
+- Architecture and module design should be written under `docs/architecture/` and `docs/modules/` before implementation work proceeds in parallel conversations.
+- Feishu summaries should be copied from repository-generated summaries unless a real Feishu integration is added later.

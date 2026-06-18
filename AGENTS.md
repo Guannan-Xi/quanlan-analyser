@@ -149,7 +149,7 @@ Codex 不应假设自己掌握全部产品背景。
 
 ## Project AI Handoff Skills
 
-This project uses two local AI collaboration skills.
+This project uses three local AI collaboration skills.
 
 ### 1. qlanalyser-close-chat-handoff
 
@@ -186,3 +186,22 @@ Purpose:
 - Recommend one next small Codex task
 - Do not assume previous chat history
 
+
+### qlanalyser-conversation-sync
+
+Purpose:
+
+- Fix architecture, module design, acceptance criteria, and cross-conversation conclusions into repository documents.
+- Treat GitHub / repository Markdown docs as the single development source of truth.
+- Generate copy-ready Feishu summaries as a review mirror; do not claim Feishu is updated unless an actual Feishu integration succeeds.
+- Use this when the user says: “同步本轮对话”, “固化到开发依据”, “更新架构设计”, “更新模块详细设计”, or “生成飞书同步摘要”.
+
+Canonical docs:
+
+- `docs/AI_CONVERSATION_SYNC.md`
+- `docs/AI_HANDOFF_CURRENT.md`
+- `docs/DECISIONS.md`
+- `docs/PROJECT_STATUS.md`
+- `docs/TASK_LOG.md`
+- `docs/architecture/*.md`
+- `docs/modules/*.md`
