@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>QLanalyser Online</title>
+    <link rel="stylesheet" href="./open-design-entry-demo.css" />
+    <script src="./vendor/lucide.min.js"></script>
+  </head>
+  <body>
+    <main class="minimal-page" aria-label="QLanalyser 客户入口">
+      <header class="minimal-header">
+        <a class="back-link" href="./index.html">返回正式入口</a>
+        <button class="admin-link" type="button"><i data-lucide="settings"></i><span>管理入口</span></button>
+      </header>
+
+      <section class="hero-row">
+        <div class="product-copy">
+          <p class="brand-line">全澜脑科学® | QuanLan BrainScience®</p>
+          <h1>QLanalyser Online</h1>
+          <p class="positioning">面向科研团队的 EEG 数据管理、分析交付与复现记录平台</p>
+          <ul class="value-list" aria-label="产品价值">
+            <li><b>数据留痕</b><span>原始数据、事件表、参数与输出统一归档</span></li>
+            <li><b>流程可复核</b><span>质控、分析、图表和方法说明按步记录</span></li>
+            <li><b>科研结果交付</b><span>输出可用于课题汇报、论文附图和方法复核的结果</span></li>
+          </ul>
+        </div>
+
+        <section class="entry-card" aria-label="主要功能入口">
+          <div class="entry-head">
+            <p>账号入口</p>
+            <h2>进入 QLanalyser</h2>
+            <span>登录后管理项目数据；也可免费抢先体验最新功能</span>
+          </div>
+
+          <div class="tabs" role="tablist" aria-label="客户账户">
+            <button class="active" type="button" data-tab="login">登录</button>
+            <button type="button" data-tab="register">注册</button>
+          </div>
+
+          <form class="entry-form active" id="loginForm">
+            <label><span>邮箱 / 手机号</span><input type="text" autocomplete="username" placeholder="输入已注册邮箱或手机号" /></label>
+            <label><span>密码</span><input type="password" autocomplete="current-password" placeholder="请输入账户密码" /></label>
+            <label class="remember"><input type="checkbox" checked /> <span>记住登录状态</span></label>
+            <button class="primary-action" type="button">登录工作台</button>
+            <div class="form-row"><a href="#">忘记密码</a><span>新用户请先注册</span></div>
+          </form>
+
+          <form class="entry-form" id="registerForm">
+            <label><span>姓名</span><input type="text" placeholder="用于项目和报告署名" /></label>
+            <label><span>单位 / 课题组</span><input type="text" placeholder="例如某某大学认知神经科学实验室" /></label>
+            <label><span>邮箱</span><input type="email" autocomplete="email" placeholder="name@domain" /></label>
+            <button class="primary-action" type="button">创建账户</button>
+          </form>
+
+          <div class="secondary-entry">
+            <a class="lab-entry" href="./module-lab.html">
+              <i data-lucide="flask-conical"></i>
+              <span><b>分析实验室</b><small>免费抢先体验 EEG 质控、频谱、ERP 等最新功能</small></span>
+              <em>进入</em>
+            </a>
+          </div>
+        </section>
+      </section>
+    </main>
+
+    <script>
+      document.querySelectorAll('[data-tab]').forEach((button) => {
+        button.addEventListener('click', () => {
+          const tab = button.dataset.tab;
+          document.querySelectorAll('[data-tab]').forEach((item) => item.classList.toggle('active', item === button));
+          document.querySelector('#loginForm').classList.toggle('active', tab === 'login');
+          document.querySelector('#registerForm').classList.toggle('active', tab === 'register');
+        });
+      });
+      if (window.lucide) window.lucide.createIcons();
+    </script>
+  </body>
+</html>

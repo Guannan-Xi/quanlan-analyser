@@ -263,9 +263,9 @@ Validation:
 
 ```powershell
 node --check frontend\module-lab.js
-node --check scriptscceptance_research_modules_static.mjs
+node --check scriptscceptance_research_modules_static.mjs
 python scripts\check_no_mojibake.py
-node scriptscceptance_research_modules_static.mjs
+node scriptscceptance_research_modules_static.mjs
 ```
 
 Result:
@@ -367,3 +367,48 @@ Current boundary:
 
 - This workflow does not automatically pull, merge, rebase, overwrite, or force push.
 - Existing untracked frontend Open Design demo files remain local and outside this documentation/sync workflow unless explicitly requested.
+
+## 19. QC Lab early-access service preview
+
+Date: 2026-06-18
+
+Scope:
+
+- Added the first live QC Lab service preview for the Analysis Lab early-access area.
+- `qc_waveform_preview` now runs through `/api/tasks` for QC/preprocess jobs when the workflow id is `qc_waveform_preview`, `qc_filter_preview`, or `qc_snapshot`.
+- Added `frontend/qc-lab.html`, `frontend/qc-lab.js`, and `frontend/qc-lab.css` so users can upload or select EEG files, inspect metadata, choose preview channels/time window, run preview-only filtering, view SVG snapshots, and download artifacts.
+- Updated `frontend/module-lab.html` and `frontend/module-lab.js` so the lab reads as a customer-facing free early-access area instead of an internal Open Design/demo review page.
+- Added `scripts/acceptance_qc_preview_service.py` and extended `scripts/acceptance_research_modules_static.mjs` to cover the QC Lab page.
+
+Validation:
+
+```powershell
+python -m py_compile eeg_core/preprocess/qc_preview.py backend/main.py backend/api/eeg_files.py backend/services/task_service.py scripts/acceptance_qc_preview_service.py
+node --check frontend/module-lab.js
+node --check frontend/qc-lab.js
+node --check scripts/acceptance_research_modules_static.mjs
+python scripts/check_no_mojibake.py
+python scripts/acceptance_qc_preview_service.py
+node scripts/acceptance_research_modules_static.mjs
+python scripts/smoke_v01_api.py
+python scripts/acceptance_v01_worker_core.py
+python scripts/acceptance_v01_persistence.py
+python scripts/acceptance_v01_full.py
+```
+
+Result:
+
+- QC preview service acceptance: passed, generated 13 artifacts.
+- Static/lab acceptance: passed, 209 checks, 6 module pages.
+- Smoke V01 API: passed.
+- Worker/core acceptance: passed.
+- Persistence acceptance: passed.
+- Full V01 acceptance: passed, 180 checks.
+- Mojibake/readiness text check: passed.
+
+Risks and boundaries:
+
+- QC preview filtering is explicitly preview-only and does not modify uploaded files.
+- The no-login lab now includes a live upload/service page, so public deployment must avoid real customer data exposure and must keep formal project management behind login.
+- Failure-path coverage for invalid preview parameters still needs to be expanded.
+- Local runtime outputs under `data/` and `work/` must not be committed.

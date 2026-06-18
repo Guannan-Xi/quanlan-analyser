@@ -9,6 +9,7 @@ from backend.services import state_store, storage_service
 from eeg_core.analysis.erp import run_erp
 from eeg_core.analysis.psd import run_psd
 from eeg_core.preprocess.quality import run_quality_check
+from eeg_core.preprocess.qc_preview import QcPreviewError, run_qc_preview
 
 ROOT = Path(__file__).resolve().parents[2]
 DERIVATIVES_ROOT = ROOT / "data" / "derivatives"
@@ -20,6 +21,13 @@ WORKFLOW_TEMPLATES = [
         "module": "qc",
         "outputs": ["reproducibility/qc_summary.json"],
         "production_status": "v01_required",
+    },
+    {
+        "id": "qc_waveform_preview",
+        "name": "QC waveform / filter preview",
+        "module": "qc",
+        "outputs": ["data/waveform_preview.json", "data/filter_preview.json", "figures/waveform_raw_preview.svg", "figures/snapshots/snapshot_001.svg"],
+        "production_status": "lab_service_preview",
     },
     {
         "id": "resting_psd",
@@ -97,11 +105,22 @@ def create_task(payload: AnalysisTaskCreate) -> AnalysisTaskRead:
         elif payload.module_name == "erp":
             result_paths = run_erp(eeg_file.stored_path, output_dir, payload.parameters_json)
         elif payload.module_name in {"qc", "preprocess"}:
-            result_paths = run_quality_check(eeg_file.stored_path, output_dir, payload.parameters_json)
+            if payload.workflow_id in {"qc_waveform_preview", "qc_filter_preview", "qc_snapshot"}:
+                result_paths = run_qc_preview(eeg_file.stored_path, output_dir, payload.parameters_json)
+            else:
+                result_paths = run_quality_check(eeg_file.stored_path, output_dir, payload.parameters_json)
         elif payload.module_name in {"tfr", "pac", "connectivity"}:
             raise ValueError(f"{payload.module_name} is not enabled in V01. Configure preprocessing, events, artifact control, and validation first.")
         else:
             raise ValueError(f"Unsupported analysis module: {payload.module_name}")
+    except QcPreviewError as exc:
+        task.status = "failed"
+        task.progress = 100
+        task.error_message = f"{exc.code}: {exc.message}"
+        task.finished_at = utc_now()
+        _tasks[task.id] = task
+        state_store.upsert_item("tasks", task)
+        raise HTTPException(status_code=422, detail={"task_id": task.id, "error_code": exc.code, "message": exc.message, "detail": exc.detail}) from exc
     except Exception as exc:
         task.status = "failed"
         task.progress = 100
@@ -167,6 +186,8 @@ def _guess_mime(path: Path) -> str:
         return "text/plain"
     if path.suffix == ".png":
         return "image/png"
+    if path.suffix == ".svg":
+        return "image/svg+xml"
     if path.suffix == ".zip":
         return "application/zip"
     return "application/octet-stream"

@@ -7,7 +7,7 @@ const SECTION_ANCHORS = [
   { id: "outputs", label: "输出" },
   { id: "figures", label: "图像" },
   { id: "artifacts", label: "文件" },
-  { id: "tests", label: "验收" },
+  { id: "tests", label: "检查" },
   { id: "risks", label: "风险" },
 ];
 
@@ -15,46 +15,46 @@ const LAB_STAGES = [
   {
     id: "entry",
     icon: "door-open",
-    title: "免登录入口",
-    subtitle: "实验室和正式工作台分离",
-    body: "Open Design 入口直接进入独立模块实验室；正式工作台仍保留登录、注册和管理员入口。",
-    evidence: ["module-lab.html 可直接访问", "index.html 只保留跳转链接", "不调用后端鉴权接口"],
+    title: "免费体验",
+    subtitle: "不用登录即可进入",
+    body: "先体验 QLanalyser 最新 EEG 分析功能，再决定是否用于正式课题数据",
+    evidence: ["无需注册账号", "不影响正式项目数据", "可随时返回工作台入口"],
   },
   {
     id: "choose",
     icon: "layout-grid",
-    title: "选择模块",
-    subtitle: "QC / PSD / ERP 已启用，TFR / PAC / Connectivity 为预研",
-    body: "模块卡片只读取静态 manifest 和审核资产，适合客户、PI、算法同事在合并前逐项确认。",
-    evidence: ["6 个模块入口", "启用/预研状态可见", "每个模块可单独打开"],
+    title: "选择功能",
+    subtitle: "QC / PSD / ERP 已可体验",
+    body: "按研究问题选择质控、频谱或 ERP，快速了解需要准备的数据和参数",
+    evidence: ["质控查看数据是否可分析", "频谱查看频段功率", "ERP 查看事件相关结果"],
   },
   {
     id: "review",
     icon: "clipboard-check",
-    title: "UI/交互评审",
-    subtitle: "围绕研究者要判断的内容组织界面",
-    body: "评审重点覆盖输入、参数、MNE 对齐、输出证据、失败状态、风险边界和响应式表现。",
-    evidence: ["评审矩阵可过滤", "模块详情页有验收表", "风险提示不进入正式结论"],
+    title: "查看输入输出",
+    subtitle: "先看结果形态再决策",
+    body: "每个功能都展示适用场景、输入要求、关键参数、输出图表和结果文件",
+    evidence: ["输入条件可见", "参数和 MNE 方法可对照", "图表和文件可下载"],
   },
   {
     id: "handoff",
     icon: "package-check",
-    title: "证据包交付",
-    subtitle: "先审 demo，再合并正式页面",
-    body: "每个模块保留图像、CSV、JSON、方法说明和压缩包链接，作为本轮 UI 审核和后续实现交接材料。",
-    evidence: ["静态文件存在性检查", "文案无损坏检查", "Playwright 页面验收"],
+    title: "评估是否适合课题",
+    subtitle: "用体验结果判断后续需求",
+    body: "体验区帮你先确认交付形式、报告内容和正式分析前需要准备的材料",
+    evidence: ["适合 PI 和研究者快速判断", "适合课题启动前沟通", "适合正式下单前确认"],
   },
 ];
 
 const REVIEW_ROWS = [
-  ["all", "入口边界", "实验室免登录可访问，正式工作台仍要求登录/注册", "从首页进入实验室，再返回正式入口；不出现预登录 demo 项目按钮", "必须通过"],
-  ["all", "Open Design 首屏", "首屏展示真实模块选择、审核状态和证据包，不做营销页", "切换入口 demo 阶段，检查当前状态是否清晰", "必须通过"],
-  ["enabled", "已启用模块", "QC / PSD / ERP 的输入、参数、输出和文件证据可审核", "逐个打开模块详情页，核对图像、表格、方法说明和压缩包", "必须通过"],
-  ["preview", "预研模块", "TFR / PAC / Connectivity 明确标记预研边界", "检查预研模块是否避免给出生产可用承诺", "必须通过"],
-  ["all", "参数理解", "核心参数与 MNE 对象名称同时出现，研究者能判断方法是否合理", "检查参数、MNE 方法、输出三段是否能互相对应", "建议通过"],
-  ["all", "交互状态", "按钮、筛选、详情页导航和下载链接有明确目标", "键盘切换焦点，确认悬停和选中状态稳定", "建议通过"],
-  ["all", "风险说明", "科研边界、临床禁用、统计风险和人工复核边界可见", "检查风险段落是否出现在每个模块详情页", "必须通过"],
-  ["all", "本地验收", "静态页面、图片、CSV、JSON、文档和实验室入口均可本地验证", "运行 research modules 静态验收脚本", "必须通过"],
+  ["all", "入口方式", "不登录也能先进入体验区，正式项目数据仍在登录后的工作台管理", "从入口进入分析实验室，再返回正式入口", "建议先看"],
+  ["all", "首屏理解", "能立刻看到可体验的最新功能、功能状态和下载内容", "浏览页面上方的体验说明", "建议先看"],
+  ["enabled", "已可体验", "QC / PSD / ERP 展示输入、参数、输出和结果文件", "逐个打开功能页，查看图表、表格和方法说明", "重点查看"],
+  ["preview", "即将上线", "TFR / PAC / Connectivity 展示产品方向和需要确认的科研边界", "根据课题需求查看预览功能", "按需查看"],
+  ["all", "参数理解", "核心参数与 MNE 对应方法同时出现，便于研究者判断是否合理", "检查参数、MNE 方法和输出三段是否能互相对应", "重点查看"],
+  ["all", "下载文件", "图表、CSV、JSON、方法说明和结果包都有明确入口", "点击功能页的文件和结果包链接", "重点查看"],
+  ["all", "科研边界", "临床禁用、统计风险和人工复核边界可见", "查看每个功能页的风险说明", "必看"],
+  ["all", "本地可访问", "静态页面、图片、CSV、JSON、文档和实验室入口都能正常打开", "直接在浏览器中打开相关链接", "建议先看"],
 ];
 
 const moduleTests = {
@@ -91,12 +91,12 @@ const moduleTests = {
 };
 
 const handoff = {
-  qc: "并行开发交接：先连接后端 QC 契约；输出 qc_summary.json、parameters.json、method_description.txt 和可审计日志。",
-  psd: "并行开发交接：稳定 Welch 参数、频段定义、通道级表格和被试级统计。",
-  erp: "并行开发交接：优先验证事件和 epoch；事件缺失必须给出可读错误。",
-  tfr: "并行开发交接：baseline、wavelet 和 cluster statistics 审查完成前，只保留预览 UI/契约。",
-  pac: "并行开发交接：surrogate/null model 与滤波边界测试完成前，只保留预览 UI/契约。",
-  connectivity: "并行开发交接：参考方式、体积传导和阈值敏感性审查完成前，只保留预览 UI/契约。",
+  qc: "当前可体验：数据接入、质量概览、坏道提示和可分析性判断",
+  psd: "当前可体验：Welch 频谱、频段功率、通道级表格和可下载结果",
+  erp: "当前可体验：事件映射、epoch 分段、ERP 波形、地形图和差异指标",
+  tfr: "即将上线：先展示时频分析的输入、参数、输出和风险边界",
+  pac: "即将上线：先展示相位振幅耦合的输入、参数、输出和风险边界",
+  connectivity: "即将上线：先展示连接性矩阵、网络图、图指标和敏感性说明",
 };
 
 function icon(name) {
@@ -156,12 +156,12 @@ function renderTopbar(manifest, compact = false) {
   return `<nav class="lab-nav ${compact ? "compact" : ""}">
     <a class="brand" href="./module-lab.html" aria-label="QLanalyser 分析实验室">
       <span class="brand-mark">QL</span>
-      <span><strong>QLanalyser 分析实验室</strong><small>Open Design 免登录入口 demo</small></span>
+      <span><strong>QLanalyser 分析实验室</strong><small>免费抢先体验最新功能</small></span>
     </a>
     <div class="quick">
       <a href="./index.html">${icon("home")}正式入口</a>
       <a href="./research-modules.html">${icon("layout-dashboard")}研究模块总览</a>
-      <a class="pill" href="${asset(manifest.shared?.reviewer_checklist)}">${icon("clipboard-check")}评审清单</a>
+      <a class="pill" href="${asset(manifest.shared?.reviewer_checklist)}">${icon("clipboard-check")}体验清单</a>
     </div>
   </nav>`;
 }
@@ -173,12 +173,12 @@ function renderOpenDesignDemo(manifest) {
   const featured = firstEnabledModule(manifest);
   return `<section class="demo-band" data-open-design-demo>
     <div class="section-head">
-      <p class="eyebrow">Open Design entrance demo</p>
-      <h1>独立分析模块实验室</h1>
-      <p>先把入口、模块 UI、交互状态和科研边界作为可审核 demo 固定下来；你确认后，再决定哪些内容合并到正式页面。</p>
+      <p class="eyebrow">Free early access</p>
+      <h1>免费抢先体验最新功能</h1>
+      <p>不用登录，先免费体验 EEG 质控、频谱、ERP 等最新分析功能，看清输入、输出和结果文件</p>
     </div>
     <div class="demo-workbench">
-      <aside class="stage-rail" aria-label="Open Design demo 阶段">
+      <aside class="stage-rail" aria-label="功能体验步骤">
         ${LAB_STAGES.map((stage, index) => `<button class="stage-button ${index === 0 ? "active" : ""}" type="button" data-stage="${stage.id}">
           ${icon(stage.icon)}
           <span><strong>${h(stage.title)}</strong><small>${h(stage.subtitle)}</small></span>
@@ -186,13 +186,13 @@ function renderOpenDesignDemo(manifest) {
       </aside>
       <article class="demo-canvas">
         <div class="canvas-toolbar">
-          <span class="status enabled">免登录实验室</span>
+          <span class="status enabled">免费体验</span>
           <span>${enabled} 个已启用</span>
           <span>${preview} 个预研</span>
         </div>
         <div class="open-design-panel">
           <div>
-            <p class="eyebrow">Current review state</p>
+            <p class="eyebrow">体验状态</p>
             <h2 id="stageTitle">${h(LAB_STAGES[0].title)}</h2>
             <p id="stageBody">${h(LAB_STAGES[0].body)}</p>
           </div>
@@ -206,16 +206,16 @@ function renderOpenDesignDemo(manifest) {
           </a>`).join("")}
         </div>
         <div class="canvas-actions">
-          <a class="btn primary" href="./module-lab.html?module=${h(featured?.slug || "qc")}">${icon("play")}打开 ${h((featured?.slug || "qc").toUpperCase())} demo</a>
-          <a class="btn" href="#review-plan">${icon("list-checks")}查看评审方案</a>
+          <a class="btn primary" href="./module-lab.html?module=${h(featured?.slug || "qc")}">${icon("play")}体验 ${h((featured?.slug || "qc").toUpperCase())}</a>
+          <a class="btn" href="#review-plan">${icon("list-checks")}查看体验说明</a>
         </div>
       </article>
       <aside class="handoff-panel">
-        <h2>本轮审核边界</h2>
+        <h2>体验说明</h2>
         <dl>
-          <div><dt>不改</dt><dd>正式入口、后端接口、算法执行链路</dd></div>
-          <div><dt>保留</dt><dd>实验室免登录，正式工作台登录/注册</dd></div>
-          <div><dt>产出</dt><dd>可审核 demo 页面、模块 UI 清单、静态验收报告</dd></div>
+          <div><dt>正式项目</dt><dd>登录后管理真实项目数据</dd></div>
+          <div><dt>免费体验</dt><dd>不用注册即可先看最新功能</dd></div>
+          <div><dt>可查看</dt><dd>功能输入、参数、结果图表和下载文件</dd></div>
         </dl>
       </aside>
     </div>
@@ -226,11 +226,11 @@ function renderReviewPlan() {
   return `<section class="review-band" id="review-plan" data-review-matrix>
     <div class="section-head row-head">
       <div>
-        <p class="eyebrow">UI / interaction review</p>
-        <h2>实验室模块 UI/交互评审方案</h2>
-        <p>用同一张矩阵确认入口边界、模块状态、研究证据和风险提示，避免 demo 阶段把预研内容误合并进正式工作台。</p>
+        <p class="eyebrow">Feature experience</p>
+        <h2>功能体验说明</h2>
+        <p>用这一页快速了解每个功能能处理什么数据、需要哪些参数、会输出哪些图表和文件</p>
       </div>
-      <div class="segmented" role="group" aria-label="评审范围过滤">
+      <div class="segmented" role="group" aria-label="体验范围过滤">
         <button class="active" type="button" data-review-filter="all">全部</button>
         <button type="button" data-review-filter="enabled">已启用</button>
         <button type="button" data-review-filter="preview">预研</button>
@@ -238,7 +238,7 @@ function renderReviewPlan() {
     </div>
     <div class="table-wrap">
       <table class="review-table">
-        <thead><tr><th>评审项</th><th>通过标准</th><th>操作方式</th><th>结论门槛</th></tr></thead>
+        <thead><tr><th>体验项</th><th>你可以确认</th><th>操作方式</th><th>建议</th></tr></thead>
         <tbody>
           ${REVIEW_ROWS.map(([scope, item, standard, action, gate]) => `<tr data-review-scope="${scope}"><td><strong>${h(item)}</strong><small>${scope === "all" ? "全模块" : scope === "enabled" ? "QC / PSD / ERP" : "TFR / PAC / Connectivity"}</small></td><td>${h(standard)}</td><td>${h(action)}</td><td><span class="gate">${h(gate)}</span></td></tr>`).join("")}
         </tbody>
@@ -250,9 +250,9 @@ function renderReviewPlan() {
 function renderModuleGrid(manifest) {
   return `<section class="module-band">
     <div class="section-head">
-      <p class="eyebrow">Module demos</p>
-      <h2>模块入口</h2>
-      <p>每个入口都是独立静态页面，只读取研究模块 manifest 和本地样例资产，适合先审 UI、交互和交付物。</p>
+      <p class="eyebrow">Feature preview</p>
+      <h2>功能入口</h2>
+      <p>每个功能都展示适用场景、输入要求、关键参数、结果图表和可下载文件</p>
     </div>
     <div class="module-grid">
       ${modules(manifest).map((module) => `<article class="module-card">
@@ -265,8 +265,8 @@ function renderModuleGrid(manifest) {
           <h2>${h(module.title)}</h2>
           <p>${h(module.subtitle || module.scenario)}</p>
           <div class="actions">
-            <a class="btn primary" href="./module-lab.html?module=${h(module.slug)}">${icon("external-link")}打开 demo</a>
-            <a class="btn" href="${asset(module.package)}">${icon("archive")}证据包</a>
+            <a class="btn primary" href="./module-lab.html?module=${h(module.slug)}">${icon("external-link")}开始体验</a>
+            <a class="btn" href="${asset(module.package)}">${icon("archive")}结果包</a>
           </div>
         </div>
       </article>`).join("")}
@@ -292,7 +292,7 @@ function artifactCards(module) {
   const rows = [
     ...(module.tables || []).map((item) => ({ ...item, kind: "表格" })),
     ...(module.docs || []).map((item) => ({ ...item, kind: item.type === "json" ? "JSON" : "文档" })),
-    module.package ? { label: "模块证据包", src: module.package, kind: "ZIP" } : null,
+    module.package ? { label: "模块结果包", src: module.package, kind: "ZIP" } : null,
   ].filter(Boolean);
   if (!rows.length) return `<div class="empty">暂无文件</div>`;
   return rows.map((item) => `<a class="artifact" data-doc-preview href="${asset(item.src)}">
@@ -308,7 +308,7 @@ function testRows(slug) {
 
 function renderSide(manifest, slug) {
   return `<aside class="side">
-    <h2>模块导航</h2>
+    <h2>功能导航</h2>
     <nav>
       ${modules(manifest).map((module) => `<a class="${module.slug === slug ? "active" : ""}" href="./module-lab.html?module=${h(module.slug)}"><span>${h(module.title)}</span><strong>${h(module.slug.toUpperCase())}</strong></a>`).join("")}
     </nav>
@@ -326,12 +326,13 @@ function renderDetail(manifest, slug) {
     <div class="content">
       <section class="module-hero">
         <span class="status ${statusClass(module)}">${h(statusLabel(module))}</span>
-        <p class="eyebrow">${h(module.slug.toUpperCase())} independent module demo</p>
+        <p class="eyebrow">${h(module.slug.toUpperCase())} analysis feature preview</p>
         <h1>${h(module.title)}</h1>
         <p>${h(module.scenario || module.subtitle)}</p>
         <div class="module-links">
-          <a class="btn primary" href="${asset(module.package)}">${icon("archive")}下载证据包</a>
-          <a class="btn" href="${asset(manifest.shared?.reviewer_checklist)}">${icon("clipboard-check")}评审清单</a>
+          ${slug === "qc" ? `<a class="btn primary" href="./qc-lab.html">${icon("activity")}体验 QC 预览</a>` : ""}
+          <a class="btn primary" href="${asset(module.package)}">${icon("archive")}下载结果包</a>
+          <a class="btn" href="${asset(manifest.shared?.reviewer_checklist)}">${icon("clipboard-check")}体验清单</a>
           <a class="btn" href="./module-lab.html#review-plan">${icon("arrow-left")}返回实验室</a>
         </div>
       </section>
@@ -345,8 +346,8 @@ function renderDetail(manifest, slug) {
       </section>
       <section class="panel" id="figures"><h2>图像输出</h2><div class="figure-grid">${(module.figures || []).map((fig) => `<figure class="figure"><img src="${asset(fig.src)}" alt="${h(fig.alt || fig.label)}" /><figcaption>${h(fig.label)}</figcaption></figure>`).join("")}</div></section>
       <section class="panel" id="artifacts"><h2>文件与交付物</h2><div class="artifact-grid">${artifactCards(module)}</div></section>
-      <section class="panel" id="tests"><h2>模块验收矩阵</h2><div class="table-wrap"><table class="test-matrix"><thead><tr><th>检查项</th><th>验收规则</th></tr></thead><tbody>${testRows(slug)}</tbody></table></div></section>
-      <section class="panel callout" id="risks"><h2>科研边界与风险</h2>${list(module.risks, "risk")}<p><strong>并行开发交接：</strong>${h(handoff[slug])}</p><p><strong>共享边界：</strong>${h(manifest.researchGuardrail)}</p></section>
+      <section class="panel" id="tests"><h2>功能检查清单</h2><div class="table-wrap"><table class="test-matrix"><thead><tr><th>检查项</th><th>验收规则</th></tr></thead><tbody>${testRows(slug)}</tbody></table></div></section>
+      <section class="panel callout" id="risks"><h2>科研边界与风险</h2>${list(module.risks, "risk")}<p><strong>功能状态：</strong>${h(handoff[slug])}</p><p><strong>共享边界：</strong>${h(manifest.researchGuardrail)}</p></section>
     </div>
   </main>`;
 }

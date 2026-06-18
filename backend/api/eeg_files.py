@@ -6,6 +6,11 @@ from backend.services import metadata_service, storage_service
 router = APIRouter()
 
 
+@router.get("/eeg/files", response_model=list[EEGFileRead])
+def list_eeg_files() -> list[EEGFileRead]:
+    return storage_service.list_eeg_files()
+
+
 @router.post("/eeg/upload", response_model=EEGFileRead)
 async def upload_eeg(project_id: str, subject_id: str | None = None, file: UploadFile | None = None) -> EEGFileRead:
     return await storage_service.create_eeg_file(project_id=project_id, subject_id=subject_id, upload=file)

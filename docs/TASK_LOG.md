@@ -475,9 +475,9 @@ Commands run:
 
 ```powershell
 node --check frontend\module-lab.js
-node --check scriptscceptance_research_modules_static.mjs
+node --check scriptscceptance_research_modules_static.mjs
 python scripts\check_no_mojibake.py
-node scriptscceptance_research_modules_static.mjs
+node scriptscceptance_research_modules_static.mjs
 ```
 
 Result:
@@ -585,3 +585,74 @@ Add a required GitHub baseline synchronization workflow so all parallel QLanalys
 ### Boundary
 - Does not automatically pull, merge, rebase, reset, overwrite, or force push.
 - Does not touch existing untracked frontend Open Design demo files.
+
+---
+
+### Date
+2026-06-18
+
+### Task goal
+Ship the first customer-facing Analysis Lab early-access iteration and make QC a live service preview instead of a static card.
+
+### Modified files
+- `backend/api/eeg_files.py`: add a file-list API for the QC Lab selector.
+- `backend/main.py`: allow local frontend ports used by lab development.
+- `backend/services/task_service.py`: route QC preview workflow ids to the new QC preview runner and serve SVG artifacts with the right MIME type.
+- `eeg_core/preprocess/qc_preview.py`: implement preview-window extraction, preview-only filtering, SVG rendering, snapshot metadata, and output contract writing.
+- `frontend/module-lab.html`: update lab metadata to customer-facing early-access positioning.
+- `frontend/module-lab.js`: replace internal Open Design/demo/review copy with customer-facing free early-access copy and add the QC preview entry.
+- `frontend/qc-lab.html`, `frontend/qc-lab.css`, `frontend/qc-lab.js`: add the QC Lab upload/preview/download workbench.
+- `frontend/open-design-entry-demo.html`, `frontend/open-design-entry-demo.css`: keep the simplified entry demo with registered brand mark, masked neuron background, and early-access lab copy.
+- `scripts/acceptance_qc_preview_service.py`: add service-level acceptance for upload, preview task, artifacts, contract, and SVG download.
+- `scripts/acceptance_research_modules_static.mjs`: extend static/browser acceptance to cover the QC Lab page.
+- `docs/modules/qc_design.md`: update QC design status to reflect the implemented minimal preview service.
+- `docs/PROJECT_STATUS.md`: record current project status and validation.
+- `docs/TASK_LOG.md`: record this task.
+- `docs/AI_HANDOFF_CURRENT.md`: record the new QC Lab live preview handoff note.
+
+### Completed
+- Added a live QC preview service reachable through the existing task API.
+- Added a QC Lab page for upload/selection, metadata review, preview parameters, preview-only filtering, SVG snapshots, and artifact downloads.
+- Updated the Analysis Lab overview and entry copy to read as free early access to new features for research customers.
+- Preserved the formal-login boundary for project management and the non-clinical research guardrail.
+
+### Test commands
+
+```powershell
+python -m py_compile eeg_core/preprocess/qc_preview.py backend/main.py backend/api/eeg_files.py backend/services/task_service.py scripts/acceptance_qc_preview_service.py
+node --check frontend/module-lab.js
+node --check frontend/qc-lab.js
+node --check scripts/acceptance_research_modules_static.mjs
+python scripts/check_no_mojibake.py
+python scripts/acceptance_qc_preview_service.py
+node scripts/acceptance_research_modules_static.mjs
+python scripts/smoke_v01_api.py
+python scripts/acceptance_v01_worker_core.py
+python scripts/acceptance_v01_persistence.py
+python scripts/acceptance_v01_full.py
+```
+
+### Test results
+- All checks passed.
+- QC preview service acceptance: passed, 13 artifacts generated.
+- Static/lab browser acceptance: passed, 209 checks, 6 module pages.
+- Smoke V01 API: passed.
+- Worker/core acceptance: passed.
+- Persistence acceptance: passed.
+- Full V01 acceptance: passed, 180 checks.
+- Mojibake/readiness text check: passed.
+
+### Risks
+- The QC Lab is no-login but can call the backend upload/task APIs. Public deployment must use only synthetic/demo data or add an explicit access-control decision before accepting real customer files.
+- Failure-path acceptance for invalid QC preview parameters is not complete yet.
+- Runtime outputs under `data/` and `work/` were generated locally and must not be staged.
+
+### Unfinished
+- Add failure-path tests for invalid channels, out-of-range windows, unsupported files, and invalid filter parameters.
+- Decide whether to split `qc_filter_preview` and `qc_snapshot` into dedicated runner functions or keep them as workflow aliases for `qc_waveform_preview`.
+- Decide whether the customer-facing entry demo should replace the formal root after review.
+
+### Next suggestions
+1. Add QC preview failure-path tests and improve UI error messages.
+2. Start the next lab module service implementation for PSD or ERP using the same input/output pattern.
+3. Review deployment policy for no-login service pages before pushing this live to Aliyun.

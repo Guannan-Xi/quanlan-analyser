@@ -69,6 +69,9 @@ async function main() {
     path.join(FRONTEND, "module-lab.html"),
     path.join(FRONTEND, "module-lab.js"),
     path.join(FRONTEND, "module-lab.css"),
+    path.join(FRONTEND, "qc-lab.html"),
+    path.join(FRONTEND, "qc-lab.js"),
+    path.join(FRONTEND, "qc-lab.css"),
     MANIFEST_PATH,
   ]) assertCleanText(file);
 
@@ -128,11 +131,18 @@ async function main() {
   check("lab has review stage controls", stageButtons >= 4, { stageButtons });
   await labIndex.locator('[data-stage="review"]').click();
   const stageTitle = await labIndex.locator("#stageTitle").innerText();
-  check("lab open design stage switch", stageTitle.includes("UI") || stageTitle.includes("\u8bc4\u5ba1"), { stageTitle });
+  check("lab open design stage switch", stageTitle.includes("UI") || stageTitle.includes("\u8bc4\u5ba1") || stageTitle.includes("\u67e5\u770b\u8f93\u5165\u8f93\u51fa"), { stageTitle });
   await labIndex.locator('[data-review-filter="preview"]').click();
   const hiddenRows = await labIndex.locator('[data-review-scope="enabled"][hidden]').count();
   check("lab review matrix filter", hiddenRows >= 1, { hiddenRows });
   await labIndex.close();
+
+  const qcLab = await browser.newPage();
+  const qcLabBody = await pageOk(qcLab, `${BASE_URL}/qc-lab.html`);
+  check("qc lab workbench page", qcLabBody.includes("QC SERVICE WORKBENCH") && qcLabBody.includes("metadata") && qcLabBody.includes("manifest"), { text: qcLabBody.slice(0, 800) });
+  check("qc lab has upload input", await qcLab.locator('input[type="file"]').count() >= 1);
+  check("qc lab has run button", await qcLab.locator('#runPreview').count() === 1);
+  await qcLab.close();
 
   for (const slug of EXPECTED) {
     const oldUrl = `${BASE_URL}/research-module/${slug}.html`;
@@ -154,7 +164,7 @@ async function main() {
     check(`lab module controls section ${slug}`, body.includes("Parameters") || body.includes("\u53c2\u6570"), { slug });
     check(`lab module mne section ${slug}`, body.includes("MNE"), { slug });
     check(`lab module output section ${slug}`, body.includes("Outputs") || body.includes("\u8f93\u51fa"), { slug });
-    check(`lab module tests section ${slug}`, body.includes("Module acceptance matrix") || body.includes("Acceptance") || body.includes("\u6a21\u5757\u9a8c\u6536\u77e9\u9635"), { slug });
+    check(`lab module tests section ${slug}`, body.includes("Module acceptance matrix") || body.includes("Acceptance") || body.includes("\u6a21\u5757\u9a8c\u6536\u77e9\u9635") || body.includes("\u529f\u80fd\u68c0\u67e5\u6e05\u5355"), { slug });
     check(`lab module risks section ${slug}`, body.includes("Research guardrails") || body.includes("Risks") || body.includes("\u79d1\u7814\u8fb9\u754c\u4e0e\u98ce\u9669"), { slug });
     check(`lab module panels ${slug}`, panels >= 6, { panels });
     check(`lab module test rows ${slug}`, tableRows >= 3, { tableRows });

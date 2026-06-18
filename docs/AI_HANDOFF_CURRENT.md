@@ -86,3 +86,14 @@ QLanalyser Online 是面向科研团队的 EEG 数据管理、分析交付与复
 - 重要设计结论必须固化到仓库文档。
 - 完成后给出修改文件、验证结果、风险点和下一步建议。
 ```
+
+## 8. Current implementation note: QC Lab early access
+
+As of 2026-06-18, the Analysis Lab is no longer only a static module review surface. The QC module has a first live service preview:
+
+- Entry page: `frontend/qc-lab.html`
+- Runner: `eeg_core/preprocess/qc_preview.py`
+- Task route: `/api/tasks` with workflow ids `qc_waveform_preview`, `qc_filter_preview`, or `qc_snapshot`
+- Acceptance: `python scripts/acceptance_qc_preview_service.py`
+
+The lab remains a customer-facing free early-access area. Formal project management, customer data management, and production workbench flows remain behind login. Do not deploy the no-login live upload/service page for real customer data without an explicit access-control decision.

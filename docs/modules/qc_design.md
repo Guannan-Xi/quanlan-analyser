@@ -513,3 +513,35 @@ QC 从实验室进入正式工作台前必须满足：
 验收标准：不能只做卡片示意；必须能选择文件、配置参数、查看原始/滤波预览、截取快照、下载完整复现材料，并处理失败状态。
 待确认：滤波预览默认频段、预览窗口上限、快照格式 PNG/SVG、是否在 v0.1 通过 /api/tasks 承载所有 QC 子服务。
 ```
+
+## 16. 2026-06-18 implementation note
+
+The first customer-facing QC Lab service preview is implemented.
+
+Implemented scope:
+
+- `qc_waveform_preview` runs through the existing `/api/tasks` task API.
+- The preview accepts `preview`, `filter_preview`, and `snapshot` parameters.
+- The service writes `result.json`, `manifest.json`, `log.txt`, `data/waveform_preview.json`, `data/filter_preview.json`, `data/snapshot_001.json`, `figures/waveform_raw_preview.svg`, `figures/waveform_filter_preview.svg`, and `figures/snapshots/snapshot_001.svg`.
+- `frontend/qc-lab.html` provides the first full QC Lab page for upload or selection, metadata review, preview parameters, filter preview, snapshots, and artifact downloads.
+- Filtering remains preview-only and does not modify the uploaded EEG file.
+
+Validation evidence:
+
+```powershell
+python scripts/acceptance_qc_preview_service.py
+node scripts/acceptance_research_modules_static.mjs
+python scripts/smoke_v01_api.py
+python scripts/acceptance_v01_worker_core.py
+python scripts/acceptance_v01_persistence.py
+python scripts/acceptance_v01_full.py
+python scripts/check_no_mojibake.py
+```
+
+Result: all commands passed in the 2026-06-18 local run.
+
+Remaining work:
+
+- Add explicit failure-path tests for invalid channels, out-of-range windows, unsupported files, and invalid filter parameters.
+- Decide whether `qc_filter_preview` and `qc_snapshot` should remain aliases of the same runner or become separate runner entries.
+- Add PNG export if journal/report workflows require bitmap snapshots in addition to SVG.
