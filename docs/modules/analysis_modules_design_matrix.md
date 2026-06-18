@@ -12,9 +12,9 @@
 - beta：条件满足时可执行，但解释边界更严格。
 - preview：实验室展示和设计评审，不承诺后端生产执行。
 
-MNE 设计总依据：
+MNE / 学习体验设计总依据：
 
-- `docs/modules/mne_analysis_function_design_basis.md`：所有 EEG 分析功能的 MNE 对象、API、输入输出、失败模式和科研风险基线。
+- `docs/modules/mne_analysis_function_design_basis.md`：所有 EEG 分析功能的 MNE 对象、API、输入输出、失败模式和科研风险基线。`r`n- `docs/modules/beginner_learning_analysis_design.md`：面向脑电分析新手的学习式流程、示例 EDF 验证结果和可靠性交付要求。
 
 ## 2. 模块总览
 
@@ -22,7 +22,7 @@ MNE 设计总依据：
 | --- | --- | --- | --- | --- | --- |
 | QC | stable | 已启用 | 已展示 | 应进入主流程 | 补独立设计文档和 contract 测试 |
 | PSD | stable | 已启用 | 已展示 | 应进入主流程 | 按 `docs/modules/psd_design.md` 补参数失败路径和图表验收 |
-| ERP | beta/stable when events exist | 已启用但依赖事件 | 已展示 | 条件进入主流程 | 按 `docs/modules/erp_design.md` 补事件确认、drop log 和参数失败路径 |
+| ERP | beta/stable when events exist | 已启用但依赖事件 | 已展示 | 条件进入主流程 | 按 `docs/modules/erp_design.md` 和学习式设计补 ROI、事件确认、drop log |
 | TFR | preview | 未启用 | 已展示 | 不进入 stable | 完成 epoch/baseline/statistics 设计 |
 | PAC | preview | 未启用 | 已展示 | 不进入 stable | 完成 surrogate/null model 设计 |
 | Connectivity | preview | 未启用 | 已展示 | 不进入 stable | 完成参考/体积传导/metric 审查 |
@@ -222,3 +222,4 @@ preview。v0.1 只展示设计，不承诺后端生产执行。
 2. `docs/modules/psd_design.md`
 3. `docs/modules/erp_design.md`（已建立，下一步补事件确认和 drop log）
 4. 基于 `docs/modules/mne_analysis_function_design_basis.md` 逐个补齐 PSD、ERP、TFR、PAC、Connectivity 的输入、参数、MNE API、输出、失败模式和验收脚本。
+5. 基于 `docs/modules/beginner_learning_analysis_design.md` 增加示例学习模式、结果解释卡片和可靠性检查。

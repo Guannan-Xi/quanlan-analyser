@@ -3,3 +3,4 @@ uvicorn[standard]>=0.30
 pydantic>=2.7
 python-multipart>=0.0.9
 mne>=1.8
+edfio>=0.4.13
