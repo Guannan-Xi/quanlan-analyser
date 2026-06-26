@@ -605,5 +605,5 @@ v0.1 只做容量摸底：
 最多三个小任务：
 
 1. 为 PSD/QC/ERP 增加统一输出契约 adapter，先生成 `result.json` 与 `manifest.json`。
-2. 固化 UI acceptance 启动流程，让 `scripts/run_v01_acceptance.ps1` 自动启动或明确检测 4174/8000。
+2. 固化 UI acceptance 启动流程，让 `scripts/run_v01_acceptance.ps1` 自动启动或明确检测 4174/8001；`8000` 仅保留为旧线兼容回退。
 3. 做一次命名审计，只清理活动页面、报告和部署文档中的 `QLanalyser EEG` / `QLanalyser Pilot` 残留。

@@ -23,12 +23,17 @@ def main():
     require(dataset.status_code == 200, dataset.text)
     dataset_json = dataset.json()
     require(dataset_json["file"]["id"] == "eeg_demo_teaching_oddball", json.dumps(dataset_json)[:500])
+    require(
+        dataset_json["file"].get("metadata_json", {}).get("events_tsv_path"),
+        json.dumps(dataset_json)[:500],
+    )
 
     run_all = client.post("/api/lab/demo/run-all")
     require(run_all.status_code == 200, run_all.text)
     payload = run_all.json()
     tasks = payload["tasks"]
-    require(set(tasks) == {"qc", "psd", "erp"}, json.dumps(tasks))
+    required_modules = {"qc", "psd", "erp"}
+    require(required_modules.issubset(set(tasks)), json.dumps(tasks))
     for module, task in tasks.items():
         require(task["status"] == "completed", json.dumps(task))
         artifacts = client.get(f"/api/tasks/{task['id']}/artifacts")
@@ -49,4 +54,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

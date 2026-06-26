@@ -1,0 +1,49 @@
+{
+  "source_project": "AR_analyser1/AR_analyser_PC/src/newEpilepsy",
+  "migration_contract": "qlanalyser-epilepsy-ml-source-compatible-v0.1",
+  "models": {
+    "3.0": {
+      "model_file": "newEpilepsy/model_n762_3s.sav",
+      "scaler_file": "newEpilepsy/scaler_n762_3s.sav",
+      "model_sha256": "4bf86729f278fa4224c4fbe5007f51e37c194db4f16fc5a68238c3602af86dd7",
+      "scaler_sha256": "10aaee616dbe247f1f38a159faf28a24d199bfb259f6a8bc3ecf8c822905c0b2",
+      "model_size_bytes": 2747161,
+      "scaler_size_bytes": 767
+    },
+    "5.0": {
+      "model_file": "newEpilepsy/model_n1814_5s.sav",
+      "scaler_file": "newEpilepsy/scaler_n1814_5s.sav",
+      "model_sha256": "907ca24bd22067be367a1aec988f420c8588bc249146b8fbdd956e2bbd58060b",
+      "scaler_sha256": "cb4199ee1564d717ec55b0089dbd008a654a40cd810bfa7467ee1e67a4d0ced1",
+      "model_size_bytes": 4156984,
+      "scaler_size_bytes": 767
+    }
+  },
+  "feature_columns": [
+    "mean",
+    "mobility",
+    "TKEO",
+    "P_delta",
+    "P_theta",
+    "P_alpha",
+    "P_beta",
+    "P_gamma",
+    "P_total",
+    "rel_delta",
+    "rel_theta",
+    "rel_alpha",
+    "rel_beta",
+    "rel_gamma",
+    "pfd",
+    "skew",
+    "kurtosis",
+    "var",
+    "envelope"
+  ],
+  "prediction_threshold": 0.5,
+  "event_rule": {
+    "min_consecutive_seizure_epochs": 2,
+    "epoch_index_internal": "zero_based",
+    "source_display_epoch_index": "one_based"
+  }
+}

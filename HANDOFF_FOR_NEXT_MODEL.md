@@ -19,13 +19,13 @@ C:\Users\XGN\Documents\Codex\2026-06-06\eeglab-mne-1\outputs\eeglab-mne-mvp
 本地访问：
 
 ```text
-http://127.0.0.1:4173/
+http://127.0.0.1:4174/
 ```
 
 如服务未启动：
 
 ```powershell
-C:\Users\XGN\miniconda3\envs\mineru\python.exe -m http.server 4173 --bind 127.0.0.1
+C:\Users\XGN\miniconda3\envs\mineru\python.exe -m http.server 4174 --bind 127.0.0.1
 ```
 
 工作目录需要是：

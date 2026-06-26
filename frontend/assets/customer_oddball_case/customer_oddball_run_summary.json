@@ -1,0 +1,262 @@
+{
+  "dataset": {
+    "edf": "D:\\Quanlan\\Codes\\Python\\quanlan-analyser-official\\work\\learning_case\\data\\teaching_oddball.edf",
+    "events_tsv": "D:\\Quanlan\\Codes\\Python\\quanlan-analyser-official\\work\\learning_case\\data\\teaching_oddball_events.tsv",
+    "fif": "D:\\Quanlan\\Codes\\Python\\quanlan-analyser-official\\work\\learning_case\\data\\teaching_oddball_raw.fif",
+    "duration_sec": 60.0,
+    "sfreq_hz": 250.0,
+    "channels": [
+      "Fz",
+      "Cz",
+      "Pz",
+      "Oz",
+      "P3",
+      "P4",
+      "O1",
+      "O2"
+    ],
+    "events": {
+      "standard": 24,
+      "target": 12
+    },
+    "signal_design": "posterior 10 Hz alpha plus target-enhanced P300-like response"
+  },
+  "qc": {
+    "status": "passed",
+    "checks": [
+      {
+        "name": "file_present",
+        "ok": true,
+        "detail": "file existence/size check"
+      },
+      {
+        "name": "format_supported",
+        "ok": true,
+        "detail": "format=edf / reader=mne.io.read_raw_edf"
+      },
+      {
+        "name": "metadata_readable",
+        "ok": true,
+        "detail": "MNE read OK"
+      },
+      {
+        "name": "sampling_rate_reasonable",
+        "ok": true,
+        "detail": "sfreq=250 Hz"
+      },
+      {
+        "name": "duration_reasonable",
+        "ok": true,
+        "detail": "duration=60.00 s"
+      },
+      {
+        "name": "eeg_channels_present",
+        "ok": true,
+        "detail": "eeg_channels=8"
+      },
+      {
+        "name": "flat_channels",
+        "ok": true,
+        "detail": "flat_channels=0"
+      },
+      {
+        "name": "extreme_amplitude_channels",
+        "ok": true,
+        "detail": "extreme_channels=0"
+      }
+    ]
+  },
+  "psd": {
+    "freq_range_hz": [
+      1.0,
+      40.0
+    ],
+    "freq_bins": 319,
+    "band_power_mean": {
+      "delta": 1.3758652711273016e-13,
+      "theta": 2.898098778513667e-13,
+      "alpha": 5.03602081391852e-12,
+      "beta": 2.270239775307548e-14,
+      "gamma_low": 3.849083289902211e-15
+    },
+    "expected_reading": "alpha should dominate because the synthetic signal contains a strong posterior 10 Hz rhythm"
+  },
+  "erp": {
+    "events_total": 36,
+    "event_id": {
+      "standard": 1,
+      "target": 2
+    },
+    "epochs_total": 36,
+    "conditions": {
+      "standard": {
+        "n_epochs": 24,
+        "channels": [
+          "Fz",
+          "Cz",
+          "Pz",
+          "Oz",
+          "P3",
+          "P4",
+          "O1",
+          "O2"
+        ],
+        "reference": null,
+        "roi_channels_by_component": {
+          "N100": [
+            "Fz",
+            "Cz"
+          ],
+          "P200": [
+            "Fz",
+            "Cz",
+            "Pz"
+          ],
+          "P300": [
+            "Pz",
+            "P3",
+            "P4"
+          ]
+        }
+      },
+      "target": {
+        "n_epochs": 12,
+        "channels": [
+          "Fz",
+          "Cz",
+          "Pz",
+          "Oz",
+          "P3",
+          "P4",
+          "O1",
+          "O2"
+        ],
+        "reference": null,
+        "roi_channels_by_component": {
+          "N100": [
+            "Fz",
+            "Cz"
+          ],
+          "P200": [
+            "Fz",
+            "Cz",
+            "Pz"
+          ],
+          "P300": [
+            "Pz",
+            "P3",
+            "P4"
+          ]
+        }
+      }
+    },
+    "p300_metrics_reference_none": [
+      {
+        "condition": "standard",
+        "component": "P300",
+        "window_ms": "280-450",
+        "amplitude_uv": "8.125461202106854",
+        "latency_ms": "316.0",
+        "n_epochs": "24",
+        "reference": "",
+        "roi_name": "P300",
+        "roi_channels": "Pz,P3,P4"
+      },
+      {
+        "condition": "target",
+        "component": "P300",
+        "window_ms": "280-450",
+        "amplitude_uv": "12.183469110578955",
+        "latency_ms": "320.0",
+        "n_epochs": "12",
+        "reference": "",
+        "roi_name": "P300",
+        "roi_channels": "Pz,P3,P4"
+      }
+    ],
+    "p300_metrics_average_reference_roi_aware": [
+      {
+        "condition": "standard",
+        "component": "P300",
+        "window_ms": "280-450",
+        "amplitude_uv": "6.49396560829188",
+        "latency_ms": "308.0",
+        "n_epochs": "24",
+        "reference": "average",
+        "roi_name": "P300",
+        "roi_channels": "Pz,P3,P4"
+      },
+      {
+        "condition": "target",
+        "component": "P300",
+        "window_ms": "280-450",
+        "amplitude_uv": "7.509572660536765",
+        "latency_ms": "312.0",
+        "n_epochs": "12",
+        "reference": "average",
+        "roi_name": "P300",
+        "roi_channels": "Pz,P3,P4"
+      }
+    ],
+    "expected_reading": "target P300 amplitude should be larger than standard; metrics must show the ROI channels, reference choice, event confirmation, and drop-log summary"
+  },
+  "outputs": {
+    "qc": {
+      "qc_summary": "D:\\Quanlan\\Codes\\Python\\quanlan-analyser-official\\work\\learning_case\\outputs\\qc\\reproducibility\\qc_summary.json",
+      "parameters": "D:\\Quanlan\\Codes\\Python\\quanlan-analyser-official\\work\\learning_case\\outputs\\qc\\reproducibility\\parameters.json",
+      "method_description": "D:\\Quanlan\\Codes\\Python\\quanlan-analyser-official\\work\\learning_case\\outputs\\qc\\reproducibility\\method_description.txt",
+      "software_versions": "D:\\Quanlan\\Codes\\Python\\quanlan-analyser-official\\work\\learning_case\\outputs\\qc\\reproducibility\\software_versions.json",
+      "workflow": "D:\\Quanlan\\Codes\\Python\\quanlan-analyser-official\\work\\learning_case\\outputs\\qc\\reproducibility\\workflow.json",
+      "result": "D:\\Quanlan\\Codes\\Python\\quanlan-analyser-official\\work\\learning_case\\outputs\\qc\\result.json",
+      "log": "D:\\Quanlan\\Codes\\Python\\quanlan-analyser-official\\work\\learning_case\\outputs\\qc\\log.txt",
+      "manifest": "D:\\Quanlan\\Codes\\Python\\quanlan-analyser-official\\work\\learning_case\\outputs\\qc\\manifest.json"
+    },
+    "psd": {
+      "band_power": "D:\\Quanlan\\Codes\\Python\\quanlan-analyser-official\\work\\learning_case\\outputs\\psd\\tables\\band_power.csv",
+      "channel_band_power": "D:\\Quanlan\\Codes\\Python\\quanlan-analyser-official\\work\\learning_case\\outputs\\psd\\tables\\channel_band_power.csv",
+      "spectrum_long": "D:\\Quanlan\\Codes\\Python\\quanlan-analyser-official\\work\\learning_case\\outputs\\psd\\tables\\spectrum_long.csv",
+      "psd_mean_spectrum": "D:\\Quanlan\\Codes\\Python\\quanlan-analyser-official\\work\\learning_case\\outputs\\psd\\figures\\psd_mean_spectrum.svg",
+      "psd_band_power": "D:\\Quanlan\\Codes\\Python\\quanlan-analyser-official\\work\\learning_case\\outputs\\psd\\figures\\psd_band_power.svg",
+      "parameters": "D:\\Quanlan\\Codes\\Python\\quanlan-analyser-official\\work\\learning_case\\outputs\\psd\\reproducibility\\parameters.json",
+      "psd_summary": "D:\\Quanlan\\Codes\\Python\\quanlan-analyser-official\\work\\learning_case\\outputs\\psd\\reproducibility\\psd_summary.json",
+      "method_description": "D:\\Quanlan\\Codes\\Python\\quanlan-analyser-official\\work\\learning_case\\outputs\\psd\\reproducibility\\method_description.txt",
+      "software_versions": "D:\\Quanlan\\Codes\\Python\\quanlan-analyser-official\\work\\learning_case\\outputs\\psd\\reproducibility\\software_versions.json",
+      "workflow": "D:\\Quanlan\\Codes\\Python\\quanlan-analyser-official\\work\\learning_case\\outputs\\psd\\reproducibility\\workflow.json",
+      "parameter_schema_snapshot": "D:\\Quanlan\\Codes\\Python\\quanlan-analyser-official\\work\\learning_case\\outputs\\psd\\reproducibility\\parameter_schema_snapshot.json",
+      "threshold_validation": "D:\\Quanlan\\Codes\\Python\\quanlan-analyser-official\\work\\learning_case\\outputs\\psd\\reproducibility\\threshold_validation.json",
+      "effective_call": "D:\\Quanlan\\Codes\\Python\\quanlan-analyser-official\\work\\learning_case\\outputs\\psd\\reproducibility\\effective_call.json",
+      "source_metadata": "D:\\Quanlan\\Codes\\Python\\quanlan-analyser-official\\work\\learning_case\\outputs\\psd\\reproducibility\\source_metadata.json",
+      "table_dictionary": "D:\\Quanlan\\Codes\\Python\\quanlan-analyser-official\\work\\learning_case\\outputs\\psd\\reproducibility\\table_dictionary.json",
+      "scope_contract": "D:\\Quanlan\\Codes\\Python\\quanlan-analyser-official\\work\\learning_case\\outputs\\psd\\reproducibility\\scope_contract.json",
+      "result": "D:\\Quanlan\\Codes\\Python\\quanlan-analyser-official\\work\\learning_case\\outputs\\psd\\result.json",
+      "log": "D:\\Quanlan\\Codes\\Python\\quanlan-analyser-official\\work\\learning_case\\outputs\\psd\\log.txt",
+      "manifest": "D:\\Quanlan\\Codes\\Python\\quanlan-analyser-official\\work\\learning_case\\outputs\\psd\\manifest.json"
+    },
+    "erp_teaching_reference_none": {
+      "erp_metrics": "D:\\Quanlan\\Codes\\Python\\quanlan-analyser-official\\work\\learning_case\\outputs\\erp_teaching_reference_none\\tables\\erp_metrics.csv",
+      "parameters": "D:\\Quanlan\\Codes\\Python\\quanlan-analyser-official\\work\\learning_case\\outputs\\erp_teaching_reference_none\\reproducibility\\parameters.json",
+      "erp_summary": "D:\\Quanlan\\Codes\\Python\\quanlan-analyser-official\\work\\learning_case\\outputs\\erp_teaching_reference_none\\reproducibility\\erp_summary.json",
+      "event_confirmation": "D:\\Quanlan\\Codes\\Python\\quanlan-analyser-official\\work\\learning_case\\outputs\\erp_teaching_reference_none\\reproducibility\\event_confirmation.json",
+      "drop_log_summary": "D:\\Quanlan\\Codes\\Python\\quanlan-analyser-official\\work\\learning_case\\outputs\\erp_teaching_reference_none\\reproducibility\\drop_log_summary.json",
+      "method_description": "D:\\Quanlan\\Codes\\Python\\quanlan-analyser-official\\work\\learning_case\\outputs\\erp_teaching_reference_none\\reproducibility\\method_description.txt",
+      "software_versions": "D:\\Quanlan\\Codes\\Python\\quanlan-analyser-official\\work\\learning_case\\outputs\\erp_teaching_reference_none\\reproducibility\\software_versions.json",
+      "workflow": "D:\\Quanlan\\Codes\\Python\\quanlan-analyser-official\\work\\learning_case\\outputs\\erp_teaching_reference_none\\reproducibility\\workflow.json",
+      "result": "D:\\Quanlan\\Codes\\Python\\quanlan-analyser-official\\work\\learning_case\\outputs\\erp_teaching_reference_none\\result.json",
+      "log": "D:\\Quanlan\\Codes\\Python\\quanlan-analyser-official\\work\\learning_case\\outputs\\erp_teaching_reference_none\\log.txt",
+      "manifest": "D:\\Quanlan\\Codes\\Python\\quanlan-analyser-official\\work\\learning_case\\outputs\\erp_teaching_reference_none\\manifest.json"
+    },
+    "erp_current_default_average_reference": {
+      "erp_metrics": "D:\\Quanlan\\Codes\\Python\\quanlan-analyser-official\\work\\learning_case\\outputs\\erp_current_default_average_reference\\tables\\erp_metrics.csv",
+      "parameters": "D:\\Quanlan\\Codes\\Python\\quanlan-analyser-official\\work\\learning_case\\outputs\\erp_current_default_average_reference\\reproducibility\\parameters.json",
+      "erp_summary": "D:\\Quanlan\\Codes\\Python\\quanlan-analyser-official\\work\\learning_case\\outputs\\erp_current_default_average_reference\\reproducibility\\erp_summary.json",
+      "event_confirmation": "D:\\Quanlan\\Codes\\Python\\quanlan-analyser-official\\work\\learning_case\\outputs\\erp_current_default_average_reference\\reproducibility\\event_confirmation.json",
+      "drop_log_summary": "D:\\Quanlan\\Codes\\Python\\quanlan-analyser-official\\work\\learning_case\\outputs\\erp_current_default_average_reference\\reproducibility\\drop_log_summary.json",
+      "method_description": "D:\\Quanlan\\Codes\\Python\\quanlan-analyser-official\\work\\learning_case\\outputs\\erp_current_default_average_reference\\reproducibility\\method_description.txt",
+      "software_versions": "D:\\Quanlan\\Codes\\Python\\quanlan-analyser-official\\work\\learning_case\\outputs\\erp_current_default_average_reference\\reproducibility\\software_versions.json",
+      "workflow": "D:\\Quanlan\\Codes\\Python\\quanlan-analyser-official\\work\\learning_case\\outputs\\erp_current_default_average_reference\\reproducibility\\workflow.json",
+      "result": "D:\\Quanlan\\Codes\\Python\\quanlan-analyser-official\\work\\learning_case\\outputs\\erp_current_default_average_reference\\result.json",
+      "log": "D:\\Quanlan\\Codes\\Python\\quanlan-analyser-official\\work\\learning_case\\outputs\\erp_current_default_average_reference\\log.txt",
+      "manifest": "D:\\Quanlan\\Codes\\Python\\quanlan-analyser-official\\work\\learning_case\\outputs\\erp_current_default_average_reference\\manifest.json"
+    }
+  }
+}

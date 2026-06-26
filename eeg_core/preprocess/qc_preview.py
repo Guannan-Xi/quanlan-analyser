@@ -29,7 +29,7 @@ DEFAULT_FILTER_PREVIEW = {
 }
 
 MAX_DURATION_SEC = 30.0
-MAX_CHANNELS = 32
+MAX_CHANNELS = 64
 MAX_DISPLAY_POINTS = 1200
 
 
@@ -61,6 +61,7 @@ def run_qc_preview(input_path: str | Path, output_dir: str | Path, parameters: d
     preview = {**DEFAULT_PREVIEW, **(parameters.get("preview") or {})}
     filter_preview = _merge_filter(parameters.get("filter_preview") or {})
     snapshot = parameters.get("snapshot") or {}
+    fast_ui_preview = bool(parameters.get("fast_ui_preview"))
 
     raw = read_raw(input_file)
     sfreq = float(raw.info["sfreq"])
@@ -100,6 +101,20 @@ def run_qc_preview(input_path: str | Path, output_dir: str | Path, parameters: d
 
     annotations = _annotation_preview(raw, start_sec, stop_sec) if preview.get("show_annotations", True) else []
     channel_names = [raw.ch_names[idx] for idx in picks]
+    resampling_policy = {
+        "raw_data_resampled": False,
+        "original_sampling_rate_hz": sfreq,
+        "display_sampling_rate_hz": display_sfreq,
+        "display_downsampling_only": display_sfreq < sfreq,
+        "new_sampling_rate_hz": None,
+        "policy": "No formal preprocessing resampling is applied to the uploaded EEG file; any lower display rate is preview-only.",
+    }
+    reference_policy = {
+        "original_reference": str(raw.info.get("custom_ref_applied", "unknown")),
+        "new_reference": None,
+        "reference_changed": False,
+        "policy": "QC preview does not change EEG reference; formal reference changes require an explicit preprocessing or analysis task.",
+    }
 
     waveform_payload = {
         "input_file": str(input_file),
@@ -113,6 +128,8 @@ def run_qc_preview(input_path: str | Path, output_dir: str | Path, parameters: d
         "data_uv": _round_matrix(raw_uv),
         "annotations": annotations,
         "decimation": {"enabled": display_sfreq < sfreq, "reason": "display_only"},
+        "resampling_policy": resampling_policy,
+        "reference_policy": reference_policy,
     }
     waveform_path = _write_json(data_dir / "waveform_preview.json", waveform_payload)
 
@@ -127,8 +144,34 @@ def run_qc_preview(input_path: str | Path, output_dir: str | Path, parameters: d
         "times_sec": _round_list(times),
         "data_uv": _round_matrix(filtered_uv) if filtered_uv is not None else [],
         "warnings": filter_warnings,
+        "resampling_policy": resampling_policy,
+        "reference_policy": reference_policy,
     }
     filter_path = _write_json(data_dir / "filter_preview.json", filter_payload)
+
+    if fast_ui_preview:
+        summary = {
+            "status": "completed",
+            "preview_status": "ready",
+            "fast_ui_preview": True,
+            "filter_preview_only": True,
+            "start_sec": start_sec,
+            "duration_sec": duration,
+            "sfreq_original": sfreq,
+            "sfreq_display": display_sfreq,
+            "resampling_policy": resampling_policy,
+            "reference_policy": reference_policy,
+            "n_channels": len(channel_names),
+            "channels": channel_names,
+            "filter_enabled": bool(filter_preview.get("enabled")),
+            "warnings": filter_warnings,
+        }
+        summary_path = _write_json(data_dir / "preview_summary.json", summary)
+        return {
+            "waveform_preview": waveform_path,
+            "filter_preview": filter_path,
+            "preview_summary": summary_path,
+        }
 
     raw_figure_path = figure_dir / "waveform_raw_preview.svg"
     filter_figure_path = figure_dir / "waveform_filter_preview.svg"
@@ -175,6 +218,8 @@ def run_qc_preview(input_path: str | Path, output_dir: str | Path, parameters: d
             "parameters": parameters,
             "defaults": {"preview": DEFAULT_PREVIEW, "filter_preview": DEFAULT_FILTER_PREVIEW},
             "preview_only_filtering": True,
+            "resampling_policy": resampling_policy,
+            "reference_policy": reference_policy,
         },
     )
     method_path = repro_dir / "method_description.txt"
@@ -205,6 +250,8 @@ def run_qc_preview(input_path: str | Path, output_dir: str | Path, parameters: d
         "duration_sec": duration,
         "sfreq_original": sfreq,
         "sfreq_display": display_sfreq,
+        "resampling_policy": resampling_policy,
+        "reference_policy": reference_policy,
         "n_channels": len(channel_names),
         "channels": channel_names,
         "filter_enabled": bool(filter_preview.get("enabled")),

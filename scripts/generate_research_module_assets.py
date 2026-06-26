@@ -388,8 +388,8 @@ manifest = {
         'events_tsv': url(OUT / 'data' / 'synthetic_events.tsv'),
         'raw_preview_csv': url(OUT / 'data' / 'synthetic_raw_preview_8ch_12s.csv'),
         'subject_metrics_csv': url(TAB / 'synthetic_subject_level_metrics.csv'),
-        'source_edf': url(ROOT / 'frontend' / 'assets' / 'synthetic_8ch_120s.edf'),
-        'source_events': url(ROOT / 'frontend' / 'assets' / 'synthetic_8ch_120s_events.tsv'),
+        'source_edf': url(ROOT / 'frontend' / 'assets' / 'teaching_oddball.edf'),
+        'source_events': url(ROOT / 'frontend' / 'assets' / 'teaching_oddball_events.tsv'),
     },
     'shared': {
         'mne_reference': mne_reference,

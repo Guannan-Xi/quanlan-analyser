@@ -5,8 +5,8 @@
     "matplotlib": "3.10.9"
   },
   "inputs": {
-    "synthetic_edf": "synthetic_8ch_120s.edf",
-    "events": "synthetic_8ch_120s_events.tsv"
+    "teaching_oddball_edf": "teaching_oddball.edf",
+    "teaching_oddball_events": "teaching_oddball_events.tsv"
   },
   "outputs": [
     "subject_level_metrics.csv",
@@ -22,6 +22,104 @@
     "reviewer_checklist.json",
     "publication_package.zip"
   ],
+  "modules": {
+    "psd": {
+      "aliases": {
+        "band_power": {
+          "label": "Band Power",
+          "view_of": "psd",
+          "task_endpoint": "/api/tasks",
+          "module": "psd",
+          "workflow_id": "resting_psd",
+          "no_new_api": true,
+          "no_ipc_change": true,
+          "outputs": [
+            "tables/band_power.csv",
+            "tables/channel_band_power.csv",
+            "figures/psd_band_power.svg"
+          ],
+          "legacy_ar_analyser1": {
+            "status": "reference_only",
+            "bands_hz": {
+              "delta": [
+                0.5,
+                4
+              ],
+              "alpha": [
+                8,
+                12
+              ],
+              "beta": [
+                12,
+                30
+              ]
+            },
+            "aggregation": "PSD bin sum",
+            "policy": "Only run numeric parity against AR_analyser1 when the business request explicitly asks for legacy comparison."
+          },
+          "guardrails": [
+            "Band Power is a PSD view/alias in the 07 mainline, not a separate backend module.",
+            "Reuse /api/tasks with module=psd and workflow_id=resting_psd.",
+            "Do not create a separate Band Power API, IPC path, runner, router, or Headroom route.",
+            "Research frequency-band power view only; not for diagnosis, treatment, or medical decision-making."
+          ]
+        }
+      }
+    },
+    "epilepsy": {
+      "aliases": {
+        "epilepsy_std": {
+          "label": "Epilepsy STD threshold research screening",
+          "status": "internal_validation",
+          "view_of": "epilepsy",
+          "task_endpoint": "/api/tasks",
+          "module": "epilepsy",
+          "workflow_id": "epilepsy_std_threshold",
+          "method": "std_threshold",
+          "ml_enabled": false,
+          "no_new_api": true,
+          "no_ipc_change": true,
+          "no_headroom_route_change": true,
+          "outputs": [
+            "tables/epilepsy_epoch_scores.csv",
+            "tables/epilepsy_events.csv",
+            "tables/epilepsy_window_stats_30min.csv",
+            "reproducibility/epilepsy_summary.json",
+            "reproducibility/parameters.json",
+            "reproducibility/method_description.txt",
+            "reproducibility/scope_contract.json",
+            "result.json",
+            "manifest.json",
+            "log.txt"
+          ],
+          "parameters": {
+            "method": "std_threshold",
+            "epoch_length_sec": 5.0,
+            "std_factor": 2.0,
+            "rms_window_samples": 15,
+            "merge_gap_epoch_num": 1,
+            "min_event_epochs": 2,
+            "event_window_sec": 1800.0,
+            "eeg_channel": null,
+            "bad_channels": []
+          },
+          "legacy_ar_analyser1": {
+            "status": "std_threshold_reference_ported",
+            "source": "AR_analyser_PC/src/EpilepsyAnalysis_STD.py",
+            "method": "sliding RMS threshold with epoch merge",
+            "ml_status": "not_ported_in_this_slice"
+          },
+          "guardrails": [
+            "Epilepsy STD is an internal-validation research screening/support workflow, not a medical diagnostic feature.",
+            "Reuse /api/tasks with module=epilepsy and workflow_id=epilepsy_std_threshold.",
+            "Do not create a separate router, IPC path, Headroom route, or gateway path for this workflow.",
+            "Only method=std_threshold is enabled in this slice; ML model assets and dependencies require a future validation slice.",
+            "Results must not be used for diagnosis, treatment, seizure confirmation, medical triage, or clinical decision-making."
+          ]
+        }
+      }
+    }
+  },
   "recommended_reporting": [
     "Report preprocessing parameters, rejected epoch percentage, ICA component criteria, and exact statistical correction.",
     "Use subject-level metrics CSV for confirmatory statistics; never run final inference from only group plots.",

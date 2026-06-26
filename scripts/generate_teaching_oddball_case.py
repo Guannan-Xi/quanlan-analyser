@@ -111,8 +111,19 @@ def run_case() -> dict:
     raw = build_raw()
     fif_path = DATA / "teaching_oddball_raw.fif"
     edf_path = DATA / "teaching_oddball.edf"
+    events_tsv_path = DATA / "teaching_oddball_events.tsv"
     raw.save(fif_path, overwrite=True, verbose="ERROR")
     raw.export(edf_path, fmt="edf", overwrite=True, verbose="ERROR")
+
+    with events_tsv_path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=["onset", "duration", "trial_type"], delimiter="\t")
+        writer.writeheader()
+        for onset, desc in zip(raw.annotations.onset, raw.annotations.description):
+            writer.writerow({
+                "onset": f"{float(onset):.3f}",
+                "duration": "0.200",
+                "trial_type": str(desc),
+            })
 
     qc_paths = run_quality_check(edf_path, OUTPUTS / "qc", {})
     psd_paths = run_psd(edf_path, OUTPUTS / "psd", {"fmin": 1, "fmax": 40})
@@ -155,6 +166,7 @@ def run_case() -> dict:
     summary = {
         "dataset": {
             "edf": str(edf_path),
+            "events_tsv": str(events_tsv_path),
             "fif": str(fif_path),
             "duration_sec": DURATION_SEC,
             "sfreq_hz": SFREQ,

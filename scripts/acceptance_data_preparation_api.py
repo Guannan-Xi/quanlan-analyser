@@ -47,6 +47,9 @@ def main() -> None:
         plan = created.json()
         assert plan["revision"] == 1
         assert plan["schema_version"] == "qlanalyser-data-preparation-v0.2"
+        assert "erp" in plan["module_scope"]
+        assert "multitaper_psd_tfr" in plan["module_scope"]
+        assert "connectivity" in plan["module_scope"]
 
         read_back = client.get(f"/api/data-preparation/plans/{plan['id']}")
         assert read_back.status_code == 200
@@ -78,6 +81,30 @@ def main() -> None:
         assert reference.status_code == 200, reference.text
         body = reference.json()
         assert body["parameters_json"]["data_preparation_plan_id"] == plan["id"]
+
+        erp_reference = client.post(f"/api/data-preparation/plans/{plan['id']}/task-reference", json={
+            "module_name": "erp",
+            "workflow_id": "erp_p300",
+            "expected_revision": 2,
+        })
+        assert erp_reference.status_code == 200, erp_reference.text
+        assert erp_reference.json()["module_name"] == "erp"
+
+        multitaper_reference = client.post(f"/api/data-preparation/plans/{plan['id']}/task-reference", json={
+            "module_name": "multitaper_psd_tfr",
+            "workflow_id": "multitaper_psd_tfr",
+            "expected_revision": 2,
+        })
+        assert multitaper_reference.status_code == 200, multitaper_reference.text
+        assert multitaper_reference.json()["module_name"] == "multitaper_psd_tfr"
+
+        connectivity_reference = client.post(f"/api/data-preparation/plans/{plan['id']}/task-reference", json={
+            "module_name": "connectivity",
+            "workflow_id": "connectivity",
+            "expected_revision": 2,
+        })
+        assert connectivity_reference.status_code == 200, connectivity_reference.text
+        assert connectivity_reference.json()["module_name"] == "connectivity"
 
         default_eeg = eeg_model.EEGFileRead(
             id="eeg_file_route", project_id="proj_api", original_filename="file-route.edf",

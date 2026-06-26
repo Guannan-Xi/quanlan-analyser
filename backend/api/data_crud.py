@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 
 from backend.services import storage_service
 
@@ -18,10 +18,5 @@ def update_customer_file(file_id: str, label: str) -> dict:
 
 @router.delete("/data/files/{file_id}")
 def delete_customer_file(file_id: str) -> dict:
-    file = storage_service.get_eeg_file(file_id)
-    try:
-        file.stored_path.unlink(missing_ok=True)
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Failed to delete file: {exc}") from exc
     storage_service.delete_eeg_file(file_id)
-    return {"id": file_id, "status": "deleted"}
+    return {"id": file_id, "status": "deleted", "delete_mode": "soft"}

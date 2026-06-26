@@ -58,7 +58,7 @@ function renderIndex(manifest) {
         <p>${h(m.scenario)}</p>
         <div class="actions">
           <a class="mini-btn main" href="./research-module/${m.page}">${icon("external-link")}查看详情</a>
-          <a class="mini-btn" href="${asset(m.package)}">${icon("download")}结果包</a>
+          <a class="mini-btn" href="${asset(m.package)}">${icon("download")}结果材料</a>
         </div>
       </div>
     </article>`;
@@ -81,7 +81,9 @@ async function renderCsvPreview(table) {
     if (!rows.length) { target.innerHTML = `<div class="empty">CSV 暂无内容</div>`; return; }
     const head = rows[0];
     const body = rows.slice(1);
-    target.innerHTML = `<div class="table-wrap"><table class="data-table"><thead><tr>${head.map(c=>`<th>${h(c)}</th>`).join("")}</tr></thead><tbody>${body.map(r=>`<tr>${head.map((_,i)=>`<td>${h(r[i] ?? "")}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
+    const tableHtml = `<div class="table-wrap"><table class="data-table"><thead><tr>${head.map(c=>`<th>${h(c)}</th>`).join("")}</tr></thead><tbody>${body.map(r=>`<tr>${head.map((_,i)=>`<td>${h(r[i] ?? "")}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
+    const cardHtml = `<div class="csv-card-list">${body.map((r)=>`<article class="csv-card">${head.map((col,i)=>`<div><span>${h(col)}</span><strong>${h(r[i] ?? "")}</strong></div>`).join("")}</article>`).join("")}</div>`;
+    target.innerHTML = `${tableHtml}${cardHtml}`;
   } catch (err) {
     target.innerHTML = `<div class="empty">无法预览 CSV：${h(err.message)}</div>`;
   }
@@ -106,7 +108,7 @@ function renderModule(manifest, slug) {
   const pages = Object.values(manifest.modules);
   app.innerHTML = `<header class="module-header">
     <nav class="module-nav">
-      <a href="../research-modules.html">${icon("arrow-left")} 返回分析实验室</a>
+      <a href="../research-modules.html">${icon("arrow-left")} 返回分析方法库</a>
       <div>${pages.map((p)=>`<a href="./${p.page}">${h(p.slug.toUpperCase())}</a>`).join("")}</div>
     </nav>
     <section class="module-title">
@@ -115,19 +117,19 @@ function renderModule(manifest, slug) {
       <p>${h(m.subtitle)}</p>
       <p>${h(m.scenario)}</p>
       <div class="quick-links">
-        <a class="primary" href="${asset(m.package)}">${icon("download")}下载结果包</a>
+        <a class="primary" href="${asset(m.package)}">${icon("download")}下载结果材料</a>
         <a class="secondary" href="${asset(manifest.shared.mne_reference)}">${icon("book-open")}MNE 参考清单</a>
         <a class="secondary" href="${asset(manifest.shared.reviewer_checklist)}">${icon("clipboard-check")}复核清单</a>
       </div>
     </section>
   </header>
-  <section class="sample-strip" aria-label="Synthetic input data">
-    <strong>${icon("database")}测试输入数据</strong>
+  <section class="sample-strip" aria-label="示例输入数据">
+    <strong>${icon("database")}示例输入数据</strong>
     <a href="${asset(manifest.sampleData.source_edf)}">示例 EDF</a>
-    <a href="${asset(manifest.sampleData.source_events)}">原始事件 TSV</a>
-    <a href="${asset(manifest.sampleData.events_tsv)}">事件 TSV</a>
-    <a href="${asset(manifest.sampleData.raw_preview_csv)}">Raw preview CSV</a>
-    <a href="${asset(manifest.sampleData.subject_metrics_csv)}">Subject metrics CSV</a>
+    <a href="${asset(manifest.sampleData.source_events)}">原始事件表</a>
+    <a href="${asset(manifest.sampleData.events_tsv)}">事件表</a>
+    <a href="${asset(manifest.sampleData.raw_preview_csv)}">波形预览表</a>
+    <a href="${asset(manifest.sampleData.subject_metrics_csv)}">受试者指标表</a>
   </section>
   <div class="module-layout">
     <aside class="side-panel">
@@ -137,11 +139,11 @@ function renderModule(manifest, slug) {
       <a href="#tables">表格预览 <span>→</span></a>
       <a href="#docs">参数与方法 <span>→</span></a>
       <a href="#guardrails">科研风险 <span>→</span></a>
-      <a href="${asset(m.package)}">下载 ZIP <span>↓</span></a>
+      <a href="${asset(m.package)}">下载材料 <span>↓</span></a>
     </aside>
     <section class="content-stack">
       <article class="panel" id="workflow">
-        <p class="eyebrow">Workflow contract</p>
+        <p class="eyebrow">输入与输出</p>
         <h2>输入、参数控件、输出</h2>
         <div class="grid-2">
           <div><h3>输入</h3>${list(m.inputs)}</div>
@@ -151,22 +153,22 @@ function renderModule(manifest, slug) {
         </div>
       </article>
       <article class="panel" id="figures">
-        <p class="eyebrow">Publication preview</p>
+        <p class="eyebrow">图表预览</p>
         <h2>图像预览</h2>
         <div class="figure-grid">${(m.figures||[]).map((f)=>`<figure class="figure-card"><img src="${asset(f.src)}" alt="${h(f.alt||f.label)}" loading="lazy" /><figcaption>${h(f.label)}</figcaption></figure>`).join("")}</div>
       </article>
       <article class="panel" id="tables">
-        <p class="eyebrow">Subject-level data</p>
-        <h2>CSV 表格预览</h2>
+        <p class="eyebrow">受试者级数据</p>
+        <h2>表格预览</h2>
         <div class="content-stack">${(m.tables||[]).map((tbl)=>`<section><h3>${h(tbl.label)}</h3><div data-table-src="${h(tbl.src)}"></div><div class="download-row"><a class="mini-btn" href="${asset(tbl.src)}">${icon("download")}下载 CSV</a></div></section>`).join("")}</div>
       </article>
       <article class="panel" id="docs">
-        <p class="eyebrow">Reproducibility</p>
-        <h2>参数、方法说明、图注和 summary</h2>
+        <p class="eyebrow">复现材料</p>
+        <h2>参数、方法说明、图注和总结</h2>
         <div class="doc-grid">${(m.docs||[]).map((doc)=>`<section class="doc-card"><h3>${h(doc.label)}</h3><div data-doc-src="${h(doc.src)}"></div><div class="download-row"><a class="mini-btn" href="${asset(doc.src)}">${icon("download")}下载</a></div></section>`).join("")}</div>
       </article>
       <article class="panel guardrail" id="guardrails">
-        <p class="eyebrow">Scientific guardrails</p>
+        <p class="eyebrow">科研解释边界</p>
         <h2>科研解释风险</h2>
         ${list(m.risks, "risk-list")}
         <p><strong>统一边界：</strong>${h(manifest.researchGuardrail)}</p>

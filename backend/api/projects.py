@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from backend.models.project import ProjectCreate, ProjectRead
+from backend.models.project import ProjectCreate, ProjectRead, ProjectUpdate
 from backend.services import storage_service
 
 router = APIRouter()
@@ -20,3 +20,12 @@ def list_projects() -> list[ProjectRead]:
 def get_project(project_id: str) -> ProjectRead:
     return storage_service.get_project(project_id)
 
+
+@router.patch("/projects/{project_id}", response_model=ProjectRead)
+def update_project(project_id: str, payload: ProjectUpdate) -> ProjectRead:
+    return storage_service.update_project(project_id, payload)
+
+
+@router.post("/projects/{project_id}/archive", response_model=ProjectRead)
+def archive_project(project_id: str) -> ProjectRead:
+    return storage_service.archive_project(project_id)

@@ -21,3 +21,12 @@ Rules:
 ## Current canonical module docs
 
 - `docs/modules/analysis_modules_design_matrix.md`: QC / PSD / ERP / TFR / PAC / Connectivity module status, input/output, MNE mapping, risk, and promotion criteria.
+- `docs/modules/analysis_module_contract.md`: standard module contract for lifecycle, schemas, execution, artifacts, report mapping, acceptance gates, and non-medical research/CRO boundaries.
+- `docs/modules/analysis_method_inheritance_guide.md`: method inheritance ladder from preview to stable, plus subflow split and main-flow promotion rules.
+- `docs/modules/eeg_method_portfolio_matrix.md`: main-flow / enhancement / preview matrix across toolkits and EEG method families.
+
+Acceptance:
+
+```powershell
+python scripts\acceptance_analysis_module_contract.py
+```

@@ -156,6 +156,7 @@ data/derivatives/{project_id}/{task_id}/
 ```text
 tables/band_power.csv
 tables/channel_band_power.csv
+figures/psd_band_power.svg
 reproducibility/psd_summary.json
 reproducibility/parameters.json
 reproducibility/method_description.txt
@@ -208,7 +209,23 @@ log.txt
 - 频段功率是对 canonical bands 内功率平均。
 - 解释必须考虑参考方式、预处理、伪迹和个体 alpha peak 差异。
 
-## 8. 校验规则
+## 8. Band Power as PSD view/alias
+
+Band Power 在 07 主线中不是独立后端模块，而是 PSD 的视图/别名。生产实现必须复用现有 `/api/tasks` 任务入口，提交 `module=psd`、`workflow_id=resting_psd`，不新开 API、不改 IPC、不新增 runner/router/Headroom 通道。
+
+Band Power 交付物来自 PSD 输出契约：
+
+- `tables/band_power.csv`
+- `tables/channel_band_power.csv`
+- `figures/psd_band_power.svg`
+
+前端可把该视图展示为“频段功率”或 “Band Power”，但 manifest、任务 payload、报告复现链路仍应指向 PSD/resting_psd。后续若需要单独的 Band Power 页面，应只做 UI alias 和下载入口聚合，不能重复造一套 PSD 后端计算模块。
+
+与 AR_analyser1 legacy 口径的差异必须显式标注：AR 频段为 Delta 0.5-4 Hz、Alpha 8-12 Hz、Beta 12-30 Hz，并使用 PSD bin sum；07 PSD 当前主线默认频段为 delta 1-4、theta 4-8、alpha 8-13、beta 13-30、gamma_low 30-40，当前文档口径为 canonical band 内功率平均。legacy 逐数值对照仅在业务明确要求复核历史结果时再做，不作为 07 主线默认交付。
+
+边界说明：Band Power 是科研频段功率视图，用于描述 EEG 频谱功率分布和复现分析流程，不用于诊断、治疗或医疗决策。
+
+## 9. 校验规则
 
 运行 PSD 前必须校验：
 
@@ -233,7 +250,7 @@ log.txt
 - 对 `fmax` 接近或超过 Nyquist 的错误进行提前拦截。
 - 对空频段或频段超出 `fmin/fmax` 的情况写入 warning。
 
-## 9. 失败模式与用户提示
+## 10. 失败模式与用户提示
 
 | 失败模式 | 当前来源 | 用户提示方向 |
 | --- | --- | --- |
@@ -247,12 +264,13 @@ log.txt
 
 失败时 task 应进入 `failed`，保留 `error_message`，并尽量写入 `log.txt` 或任务状态。后续改造应让失败也产生最小可读 manifest。
 
-## 10. 图表与展示设计
+## 11. 图表与展示设计
 
 v0.1 当前后端主要输出表格和复现文件。体验中心或正式工作台展示 PSD 时建议：
 
 - 频谱曲线：横轴 Hz，纵轴功率或 log power。
 - band power 条形图：delta/theta/alpha/beta/gamma_low。
+- Band Power alias 图：优先使用 `figures/psd_band_power.svg`，缺失时由 `tables/band_power.csv` 渲染同等内容。
 - 通道热力表：channel x band。
 - Topomap：作为后续增强，前提是 montage 足够可靠。
 
@@ -261,7 +279,7 @@ v0.1 当前后端主要输出表格和复现文件。体验中心或正式工作
 - 推荐：`频段功率`、`通道表`、`方法和参数`、`下载结果`。
 - 避免：反复写“QLanalyser 分析功能模块入口”。
 
-## 11. 科研解释边界
+## 12. 科研解释边界
 
 PSD 报告必须提醒：
 
@@ -269,8 +287,17 @@ PSD 报告必须提醒：
 - 高幅伪迹、眼动、肌电、坏道会显著影响频谱。
 - alpha 峰存在个体差异，固定 8-13 Hz 只是默认频段。
 - 单文件 PSD 不能推出诊断结论。
+- Band Power 只是科研频段功率视图，不用于诊断、治疗或医疗决策。
 - 跨被试比较必须在一致预处理、参考、频段和统计设计下进行。
 
-## 12. 与 QC / 预处理的关系
+## 13. 与 QC / 预处理的关系
 
 PSD 进入条件：
+
+- V1 中 PSD 不直接读取原始 `data_preparation_plan.json`。
+- C1/C2/task_service 负责按 `data_preparation_plan_id` 和 `data_preparation_revision` 读取并归一化方案。
+- PSD 接收归一化后的任务参数，验证并应用 `bad_channels`、`bad_segments`、`annotation_actions`。
+- `bad_channels` 必须是通道名字符串列表。不存在于当前文件的通道只记录为未应用风险，不应导致崩溃。
+- `bad_segments` 支持 `{onset, duration}`，也支持 PSD 本地安全转换 `{start_sec, end_sec}`。
+- `annotation_actions` 在 PSD P0 中仅记录；如果需要影响计算，上游必须先归一化为 `bad_segments`。
+- PSD 输出必须在 summary、parameters、workflow、log、result contract 中保留 `data_preparation_plan_id` 和 `data_preparation_revision`，以便复核同一套 QC 决策。

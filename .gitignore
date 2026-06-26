@@ -20,6 +20,7 @@ work/
 *.log
 *.tmp
 *.bak
+*.bak-*
 *.zip
 *.7z
 *.rar
@@ -54,6 +55,7 @@ data/demo/**
 data/derivatives/**
 data/reports/**
 data/state/**
+data/invoices/**
 !data/uploads/.gitkeep
 !data/derivatives/.gitkeep
 !data/reports/.gitkeep

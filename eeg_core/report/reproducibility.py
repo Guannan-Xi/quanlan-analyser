@@ -10,6 +10,7 @@ from typing import Any
 
 
 CONTRACT_SCHEMA_VERSION = "qlanalyser-output-v0.1"
+ARTIFACT_SCHEMA_VERSION = "qlanalyser-artifact-registry-v0.1"
 PRODUCT_NAME = "QLanalyser Online"
 PRODUCT_VERSION = "QLanalyser Online v0.1 Pilot"
 MANIFEST_FILENAME = "manifest.json"
@@ -23,7 +24,7 @@ def _utc_now() -> str:
 
 def collect_software_versions() -> dict:
     packages = {}
-    for package in ("mne", "numpy", "scipy", "pandas", "fastapi", "pydantic"):
+    for package in ("mne", "numpy", "scipy", "pandas", "fastapi", "pydantic", "joblib", "scikit-learn", "xgboost"):
         try:
             packages[package] = version(package)
         except PackageNotFoundError:
@@ -41,6 +42,11 @@ def write_json(path: str | Path, payload: dict) -> Path:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     return output_path
+
+
+def stable_json_hash(payload: Any) -> str:
+    encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
 
 
 def write_reproducibility_files(
@@ -127,6 +133,72 @@ def write_output_contract(
     return {"result": result_path, "log": log_path, "manifest": manifest_path}
 
 
+def write_analysis_sidecars(
+    output_dir: str | Path,
+    *,
+    module_name: str,
+    parameter_schema: dict,
+    effective_call: dict,
+    threshold_validation: dict,
+    table_dictionary: dict,
+    scope_contract: dict,
+    source_metadata: dict,
+) -> dict[str, Path]:
+    reproducibility = Path(output_dir) / "reproducibility"
+    reproducibility.mkdir(parents=True, exist_ok=True)
+    return {
+        "parameter_schema_snapshot": write_json(
+            reproducibility / "parameter_schema_snapshot.json",
+            {
+                "schema_version": CONTRACT_SCHEMA_VERSION,
+                "module": module_name,
+                "parameter_schema": parameter_schema,
+                "parameter_schema_hash": stable_json_hash(parameter_schema),
+            },
+        ),
+        "effective_call": write_json(
+            reproducibility / "effective_call.json",
+            {
+                "schema_version": CONTRACT_SCHEMA_VERSION,
+                "module": module_name,
+                **effective_call,
+            },
+        ),
+        "threshold_validation": write_json(
+            reproducibility / "threshold_validation.json",
+            {
+                "schema_version": CONTRACT_SCHEMA_VERSION,
+                "module": module_name,
+                **threshold_validation,
+            },
+        ),
+        "table_dictionary": write_json(
+            reproducibility / "table_dictionary.json",
+            {
+                "schema_version": CONTRACT_SCHEMA_VERSION,
+                "module": module_name,
+                "tables": table_dictionary,
+            },
+        ),
+        "scope_contract": write_json(
+            reproducibility / "scope_contract.json",
+            {
+                "schema_version": CONTRACT_SCHEMA_VERSION,
+                "module": module_name,
+                **scope_contract,
+            },
+        ),
+        "source_metadata": write_json(
+            reproducibility / "source_metadata.json",
+            {
+                "schema_version": CONTRACT_SCHEMA_VERSION,
+                "module": module_name,
+                **source_metadata,
+            },
+        ),
+    }
+
+
 def build_result_contract(
     output_dir: str | Path,
     *,
@@ -149,6 +221,7 @@ def build_result_contract(
 
     return {
         "schema_version": CONTRACT_SCHEMA_VERSION,
+        "artifact_schema_version": ARTIFACT_SCHEMA_VERSION,
         "product_name": PRODUCT_NAME,
         "product_version": PRODUCT_VERSION,
         "job_id": output_path.name,
@@ -160,11 +233,14 @@ def build_result_contract(
             "filename": Path(input_path).name,
         },
         "parameters": parameters,
+        "parameters_hash": stable_json_hash(parameters),
         "summary": summary,
+        "summary_hash": stable_json_hash(summary),
         "metrics": _extract_metrics(summary),
         "warnings": _extract_warnings(summary),
         "errors": _extract_errors(summary),
         "outputs": output_entries,
+        "outputs_hash": stable_json_hash(output_entries),
         "references": _contract_references(output_path),
         "started_at": started_at,
         "finished_at": finished_at,
@@ -198,6 +274,7 @@ def build_manifest(output_dir: str | Path) -> dict:
         files.append(_file_entry(output_path, path))
     return {
         "schema_version": CONTRACT_SCHEMA_VERSION,
+        "artifact_schema_version": ARTIFACT_SCHEMA_VERSION,
         "product_name": PRODUCT_NAME,
         "product_version": PRODUCT_VERSION,
         "job_id": output_path.name,
@@ -242,6 +319,12 @@ def _contract_references(output_dir: Path) -> dict[str, str]:
     references: dict[str, str] = {}
     candidates = {
         "parameters": output_dir / "reproducibility" / "parameters.json",
+        "parameter_schema_snapshot": output_dir / "reproducibility" / "parameter_schema_snapshot.json",
+        "threshold_validation": output_dir / "reproducibility" / "threshold_validation.json",
+        "effective_call": output_dir / "reproducibility" / "effective_call.json",
+        "source_metadata": output_dir / "reproducibility" / "source_metadata.json",
+        "table_dictionary": output_dir / "reproducibility" / "table_dictionary.json",
+        "scope_contract": output_dir / "reproducibility" / "scope_contract.json",
         "method_description": output_dir / "reproducibility" / "method_description.txt",
         "software_versions": output_dir / "reproducibility" / "software_versions.json",
         "workflow": output_dir / "reproducibility" / "workflow.json",

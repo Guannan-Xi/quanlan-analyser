@@ -1,1 +1,1 @@
-PAC/CFC preview output. Synthetic comodulogram and phase-binned gamma amplitude demonstrate expected reporting: frequency ranges, modulation index, surrogate p-values, and warnings about edge artifacts and multiple comparisons.
+PAC/CFC preview output. Synthetic comodulogram and phase-binned gamma amplitude demonstrate expected reporting: frequency ranges, modulation index, surrogate p-values, and warnings about edge effects and multiple comparisons.

@@ -146,6 +146,45 @@ YYYY-MM-DD
 确认是否继续处理品牌命名统一（例如旧的 `QLanalyser 脑电分析平台` 文案）以及远程同步策略。
 ---
 
+## Latest Task
+
+### Date
+2026-06-22
+
+### Goal
+Deliver the first runnable beta module in the inherited QLanalyser 02/08 slice: `multitaper_psd_tfr`.
+
+### Modified Files
+- `eeg_core/analysis/multitaper_psd_tfr.py`: new multitaper PSD/TFR runner with validation, reproducibility files, and result/manifest/log output.
+- `backend/services/task_service.py`: route `multitaper_psd_tfr` through `/api/tasks` and enable the workflow template.
+- `backend/services/lab_demo_service.py`: add demo defaults for `multitaper_psd_tfr`.
+- `backend/services/billing_service.py`: add task pricing for `multitaper_psd_tfr`.
+- `backend/services/quota_service.py`: add quota estimate factor for `multitaper_psd_tfr`.
+- `frontend/module-lab.js`: add the multitaper module card and parameter collection, and fix preview rendering.
+- `scripts/acceptance_multitaper_psd_tfr_module.py`: standalone runner/task acceptance.
+- `scripts/acceptance_module_lab_live_runner.mjs`: add beta module coverage and longer waits for heavy tasks.
+- `scripts/acceptance_module_lab_preview_selectors.py`: add the multitaper card to the browser checks.
+- `scripts/acceptance_module_contract_registry.py`: expect multitaper beta to be enabled.
+- `docs/modules/analysis_module_contract.md`: list multitaper as a beta/lab module.
+- `docs/modules/analysis_modules_design_matrix.md`: update module status matrix to reflect current beta runners.
+- `docs/PROJECT_STATUS_CURRENT.md`: record the new beta runner in the current status snapshot.
+
+### Completed
+- Added a runnable multitaper PSD/TFR beta runner with output files, manifest, log, and reproducibility sidecars.
+- Wired the module into task routing, demo defaults, billing, quota, and the analysis lab UI.
+- Added dedicated acceptance for the new module and updated browser/contract checks.
+- Fixed the module-lab preview rendering bug that blocked the page from loading.
+
+### Tests
+- `python -m py_compile` on the touched Python files.
+- `python scripts/acceptance_multitaper_psd_tfr_module.py` -> passed.
+- `python scripts/acceptance_module_contract_registry.py` -> passed.
+- `python scripts/acceptance_module_lab_preview_selectors.py` -> passed.
+- `node scripts/acceptance_module_lab_live_runner.mjs` -> passed.
+
+### Results
+- The multitaper beta module now runs through `/api/tasks`, appears in the module lab, and emits downloadable artifacts.
+
 ## 最新任务
 
 ### 日期
@@ -849,9 +888,9 @@ Remove customer-facing information noise from the workbench and keep the page fo
 
 ### Completed
 - Deleted the top explanatory flow note and three-column value cards from `frontend/index.html`.
-- Deleted the repeated "??????" panel.
+- Deleted the repeated "科研级流程" panel.
 - Removed the now-unused `.boss-brief` and `.central-config-note` CSS.
-- Updated the static acceptance check so the customer-facing "?????" naming is accepted.
+- Updated the static acceptance check so the customer-facing "模块中心" naming is accepted.
 
 ### Validation
 - `node --check frontend/app.js frontend/module-lab.js frontend/research-modules.js scripts/acceptance_research_modules_static.mjs`: passed.
@@ -882,3 +921,1103 @@ Implement the common `data_preparation_plan` foundation used by QC and PSD befor
 ### Notes
 - This pass intentionally does not change PSD algorithm internals.
 - Existing unrelated dirty frontend/QC files were not part of this service implementation.
+
+## 2026-06-19 C0 customer Pilot flow cleanup checkpoint
+
+### Goal
+Make the customer-visible Pilot path coherent and verifiable before handing the UI to C4/C5 for independent review.
+
+### Changes
+- Cleaned `frontend/index.html` customer entry/workbench copy around project, data import, data preparation, analysis, result review, and delivery download.
+- Hid secondary module-center and operations entries from the default login page while preserving internal routes/selectors for controlled use.
+- Synchronized `frontend/expert-entry-demo.html` with the cleaned default entry so old entry URLs do not show stale Pilot/demo/admin copy.
+- Replaced missing `customer_oddball_case` images/downloads with existing assets under `frontend/assets`.
+- Updated `frontend/app.js` dynamic labels and messages away from local/demo/sandbox/backend wording.
+- Updated `scripts/acceptance_v01_ui.mjs` to use `?pilot=1`, enforce customer-visible copy denylist, hide visible operations nav for customer role, and fail on non-API asset/navigation 4xx responses.
+- Updated `scripts/acceptance_research_modules_static.mjs` so customer entry checks assert hidden secondary/operations entries and customer copy cleanliness.
+- Fixed two historical mojibake placeholders in this task log so `scripts/check_no_mojibake.py` passes.
+
+### Validation
+- `git fetch origin --prune`: passed before UI edits.
+- `node --check frontend/app.js`: passed.
+- `node --check scripts/acceptance_v01_ui.mjs`: passed.
+- `node --check scripts/acceptance_research_modules_static.mjs`: passed.
+- `python scripts/check_no_mojibake.py`: passed.
+- `node scripts/acceptance_research_modules_static.mjs`: passed, 217 checks, 6 pages.
+- `python scripts/acceptance_data_preparation_plan.py`: passed.
+- `python scripts/acceptance_data_preparation_api.py`: passed.
+- `python scripts/acceptance_psd_p0.py`: passed.
+- `python scripts/acceptance_qc_preview_service.py`: passed, 13 artifacts, 64 channels checked.
+- `python scripts/acceptance_v01_full.py`: passed, 191 checks.
+- `python scripts/smoke_v01_api.py`: passed.
+- `node scripts/acceptance_v01_ui.mjs`: passed against local backend/frontend; project creation, upload guard, valid upload, QC, PSD, ERP, and report creation all returned expected results.
+
+### Changed-file ownership map
+- C0 current checkpoint: `frontend/index.html`, `frontend/expert-entry-demo.html`, `frontend/app.js`, `scripts/acceptance_v01_ui.mjs`, `scripts/acceptance_research_modules_static.mjs`, `docs/PROJECT_STATUS.md`, `docs/TASK_LOG.md`.
+- Prior/shared backend chain residue: `backend/services/task_service.py`, `scripts/acceptance_data_preparation_plan.py`, `scripts/acceptance_psd_p0.py`, `eeg_core/analysis/psd.py`.
+- C2/QC residue: `eeg_core/preprocess/qc_preview.py`, `frontend/qc-lab.html`, `frontend/qc-lab.js`, `frontend/qc-lab.css`, `scripts/acceptance_qc_preview_service.py`.
+- Other UI residue: `frontend/styles.css`.
+- Governance/team residue: `.agents/skills/qlanalyser-*`, `docs/TEAM_OPERATING_MODEL.md`, `docs/FOUR_CONVERSATION_WORKFLOW.md`, `docs/modules/qc_common_data_preparation_requirements.md`.
+
+### Risks
+- Worktree remains mixed; do not use `git add .`.
+- `main` is still locally ahead of `origin/main`; do not push until C0 separates scopes and confirms release baseline.
+- C4 still needs browser/screenshot acceptance from the user-flow perspective.
+- C5 still needs final release-gate review before any commit/push.
+
+### Next
+1. Send C4 a checkpoint for independent customer-flow review.
+2. Send C5 a checkpoint for release-gate and owner-boundary review.
+3. Freeze the current shared data-preparation plan contract with C1 after C4/C5 feedback.
+
+## 2026-06-22 Reference / CSD beta runnable module
+
+### Goal
+Turn Reference / CSD from a disabled preview card into one standalone, QLanalyser-integrable analysis module with backend runner, task routing, frontend controls, validation, and evidence.
+
+### Changes
+- Added `eeg_core/analysis/reference_csd.py` with parameter validation, average/specific/bipolar/CSD modes, bad-channel and bad-segment handling, before/after SVG previews, CSV tables, reproducibility sidecars, `result.json`, `manifest.json`, and boundary text.
+- Enabled `reference_csd` in `backend/services/task_service.py` through the same `/api/tasks` path used by runnable modules.
+- Extended data-preparation module scope and quota estimate support for `reference_csd`.
+- Added demo support for `reference_csd` in `backend/services/lab_demo_service.py` and `/lab/demo/run-all`.
+- Promoted CSD in `frontend/module-lab.js` from preview-only to a runnable beta card with reference mode, reference channels, preview window, preview channels, and CSD advanced fields.
+- Added `scripts/acceptance_reference_csd_module.py` for runner + task-service acceptance.
+- Updated live UI runner and preview selector acceptance so CSD is runnable while TFR/PAC/Connectivity remain preview.
+
+### Validation
+- `python -m py_compile eeg_core\analysis\reference_csd.py backend\services\task_service.py backend\models\data_preparation.py backend\services\lab_demo_service.py scripts\acceptance_reference_csd_module.py scripts\acceptance_module_lab_preview_selectors.py scripts\acceptance_module_contract_registry.py`: passed.
+- `node --check frontend\module-lab.js`: passed.
+- `node --check scripts\acceptance_module_lab_live_runner.mjs`: passed.
+- `python scripts\acceptance_reference_csd_module.py`: passed; produced a completed `reference_csd` task and 20 artifacts.
+- `python scripts\acceptance_module_contract_registry.py`: passed.
+- `python scripts\acceptance_module_lab_preview_selectors.py`: passed.
+- `node scripts\acceptance_module_lab_live_runner.mjs`: passed after restarting local backend 8001; UI-only flow uploaded EEG and completed QC, PSD, ERP, and Reference/CSD tasks.
+
+### Evidence
+- `work/release_evidence/20260622-reference-csd-module/acceptance_reference_csd_module.json`
+- `work/release_evidence/20260620-module-lab-live-runner/module_lab_live_runner.json`
+- `work/release_evidence/module_lab_preview_selectors/acceptance_module_lab_preview_selectors.json`
+
+### Notes
+- Local backend 8001 had to be restarted because the old process still rejected `reference_csd` as disabled.
+- Full-repo `python scripts/check_no_mojibake.py` still fails on pre-existing `frontend/app.js` and `frontend/index.html` replacement-marker text; targeted scan on CSD-touched files did not find replacement markers or common mojibake strings.
+- Worktree remains mixed with unrelated existing changes. Do not use `git add .`.
+
+## 2026-06-22 Connectivity beta runnable module
+
+### Goal
+Turn Connectivity from a preview-only method into one standalone, QLanalyser-integrable beta analysis module with backend runner, task routing, frontend controls, validation, and evidence.
+
+### Changes
+- Replaced the preview stub in `eeg_core/analysis/connectivity.py` with a real sensor-space beta runner.
+- Enabled `connectivity` in `backend/services/task_service.py` through the shared `/api/tasks` path.
+- Added demo/quota/contract support through `backend/services/lab_demo_service.py`, `backend/api/lab_demo.py`, and `backend/services/quota_service.py`.
+- Promoted Connectivity in `frontend/module-lab.js` from preview-only to a runnable beta card with method, frequency band, time window, channel selection, edge threshold, and max-edge fields.
+- Added `scripts/acceptance_connectivity_module.py` for runner + task-service acceptance.
+- Updated live UI runner, preview selector, and contract registry acceptance so Connectivity is runnable after QC, PSD, ERP, and Reference/CSD.
+
+### Validation
+- `python -m py_compile eeg_core\analysis\connectivity.py backend\services\task_service.py backend\services\lab_demo_service.py scripts\acceptance_connectivity_module.py scripts\acceptance_module_lab_preview_selectors.py scripts\acceptance_module_contract_registry.py`: passed.
+- `node --check frontend\module-lab.js`: passed.
+- `node --check scripts\acceptance_module_lab_live_runner.mjs`: passed.
+- `python scripts\acceptance_connectivity_module.py`: passed; produced a completed `connectivity` task and 18 artifacts.
+- `python scripts\acceptance_module_contract_registry.py`: passed.
+- `python scripts\acceptance_module_lab_preview_selectors.py`: passed.
+- `node scripts\acceptance_module_lab_live_runner.mjs`: passed after restarting local backend 8001; UI-only flow uploaded EEG and completed QC, PSD, ERP, Reference/CSD, and Connectivity tasks.
+
+### Evidence
+- `work/release_evidence/20260622-connectivity-module/acceptance_connectivity_module.json`
+- `work/release_evidence/20260620-module-lab-live-runner/module_lab_live_runner.json`
+- `work/release_evidence/module_lab_preview_selectors/acceptance_module_lab_preview_selectors.json`
+
+### Notes
+- Connectivity scope is sensor-space, single-record, beta only. It must not be described as causality, source localization, diagnosis, brain-region communication, group statistics, or significance testing.
+- Full-repo `python scripts/check_no_mojibake.py` remains blocked by pre-existing replacement-marker text outside this slice; targeted scan on connectivity-touched files passed.
+- Worktree remains mixed with unrelated existing changes. Do not use `git add .`.
+
+## 2026-06-22 PAC / CFC beta runnable module
+
+### Goal
+Turn PAC / CFC from a preview-only method into one standalone, QLanalyser-integrable beta analysis module with backend runner, task routing, frontend controls, validation, and evidence.
+
+### Changes
+- Added `eeg_core/analysis/pac.py` with parameter validation, MNE filtering, Hilbert phase/envelope extraction, Tort-style MI calculation, phase-bin table, comodulogram table, dynamic curve table, summary table, SVG figures, reproducibility sidecars, `result.json`, `manifest.json`, and boundary text.
+- Enabled `pac` in `backend/services/task_service.py` through the shared `/api/tasks` path while keeping the module lifecycle as beta.
+- Added demo/quota support through `backend/services/lab_demo_service.py` and `backend/services/quota_service.py`.
+- Promoted PAC in `frontend/module-lab.js` from preview-only to a runnable beta card with channels, phase grid, amplitude grid, bin count, time window, dynamic window, and bad-channel fields.
+- Added `scripts/acceptance_pac_module.py` for runner + task-service acceptance.
+- Updated live UI runner, preview selector, and contract registry acceptance so PAC is runnable after QC, PSD, and ERP and before Reference/CSD and Connectivity.
+
+### Validation
+- `python -m py_compile eeg_core\analysis\pac.py backend\services\task_service.py backend\services\lab_demo_service.py backend\services\quota_service.py scripts\acceptance_pac_module.py scripts\acceptance_module_lab_preview_selectors.py scripts\acceptance_module_contract_registry.py`: passed.
+- `node --check frontend\module-lab.js`: passed.
+- `node --check scripts\acceptance_module_lab_live_runner.mjs`: passed.
+- `python scripts\acceptance_pac_module.py`: passed; produced a completed `pac` task and 23 artifacts.
+- `python scripts\validate_pac_beta_artifacts.py work\release_evidence\20260622-pac-module\runner_output --out work\release_evidence\20260622-pac-module\pac_runner_validator.json`: passed.
+- `python scripts\acceptance_module_contract_registry.py`: passed.
+- `python scripts\acceptance_module_lab_preview_selectors.py`: passed.
+- `node scripts\acceptance_module_lab_live_runner.mjs`: passed after restarting local backend 8001; UI-only flow uploaded EEG and completed QC, PSD, ERP, PAC, Reference/CSD, and Connectivity tasks.
+
+### Evidence
+- `work/release_evidence/20260622-pac-module/acceptance_pac_module.json`
+- `work/release_evidence/20260622-pac-module/pac_runner_validator.json`
+- `work/release_evidence/20260620-module-lab-live-runner/module_lab_live_runner.json`
+- `work/release_evidence/module_lab_preview_selectors/acceptance_module_lab_preview_selectors.json`
+
+### Debug notes
+- First browser run hit the old backend process and failed with `pac is not enabled in V01`; root cause was stale uvicorn, fixed by stopping the exact listener PID and restarting 8001.
+- Second browser run failed because amplitude centers `70,90,110 Hz` exceeded Nyquist for the 200 Hz UI fixture; UI defaults were lowered to `30,50,70 Hz`.
+- Third browser run failed because the `0-20 s` window exceeded the short UI fixture duration; UI defaults were shortened to `0-8 s` with a 4 s dynamic window and 2 s step.
+
+### Notes
+- PAC scope is single-record, sensor-space, beta only. It must not be described as p-value/significance, diagnosis, group comparison, causality, brain-region communication, or source localization.
+- Worktree remains mixed with unrelated existing changes. Do not use `git add .`.
+
+## 2026-06-22 PAC beta bundle checkpoint
+
+### Goal
+Turn the PAC beta UI path into a reusable platform asset with a real downloadable ZIP bundle and a formal checkpoint record.
+
+### Changes
+- Added a PAC beta UI bundle checkpoint record at `work/release_evidence/checkpoints/2026-06-22-0805-pac-beta-ui-bundle-checkpoint.md`.
+- Added the matching JSON packet at `work/release_evidence/checkpoints/2026-06-22-0805-pac-beta-ui-bundle-checkpoint.json`.
+- Updated the checkpoint asset manifest and state snapshot so the new PAC checkpoint is indexed with the existing formal packet set.
+
+### Validation
+- `python scripts/acceptance_pac_module.py`: passed.
+- `python scripts/acceptance_pac_beta_contract.py`: passed.
+- `node scripts/virtual_reviewer_pac_beta_ui_only_runner.mjs`: passed.
+- `python work\release_evidence\checkpoints\validate_checkpoints_directory_consistency.py`: to be rerun after the checkpoint index refresh.
+
+### Evidence
+- `work/release_evidence/checkpoints/2026-06-22-0805-pac-beta-ui-bundle-checkpoint.md`
+- `work/release_evidence/checkpoints/2026-06-22-0805-pac-beta-ui-bundle-checkpoint.json`
+- `work/release_evidence/pac_beta/pac_beta_artifact_bundle.zip`
+- `work/release_evidence/pac_beta/pac-beta-ui-only-runner-evidence.json`
+
+### Notes
+- This is a product-platform checkpoint for PAC bundle delivery, not a PAC stable-promotion claim.
+- Keep the bundle contract aligned if future PAC outputs change.
+- Do not use `git add .`.
+
+## 2026-06-22 Project CRUD persistence and EDF-to-results review checkpoint
+
+### Goal
+Close one user-visible product slice: project edit/archive must persist through backend routes, guarded destructive actions must remain explicit, and the review path must be able to enter with a demo account and complete a synthetic EDF-to-results flow.
+
+### Changes
+- Added project update and archive persistence service paths in `backend/services/storage_service.py`.
+- Added `PATCH /api/projects/{project_id}` and `POST /api/projects/{project_id}/archive` in `backend/api/projects.py`.
+- Added `ProjectUpdate` in `backend/models/project.py`.
+- Updated `frontend/app.js` so project edit/archive call the backend and record persistence evidence; delete remains guarded.
+- Updated `scripts/acceptance_multirole_click_review_5rounds.mjs` to assert `backend_patch`, `backend_archive`, and `not_mutated` UI audit contracts.
+- Wrote a review checkpoint with fixed access, demo account, permission scope, and credential safety.
+
+### Validation
+- `python -m py_compile backend\models\project.py backend\services\storage_service.py backend\api\projects.py`: passed.
+- `node --check frontend\app.js scripts\acceptance_multirole_click_review_5rounds.mjs`: passed.
+- `python scripts\check_no_mojibake.py frontend\app.js frontend\index.html backend\models\project.py backend\services\storage_service.py backend\api\projects.py scripts\acceptance_multirole_click_review_5rounds.mjs`: passed.
+- Refreshed backend 8001 and frontend 4174; health and frontend HTTP checks passed.
+- Backend route smoke after restart passed for create, patch, and archive.
+- `node scripts\acceptance_customer_login_demo.mjs`: passed.
+- `python scripts\acceptance_project_data_preparation_ia.py`: passed.
+- `node scripts\acceptance_multirole_click_review_5rounds.mjs`: passed with no blocking findings.
+- `node scripts\acceptance_edf_upload_to_results_ui_only.mjs`: passed from synthetic EDF upload through QC, preparation, epoch set, PSD, ERP, TFR, PAC, and report ZIP.
+- `python scripts\acceptance_professional_chinese_gate.py`: passed.
+- `python scripts\acceptance_mainline_eeg_contract_mapping_consumption.py`: passed.
+- `python scripts\acceptance_round006_tfr_real_report_consumption.py`: passed.
+- `python scripts\acceptance_round006_pac_real_report_consumption.py`: passed.
+- `python scripts\validate_checkpoint_packet_access.py work\release_evidence\checkpoints\2026-06-22-0750-project-crud-persistence-edf-results-checkpoint.json`: passed.
+- `python scripts\acceptance_checkpoint_packet_access.py work\release_evidence\checkpoints\2026-06-22-0750-project-crud-persistence-edf-results-checkpoint.json`: passed.
+
+### Evidence
+- `work/release_evidence/checkpoints/2026-06-22-0750-project-crud-persistence-edf-results-checkpoint.md`
+- `work/release_evidence/checkpoints/2026-06-22-0750-project-crud-persistence-edf-results-checkpoint.json`
+- `work/release_evidence/multirole_click_review_5rounds/multirole_click_review_5rounds.json`
+- `work/release_evidence/edf_upload_to_results_ui_only/edf_upload_to_results_ui_only.json`
+- `work/release_evidence/edf_upload_to_results_ui_only/report_a69280766dc6.zip`
+
+### Notes
+- Feishu owner notice was sent for this checkpoint.
+- This is a review checkpoint, not a full release pass.
+- PAC and TFR remain beta/descriptive single-record outputs.
+- Worktree remains mixed with unrelated existing changes. Do not use `git add .`.
+
+## 2026-06-22 Report delivery page visible UI checkpoint
+
+### Goal
+Close the report-delivery usability gap: after users generate a report, the report download page must visibly show the generated report and ZIP action; before report generation, it must show a clear next step instead of an empty panel.
+
+### Changes
+- Replaced a mojibake dynamic report-delivery block in `frontend/app.js` with UTF-8-safe labels.
+- Added a report-delivery empty state that guides the user back to data preparation or report generation.
+- Re-rendered delivery state during view changes so the report page reflects current task/report state.
+- Updated `scripts/acceptance_multirole_click_review_5rounds.mjs` so the report download view is exercised through the visible nav item.
+- Updated `scripts/acceptance_edf_upload_to_results_ui_only.mjs` to record `deliveryState` and require the generated report id plus ZIP action on the delivery page.
+
+### Validation
+- `node --check frontend\app.js scripts\acceptance_multirole_click_review_5rounds.mjs scripts\acceptance_edf_upload_to_results_ui_only.mjs`: passed.
+- `python scripts\check_no_mojibake.py frontend\app.js frontend\index.html scripts\acceptance_multirole_click_review_5rounds.mjs scripts\acceptance_edf_upload_to_results_ui_only.mjs work\release_evidence\edf_upload_to_results_ui_only\edf_upload_to_results_ui_only.json work\release_evidence\multirole_click_review_5rounds\multirole_click_review_5rounds.json`: passed.
+- `node scripts\acceptance_multirole_click_review_5rounds.mjs`: passed.
+- `python scripts\acceptance_pac_module.py`: passed.
+- `node scripts\acceptance_customer_login_demo.mjs`: passed.
+- `node scripts\acceptance_edf_upload_to_results_ui_only.mjs`: passed on rerun; generated `report_d5e669acfd33` and downloaded `report_d5e669acfd33.zip`.
+- `python scripts\acceptance_professional_chinese_gate.py`: passed.
+- `python scripts\acceptance_mainline_eeg_contract_mapping_consumption.py`: passed.
+- `python scripts\acceptance_round006_tfr_real_report_consumption.py`: passed.
+- `python scripts\acceptance_round006_pac_real_report_consumption.py`: passed.
+- `python scripts\validate_checkpoint_packet_access.py work\release_evidence\checkpoints\2026-06-22-0806-report-delivery-visible-edf-results-checkpoint.json`: passed.
+- `python scripts\acceptance_checkpoint_packet_access.py work\release_evidence\checkpoints\2026-06-22-0806-report-delivery-visible-edf-results-checkpoint.json`: passed.
+
+### Evidence
+- `work/release_evidence/checkpoints/2026-06-22-0806-report-delivery-visible-edf-results-checkpoint.md`
+- `work/release_evidence/checkpoints/2026-06-22-0806-report-delivery-visible-edf-results-checkpoint.json`
+- `work/release_evidence/edf_upload_to_results_ui_only/edf_upload_to_results_ui_only.json`
+- `work/release_evidence/edf_upload_to_results_ui_only/report_d5e669acfd33.zip`
+- `work/release_evidence/multirole_click_review_5rounds/multirole_click_review_5rounds.json`
+
+### Debug notes
+- First EDF rerun after the UI change failed during PAC with a temporary `ERR_CONNECTION_REFUSED` / `Failed to fetch`; backend PID changed during that window.
+- PAC module acceptance passed immediately afterward, and the second full EDF UI-only rerun passed. Treat this as a transient local service interruption unless it recurs.
+
+### Notes
+- Feishu owner notice should include the review link and demo account for this checkpoint.
+- This is a review checkpoint, not a full release pass.
+- Worktree remains mixed with unrelated existing changes. Do not use `git add .`.
+
+## 2026-06-22 EDF chain backend health stability checkpoint
+
+### Goal
+Turn the latest EDF upload-to-results product path into a stability-observable chain: upload synthetic EDF, run preparation, save epoch set, run PSD/ERP/TFR/PAC, view results, generate/download report ZIP, and prove the backend process stays healthy across the long UI-only run.
+
+### Changes
+- Added process identity and uptime fields to `/api/health` in `backend/api/health.py`.
+- Updated `scripts/acceptance_edf_upload_to_results_ui_only.mjs` to sample backend health throughout the UI-only chain.
+- Added runner checks for `backendHealthSamplesOk`, `backendProcessStable`, and `backendProcessIdsObserved`.
+- Wrote a review-ready checkpoint with demo account, password/login method, permission scope, and credential safety.
+
+### Validation
+- `python -m py_compile backend\api\health.py`: passed.
+- `node --check scripts\acceptance_edf_upload_to_results_ui_only.mjs`: passed.
+- `python scripts\check_no_mojibake.py backend\api\health.py scripts\acceptance_edf_upload_to_results_ui_only.mjs`: passed.
+- `node scripts\acceptance_customer_login_demo.mjs`: passed.
+- `node scripts\acceptance_multirole_click_review_5rounds.mjs`: passed.
+- `node scripts\acceptance_edf_upload_to_results_ui_only.mjs`: passed; report `report_2fdf3d048d26`, report ZIP `work\release_evidence\edf_upload_to_results_ui_only\report_2fdf3d048d26.zip`.
+- Health evidence: all samples ok, `backendProcessIdsObserved=[37620]`, `backendProcessStable=true`.
+- `python scripts\acceptance_professional_chinese_gate.py`: passed.
+- `python scripts\acceptance_mainline_eeg_contract_mapping_consumption.py`: passed.
+- `python scripts\acceptance_round006_tfr_real_report_consumption.py`: passed.
+- `python scripts\acceptance_round006_pac_real_report_consumption.py`: passed.
+- `python scripts\validate_checkpoint_packet_access.py work\release_evidence\checkpoints\2026-06-22-0818-edf-chain-backend-health-stability-checkpoint.json`: passed.
+- `python scripts\acceptance_checkpoint_packet_access.py work\release_evidence\checkpoints\2026-06-22-0818-edf-chain-backend-health-stability-checkpoint.json`: passed.
+- `python scripts\check_no_mojibake.py work\release_evidence\checkpoints\2026-06-22-0818-edf-chain-backend-health-stability-checkpoint.md work\release_evidence\checkpoints\2026-06-22-0818-edf-chain-backend-health-stability-checkpoint.json work\release_evidence\edf_upload_to_results_ui_only\edf_upload_to_results_ui_only.json work\release_evidence\multirole_click_review_5rounds\multirole_click_review_5rounds.json`: passed.
+
+### Evidence
+- `work/release_evidence/checkpoints/2026-06-22-0818-edf-chain-backend-health-stability-checkpoint.md`
+- `work/release_evidence/checkpoints/2026-06-22-0818-edf-chain-backend-health-stability-checkpoint.json`
+- `work/release_evidence/edf_upload_to_results_ui_only/edf_upload_to_results_ui_only.json`
+- `work/release_evidence/edf_upload_to_results_ui_only/report_2fdf3d048d26.zip`
+- `work/release_evidence/multirole_click_review_5rounds/multirole_click_review_5rounds.json`
+
+### Notes
+- This is review-ready checkpoint evidence, not a full release pass.
+- PAC and TFR remain beta/descriptive single-record outputs.
+- Review access is validated and includes the fixed demo account: `demo.customer@quanlan.cn` / `demo123456`.
+- Worktree remains mixed with unrelated existing changes. Do not use `git add .`.
+
+## 2026-06-22 OCR-first PDF artifact QA checkpoint
+
+### Goal
+Close one report-delivery quality gate: generated report PDFs must be rendered page-by-page, parsed through OCR as the primary artifact QA path, cross-checked with native text-layer audit, and consumed by the release evidence chain without claiming full release readiness.
+
+### Changes
+- Executed the OCR-first PDF artifact QA gate against the latest EDF UI-only report ZIP.
+- Generated page images under `work\release_evidence\pdf_ocr_artifact_qa\pages`.
+- Wrote the machine-readable PDF QA result to `work\release_evidence\pdf_ocr_artifact_qa\pdf_ocr_artifact_qa.json`.
+- Refreshed production goal matrix, release gate summary, and release evidence manifest so they consume `pdf_ocr_artifact_qa`.
+- Wrote a review-ready checkpoint with fixed demo access and credential-safety fields.
+
+### Validation
+- `python -m py_compile scripts\acceptance_pdf_ocr_artifact_qa.py scripts\acceptance_production_goal_matrix.py scripts\build_release_gate_summary.py scripts\refresh_release_readiness_manifest.py scripts\run_release_review_gate.py`: passed.
+- `python scripts\check_no_mojibake.py scripts\acceptance_pdf_ocr_artifact_qa.py scripts\acceptance_production_goal_matrix.py scripts\build_release_gate_summary.py scripts\refresh_release_readiness_manifest.py scripts\run_release_review_gate.py`: passed.
+- `python scripts\acceptance_pdf_ocr_artifact_qa.py`: passed.
+- OCR evidence: `primary_parse=PaddleOCR_all_pages`, `auxiliary_text_layer_audit=yes`, `artifact_validator_verdict=pass`, `blockers=[]`.
+- Page checks passed for cover, overview, data quality, methods, results, and appendix.
+- `python scripts\acceptance_production_goal_matrix.py`: passed with external boundaries.
+- `python scripts\build_release_gate_summary.py`: passed; release status remains `blocked_external_inputs`.
+- `python scripts\refresh_release_readiness_manifest.py`: passed; evidence manifest contains `pdf_ocr_artifact_qa`.
+- `python scripts\acceptance_release_gate_summary.py`: passed.
+- `python scripts\acceptance_release_manifest_consistency.py`: passed.
+- `python scripts\acceptance_release_no_misclaim.py`: passed.
+- `python scripts\validate_checkpoint_packet_access.py work\release_evidence\checkpoints\2026-06-22-0824-pdf-ocr-artifact-qa-checkpoint.json`: passed.
+- `python scripts\acceptance_checkpoint_packet_access.py work\release_evidence\checkpoints\2026-06-22-0824-pdf-ocr-artifact-qa-checkpoint.json`: passed.
+- `python scripts\check_no_mojibake.py work\release_evidence\checkpoints\2026-06-22-0824-pdf-ocr-artifact-qa-checkpoint.md work\release_evidence\checkpoints\2026-06-22-0824-pdf-ocr-artifact-qa-checkpoint.json work\release_evidence\pdf_ocr_artifact_qa\pdf_ocr_artifact_qa.json`: passed.
+
+### Evidence
+- `work/release_evidence/checkpoints/2026-06-22-0824-pdf-ocr-artifact-qa-checkpoint.md`
+- `work/release_evidence/checkpoints/2026-06-22-0824-pdf-ocr-artifact-qa-checkpoint.json`
+- `work/release_evidence/pdf_ocr_artifact_qa/pdf_ocr_artifact_qa.json`
+- `work/release_evidence/pdf_ocr_artifact_qa/pages/page_001.png`
+- `work/release_evidence/pdf_ocr_artifact_qa/pages/page_002.png`
+- `work/release_evidence/20260620-v01-acceptance/production_goal_requirement_matrix.json`
+- `work/release_evidence/20260620-v01-acceptance/release_gate_summary.json`
+- `work/release_evidence/20260620-v01-acceptance/evidence_manifest.json`
+
+### Notes
+- This is PDF artifact QA evidence, not a full release pass.
+- Native text-layer parsing remains an auxiliary audit path for exact parameters, units, versions, and timestamps.
+- Review access is validated and includes the fixed demo account: `demo.customer@quanlan.cn` / `demo123456`.
+- Worktree remains mixed with unrelated existing changes. Do not use `git add .`.
+
+## 2026-06-22 Login feedback, UTF-8 UI, and EDF-to-report checkpoint
+
+### Goal
+Ship one reviewable product slice: users can open the local review entry, get feedback if login fields are empty, log in with the default demo account, upload the synthetic EDF, run the main EEG chain, download a report ZIP, and have that exact ZIP pass inline OCR-first PDF QA.
+
+### Changes
+- Scoped `frontend/app.js` so it no longer collides with the legacy inline script globals in `frontend/index.html`.
+- Added a clean visible-copy pass for the login/workbench surfaces affected by old mojibake.
+- Kept the default review account flow at `demo.customer@quanlan.cn` / `demo123456`.
+- Switched login/register/admin feedback messages to clear Chinese UI text.
+- Wrote a review-ready checkpoint with REVIEW_ACCESS, credential safety, and validator pass.
+
+### Validation
+- Browser empty-login check: passed; message `请先输入邮箱/手机号和密码，再点击登录。`.
+- Browser demo-login check: passed; reached `项目工作台` as `客户账户`; visible bad-marker scan empty.
+- `node --check frontend\app.js`: passed.
+- `python scripts\check_no_mojibake.py frontend\app.js frontend\index.html`: passed.
+- `node scripts\acceptance_edf_upload_to_results_ui_only.mjs`: passed; report ZIP `work\release_evidence\edf_upload_to_results_ui_only\report_8d4a83bd4ae3.zip`.
+- `python scripts\acceptance_psd_real_report_consumption.py`: passed.
+- `python scripts\acceptance_qc_real_report_consumption.py`: passed.
+- `python scripts\acceptance_round006_tfr_real_report_consumption.py`: passed.
+- `python scripts\acceptance_round006_pac_real_report_consumption.py`: passed.
+- `python scripts\acceptance_round008_erp_real_report_consumption.py`: passed.
+- `python scripts\acceptance_mainline_eeg_contract_mapping_consumption.py`: passed.
+- `python scripts\run_release_review_gate.py`: passed; failed steps empty.
+- `python scripts\acceptance_production_goal_matrix.py`: passed with external boundaries.
+- `python scripts\acceptance_release_gate_summary.py`: passed; release status remains `blocked_external_inputs`.
+- `python scripts\acceptance_release_manifest_consistency.py`: passed.
+- `python scripts\acceptance_release_no_misclaim.py`: passed.
+- `python scripts\validate_checkpoint_packet_access.py work\release_evidence\checkpoints\2026-06-22-0856-edf-ui-login-mojibake-inline-pdf-ocr-checkpoint.json`: passed.
+- `python scripts\acceptance_checkpoint_packet_access.py work\release_evidence\checkpoints\2026-06-22-0856-edf-ui-login-mojibake-inline-pdf-ocr-checkpoint.json`: passed.
+- `python scripts\check_no_mojibake.py frontend\app.js frontend\index.html work\release_evidence\edf_upload_to_results_ui_only\edf_upload_to_results_ui_only.json work\release_evidence\pdf_ocr_artifact_qa\pdf_ocr_artifact_qa.json`: passed.
+
+### Evidence
+- `work/release_evidence/checkpoints/2026-06-22-0856-edf-ui-login-mojibake-inline-pdf-ocr-checkpoint.md`
+- `work/release_evidence/checkpoints/2026-06-22-0856-edf-ui-login-mojibake-inline-pdf-ocr-checkpoint.json`
+- `work/release_evidence/edf_upload_to_results_ui_only/edf_upload_to_results_ui_only.json`
+- `work/release_evidence/edf_upload_to_results_ui_only/report_8d4a83bd4ae3.zip`
+- `work/release_evidence/pdf_ocr_artifact_qa/pdf_ocr_artifact_qa.json`
+- `work/release_evidence/20260620-v01-acceptance/release_gate_summary.json`
+
+### Notes
+- This checkpoint is review-ready, not a full release pass.
+- PAC/TFR remain beta and descriptive only.
+- DeepSeek language draft was skipped for this urgent functional UI fix because no DeepSeek callable route is available in this thread; wording is minimal factual UI feedback and remains subject to the professional Chinese gate.
+
+## 2026-06-22 08 replacement entry: 07-consumable module evidence gate repair
+
+### Goal
+Take over the broken 08 research-room lane and deliver a real 07-consumable runner/checker/evidence result instead of a knowledge-only summary.
+
+### Changes
+- Updated `scripts/build_release_gate_summary.py` so the Markdown release summary exposes the P0 gap-repair contract evidence path already present in the summary JSON.
+- Refreshed module-lab live P0 evidence, production goal matrix, release summary, and release review gate outputs.
+
+### Validation
+- `python -m py_compile scripts\build_release_gate_summary.py scripts\acceptance_release_gate_summary.py`: passed.
+- `python scripts\check_no_mojibake.py scripts\build_release_gate_summary.py scripts\acceptance_release_gate_summary.py`: passed.
+- `python scripts\acceptance_mainline_eeg_contract_mapping_consumption.py`: passed.
+- `python scripts\acceptance_psd_real_report_consumption.py`: passed.
+- `node scripts\acceptance_module_lab_live_runner.mjs`: P0 QC/PSD/ERP customer-file evidence present; advanced module timeout remains outside this P0 row.
+- `python scripts\acceptance_production_goal_matrix.py`: passed with external boundaries.
+- `python scripts\build_release_gate_summary.py`: passed, release status `blocked_external_inputs`.
+- `python scripts\acceptance_release_gate_summary.py`: passed.
+- `python scripts\run_release_review_gate.py`: passed, 33 steps, failed steps empty.
+
+### Evidence
+- `work\release_evidence\20260620-module-lab-live-runner\module_lab_live_runner.json`
+- `work\release_evidence\20260620-v01-acceptance\production_goal_requirement_matrix.json`
+- `work\release_evidence\20260620-v01-acceptance\release_gate_summary.json`
+- `work\release_evidence\20260620-v01-acceptance\release_gate_summary.md`
+- `work\release_evidence\20260620-v01-acceptance\release_review_gate_run.json`
+
+### Notes
+- Release readiness remains blocked by external provider/cloud inputs.
+- why_not_mini: takeover, intent parsing, evidence-chain repair, and final acceptance belong to GPT-5.5/Codex; deterministic checks were handled by scripts.
+
+## 2026-06-22 Service 07 replacement entry - module-lab all beta runner evidence
+
+### Goal
+Continue the QLanalyser module-support mainline with real runnable module evidence, not learning cards or summaries. Close a 07-consumable beta module checkpoint covering backend runner evidence, `/api/tasks`, module-lab UI submission, parameter validation, and visual evidence.
+
+### Findings / root cause
+- `connectivity` specialty acceptance passed immediately: backend runner, parameter rejection, task-service `/api/tasks` path, and artifact registration produced 18 artifacts.
+- The first `module-lab` all-module UI run failed at `multitaper_psd_tfr` because the running local backend on port 8001 was still an older uvicorn process that did not include the current `multitaper_psd_tfr` task-service branch.
+- Restarting only the local development backend aligned runtime behavior with the current source. No production service, push, deploy, or destructive repo operation was performed.
+
+### Validation
+- `python -m py_compile eeg_core\analysis\connectivity.py backend\services\task_service.py scripts\acceptance_connectivity_module.py`: passed.
+- `node --check frontend\module-lab.js scripts\acceptance_module_lab_live_runner.mjs`: passed.
+- `python scripts\acceptance_connectivity_module.py`: passed; `task_27d274bedfc0`, 18 artifacts.
+- Local backend 8001 health after restart: passed; process changed to current-source uvicorn.
+- `python scripts\acceptance_multitaper_psd_tfr_module.py`: passed; `task_1e63744a9dca`, 22 artifacts.
+- `QLANALYSER_MODULE_LAB_SCOPE=all node scripts\acceptance_module_lab_live_runner.mjs`: passed; one uploaded customer file created 8 real `/api/tasks` and all 8 module cards returned downloadable artifacts.
+- `python scripts\check_no_mojibake.py frontend\module-lab.js frontend\module-lab.html frontend\module-lab.css work\release_evidence\20260620-module-lab-live-runner\module_lab_live_runner.json work\release_evidence\20260622-connectivity-module\acceptance_connectivity_module.json work\release_evidence\20260622-multitaper-psd-tfr-module\acceptance_multitaper_psd_tfr_module.json`: passed.
+
+### Evidence
+- `work\release_evidence\20260622-connectivity-module\acceptance_connectivity_module.json`
+- `work\release_evidence\20260622-connectivity-module\runner_output`
+- `work\release_evidence\20260622-multitaper-psd-tfr-module\acceptance_multitaper_psd_tfr_module.json`
+- `work\release_evidence\20260622-multitaper-psd-tfr-module\runner_output`
+- `work\release_evidence\20260620-module-lab-live-runner\module_lab_live_runner.json`
+- `work\release_evidence\20260620-module-lab-live-runner\module_lab_live_runner_all.png`
+
+### UI review note
+- Code-level UI sources checked: `frontend/module-lab.js`, `frontend/module-lab.html`, `frontend/module-lab.css`, plus `UI_INTERACTION_REVIEW_GATE_20260622.md`, `CODE_REVIEWABLE_UI_UX_KNOWLEDGE_STANDARD_20260622.md`, `UX_STATE_FEEDBACK_EMPTY_ERROR_LOADING_MOTION_GATE_CN.md`, and `QLANALYSER_DASHBOARD_DESIGN_SYSTEM_FIT_MATRIX_CN.md`.
+- Visual evidence checked: `module_lab_live_runner_all.png`.
+- UI verdict: conditional evidence pass for module integration and artifact visibility only. This is not a final polished UI pass; module-lab remains dense, parameter-heavy, and beta-lab oriented. Missing state coverage for narrow viewport, explicit error recovery screenshots, keyboard/focus path, and long-task progress detail prevents a final UI review pass under the 2026-06-22 gate.
+
+### Notes
+- Connectivity, PAC, TFR, Reference/CSD, and Multitaper remain beta/descriptive single-record research modules unless separately promoted.
+- This checkpoint is local module integration evidence, not release readiness.
+- Worktree remains mixed with unrelated existing changes. Do not use `git add .`, do not push, and do not deploy from this state without an explicit owner split/review.
+- why_not_mini: takeover, UI verdict, root-cause interpretation, and final acceptance are GPT-5.5/Codex-owned. Scripts supplied mechanical evidence only.
+
+## 2026-06-22 Service 07 module-lab P0/Beta UI split
+
+### Goal
+Close the 07A revise item where module-lab mixed P0 customer workflow, beta runnable methods, and preview-only methods in one primary module grid.
+
+### Changed files
+- `frontend/module-lab.js`: added P0 and beta module id groups, rendered separate P0/Beta/Preview sections, and kept upload/refresh/select listener ownership in `bindRunners()` instead of `renderFileOptions()`.
+- `frontend/module-lab.css`: added section-intro/workflow-section styling and made the module index responsive as three workflow columns.
+- `frontend/module-lab.html`: repaired the corrupted title/meta copy and bumped module-lab asset query versions.
+
+### Validation
+- `node --check frontend\module-lab.js`: passed.
+- `node --check scripts\acceptance_module_lab_live_runner.mjs`: passed.
+- `python scripts\check_no_mojibake.py frontend\module-lab.js frontend\module-lab.html frontend\module-lab.css`: passed.
+- `node scripts\acceptance_module_lab_live_runner.mjs`: passed for P0 scope; one uploaded customer EEG file created exactly 3 `/api/tasks` submissions for QC, PSD, and ERP; all completed with downloadable artifacts.
+- `QLANALYSER_MODULE_LAB_SCOPE=all node scripts\acceptance_module_lab_live_runner.mjs`: not accepted in this turn; it exceeded the local wait window and was stopped, so beta all-scope evidence remains the prior checkpoint until rerun as a separate packet.
+
+### Evidence
+- P0 runner output observed in terminal: status `passed`, moduleScope `p0`, taskPostCount `3`, modules `qc`, `psd`, `erp` all passed.
+- Screenshot path emitted by runner: `work\release_evidence\20260620-module-lab-live-runner\module_lab_live_runner_all.png`.
+- Patch/recovery working copies: `C:\Users\XGN\Documents\Codex\2026-06-22\quanlan-02-qlanalyser-module-support-replacement\tmp\module-lab-patch\mod\frontend`.
+
+### Boundary
+- This is a module-lab product-structure and event-binding repair, not a new scientific module.
+- Beta modules remain research/beta evidence surfaces and are not promoted to stable release-ready modules by this UI split.
+- No push or deploy was performed.
+- why_not_mini: UI verdict, accidental patch-apply recovery, and final acceptance required GPT-5.5/Codex judgment; scripts supplied deterministic syntax, mojibake, and runner evidence only.
+
+
+## 2026-06-23 Service 07 module-lab beta all-scope runner and visual gate evidence
+
+### Goal
+Continue the QLanalyser module-support mainline with real beta module verification evidence after the P0/Beta/Preview module-lab split.
+
+### Parallel packages
+- Package A - script/validator runner: start local backend/frontend acceptance services, verify backend health and demo dataset, then run module-lab all-scope runner against real `/api/tasks`.
+- Package B - visual/evidence matrix: inspect desktop all-scope screenshot, generate a 390px mobile screenshot, and summarize P0/Beta/Preview UI boundary evidence.
+
+### Environment/root cause fixed
+- Initial all-scope run failed because `http://127.0.0.1:4174` was not running.
+- After frontend start, the browser reported CORS, but direct backend logs showed the true root cause was `PermissionError` writing `data/state/.projects.lock`.
+- Restarting the local backend with permission to write project state fixed `/api/lab/demo/dataset`; CORS preflight itself returned 200.
+
+### Validation
+- `Invoke-RestMethod http://127.0.0.1:8001/api/health`: passed; backend process `28976`.
+- `Invoke-RestMethod http://127.0.0.1:8001/api/lab/demo/dataset`: passed after authorized backend restart.
+- `QLANALYSER_MODULE_LAB_SCOPE=all node scripts\acceptance_module_lab_live_runner.mjs`: passed.
+- `python scripts\check_no_mojibake.py work\release_evidence\20260623-module-lab-beta-all-scope\module_lab_live_runner_all_scope.json`: passed.
+- Mobile visual check at 390px: P0/Beta/Preview sections present; module index collapsed to one column (`gridTemplateColumns` observed as `328px`).
+
+### Evidence matrix
+| module | workflow | completed | workflow match | uses uploaded file | download links | verdict |
+| --- | --- | --- | --- | --- | ---: | --- |
+| qc | metadata_qc | true | true | true | 8 | pass |
+| psd | resting_psd | true | true | true | 19 | pass |
+| erp | erp_p300 | true | true | true | 11 | pass |
+| tfr | tfr_ersp_itc | true | true | true | 20 | pass |
+| pac | pac_cfc | true | true | true | 24 | pass |
+| reference_csd | reference_csd | true | true | true | 20 | pass |
+| multitaper_psd_tfr | multitaper_psd_tfr | true | true | true | 22 | pass |
+| connectivity | connectivity | true | true | true | 18 | pass |
+
+### Evidence paths
+- All-scope runner JSON: `D:\Quanlan\Codes\Python\quanlan-analyser-official\work\release_evidence\20260623-module-lab-beta-all-scope\module_lab_live_runner_all_scope.json`
+- All-scope desktop screenshot: `D:\Quanlan\Codes\Python\quanlan-analyser-official\work\release_evidence\20260623-module-lab-beta-all-scope\module_lab_live_runner_all_scope.png`
+- Mobile 390px screenshot: `C:\Users\XGN\Documents\Codex\2026-06-22\quanlan-02-qlanalyser-module-support-replacement\outputs\module_lab_mobile_390_20260623.png`
+
+### Acceptance boundary
+- GPT-5.5/Codex acceptance: module-lab all-scope beta runner now has current 2026-06-23 evidence. All 8 module-lab runnable modules pass real `/api/tasks` execution using one uploaded customer EEG file.
+- UI acceptance is evidence-pass for beta/module integration and P0/Beta/Preview separation. It is not a final polished customer UI pass because the page remains long and parameter-dense.
+- No push or deploy was performed.
+- why_not_mini: root-cause interpretation, visual verdict, and final acceptance required GPT-5.5/Codex; script/validator supplied deterministic runner, health, JSON, and screenshot evidence.
+
+
+## 2026-06-23 Service 07 module-lab UI gate evidence packet
+
+### Goal
+Continue QLanalyser module development support under QGCS by closing the remaining module-lab UI evidence gaps after the P0/Beta/Preview split and all-scope runner pass.
+
+### Route decision
+- GPT-5.5/Codex planner/acceptance: define UI gate scope, inspect screenshots, judge product boundary.
+- script/validator execution packet: capture deterministic browser evidence for narrow viewport, keyboard focus path, and load-error state.
+- skip reason for deepseek-v4-pro: the bounded work was browser automation and filesystem evidence capture, where deterministic Playwright output is stronger than model-generated observation.
+
+### Executor evidence
+- Validator script: `C:\Users\XGN\Documents\Codex\2026-06-22\quanlan-02-qlanalyser-module-support-replacement\outputs\module_lab_ui_gate_capture_20260623.mjs`
+- Validator JSON: `C:\Users\XGN\Documents\Codex\2026-06-22\quanlan-02-qlanalyser-module-support-replacement\outputs\module_lab_ui_gate_20260623\module_lab_ui_gate_20260623.json`
+- Narrow viewport screenshot: `C:\Users\XGN\Documents\Codex\2026-06-22\quanlan-02-qlanalyser-module-support-replacement\outputs\module_lab_ui_gate_20260623\module_lab_narrow_390.png`
+- Keyboard focus screenshot: `C:\Users\XGN\Documents\Codex\2026-06-22\quanlan-02-qlanalyser-module-support-replacement\outputs\module_lab_ui_gate_20260623\module_lab_keyboard_focus.png`
+- Load-error screenshot: `C:\Users\XGN\Documents\Codex\2026-06-22\quanlan-02-qlanalyser-module-support-replacement\outputs\module_lab_ui_gate_20260623\module_lab_load_error_390.png`
+
+### Checks
+- `node outputs\module_lab_ui_gate_capture_20260623.mjs`: passed.
+- `python scripts\check_no_mojibake.py outputs\module_lab_ui_gate_20260623\module_lab_ui_gate_20260623.json outputs\module_lab_ui_gate_capture_20260623.mjs`: passed.
+- Verdict inputs from JSON:
+  - `hasP0BetaPreviewOnNarrow`: true
+  - `narrowSingleColumn`: true
+  - `keyboardHasVisiblePath`: true
+  - `loadErrorVisible`: true
+
+### GPT-5.5/Codex acceptance
+- UI gate evidence pass for structure and interaction coverage: narrow viewport preserves P0/Beta/Preview sections, module index collapses to one column, keyboard focus reaches visible controls, and backend-load failure is visible.
+- Not a final polished UI pass: screenshots still show mojibake in some runtime Chinese text and the load-error state says `Analysis lab failed to load: Failed to fetch` without friendly recovery guidance.
+- Next repair should be a small UI copy/error-state code packet, not another evidence-only packet.
+
+### Boundary
+- No push or deploy was performed.
+- This packet adds validation/evidence only. Product code was not changed in this UI gate packet.
+
+
+
+## 2026-06-23 Module Lab review-system UI repair and retest
+
+Task goal:
+
+- Continue the review-system test -> guidance -> optimization -> retest loop until the Module Lab release-review UI surface meets publish-standard evidence for visible copy, recoverable error state, responsive layout, keyboard path, and deterministic validators.
+
+Changed files:
+
+- `frontend/module-lab.js`: replaced remaining mojibake-prone hero, boundary, status-label, upload-success, missing-file, and preview-card strings with readable ASCII-safe English.
+- `frontend/module-lab.css`: changed `.empty` into a small grid and added `.empty strong` / `.empty span` rules so load-error title, error detail, and recovery guidance are visually separated.
+- `docs/PROJECT_STATUS.md` and `docs/TASK_LOG.md`: recorded current evidence and residual release-gate boundary.
+
+Validation:
+
+```powershell
+node --check frontend\module-lab.js
+python scripts\check_no_mojibake.py frontend\module-lab.js frontend\module-lab.html frontend\module-lab.css
+rg -n "Failed to fetch|\\u4e|\\u7|mojibake-marker" frontend/module-lab.js frontend/module-lab.html frontend/module-lab.css
+node C:\Users\XGN\Documents\Codex\2026-06-22\quanlan-02-qlanalyser-module-support-replacement\outputs\module_lab_ui_gate_capture_20260623.mjs
+node --check scripts\acceptance_module_lab_live_runner.mjs
+python scripts\run_release_review_gate.py
+```
+
+Results:
+
+- JS syntax: passed.
+- Mojibake/readiness text check for `frontend/module-lab.js`, `frontend/module-lab.html`, and `frontend/module-lab.css`: passed.
+- Targeted broken-text/readback scan: `rg -n "Failed to fetch|\\u4e|\\u7|mojibake-marker" frontend/module-lab.js frontend/module-lab.html frontend/module-lab.css` returned no matches.
+- UI gate JSON: `C:\Users\XGN\Documents\Codex\2026-06-22\quanlan-02-qlanalyser-module-support-replacement\outputs\module_lab_ui_gate_20260623\module_lab_ui_gate_20260623.json` with `hasP0BetaPreviewOnNarrow=true`, `narrowSingleColumn=true`, `keyboardHasVisiblePath=true`, and `loadErrorVisible=true`.
+- Fresh screenshots: `C:\Users\XGN\Documents\Codex\2026-06-22\quanlan-02-qlanalyser-module-support-replacement\outputs\module_lab_ui_gate_20260623\module_lab_narrow_390.png`, `module_lab_keyboard_focus.png`, and `module_lab_load_error_390.png`.
+- Live runner script syntax: passed. Existing all-scope runner evidence remains valid for backend behavior because this repair touched only copy/CSS: `work\release_evidence\20260623-module-lab-beta-all-scope\module_lab_live_runner_all_scope.json`.
+- Broader release review gate: still failed only `accept_v01_no_group_statistics_boundary`; output path `work\release_evidence\20260620-v01-acceptance\release_review_gate_run.json`.
+
+Acceptance note:
+
+- Accepted for Module Lab UI/copy/error-state publish-standard slice.
+- Not accepted as whole-product release-ready until the broader release-review boundary failure is resolved or formally scoped out.
+
+
+## 2026-06-23 Release review gate pass after boundary and visual QA retest
+
+Task goal:
+
+- Continue the review-system test -> guidance -> optimization -> retest loop until the release review system considers the current local/sandbox release publish-standard.
+
+Changed files and artifacts:
+
+- `frontend/index.html`: changed the storage-page wording from a group-statistics-risk phrase to boundary-safe descriptive result-table copy.
+- `work/release_evidence/20260620-page-visual-qa/page_visual_qa.json`: refreshed browser visual QA evidence.
+- `work/release_evidence/20260620-page-visual-qa/page_visual_qa_rerun_4174.json`: mirrored rerun evidence for review-system packet consumers.
+- `work/release_evidence/20260620-page-visual-qa/screenshots/`: refreshed customer/admin/lab screenshots.
+- `docs/PROJECT_STATUS.md` and `docs/TASK_LOG.md`: recorded release-gate pass evidence and residual public-cloud boundary.
+
+Validation:
+
+```powershell
+python scripts\acceptance_v01_no_group_statistics_boundary.py
+python scripts\check_no_mojibake.py frontend\index.html frontend\module-lab.js frontend\module-lab.html frontend\module-lab.css
+node C:\Users\XGN\Documents\Codex\2026-06-22\quanlan-02-qlanalyser-module-support-replacement\outputs\page_visual_qa_customer_admin_current_20260623.mjs
+python scripts\acceptance_production_goal_matrix.py
+python scripts\check_no_mojibake.py work\release_evidence\20260620-page-visual-qa\page_visual_qa.json work\release_evidence\20260620-page-visual-qa\page_visual_qa_rerun_4174.json
+python scripts\run_release_review_gate.py
+```
+
+Results:
+
+- V01 no group-statistics boundary: passed, blockers empty.
+- Targeted source mojibake check: passed.
+- Browser page visual QA: passed for 15 page states x 3 viewports, with screenshots under `work\release_evidence\20260620-page-visual-qa\screenshots\`.
+- Production goal matrix: `passed_with_external_boundaries`, failed_requirements empty, external boundary only `aliyun_provider_boundary`.
+- Full release review gate: `status=passed`, `steps=35`, `failed_steps=[]`.
+
+Acceptance note:
+
+- GPT-5.5/Codex final acceptance: local/sandbox review-system publish-standard is now proved by current authoritative evidence.
+- Residual scope: strict public cloud/provider production release remains outside this pass until Aliyun/OSS/provider inputs are supplied and strict preflight is rerun.
+
+
+## 2026-06-23 Aliyun/provider boundary continuation receipt
+
+Date: 2026-06-23
+
+Scope:
+
+- Continued after the local/sandbox release review gate passed.
+- Performed a non-destructive Aliyun/provider boundary readback and strict preflight rerun.
+- No deploy, public-cloud mutation, production config write, OSS write, backup write, or provider callback mutation was performed.
+
+Evidence:
+
+- Boundary receipt JSON: `work\release_evidence\20260623-aliyun-boundary-continuation\aliyun_boundary_continuation_receipt.json`.
+- Boundary receipt MD: `work\release_evidence\20260623-aliyun-boundary-continuation\aliyun_boundary_continuation_receipt.md`.
+- Strict preflight evidence: `work\release_evidence\20260620-aliyun-staging\aliyun_staging_preflight.json`.
+- Full local/sandbox release gate remains passed: `work\release_evidence\20260620-v01-acceptance\release_review_gate_run.json` -> `status=passed`, `failed_steps=[]`.
+- Production matrix remains `passed_with_external_boundaries`: `work\release_evidence\20260620-v01-acceptance\production_goal_requirement_matrix.json` -> `failed_requirements=[]`, `external_boundaries=[aliyun_provider_boundary]`.
+
+Current strict preflight status:
+
+- `status=blocked_missing_prerequisites`
+- `passed=2`
+- `todos=9`
+- `failed=0`
+
+Missing external inputs / todo groups:
+
+- `deepseek_copy_gate`: latest changed copy still needs current official-direct review evidence.
+- `oss_required_env`: OSS endpoint, bucket, access key id, and access key secret are not set.
+- `oss_storage_backend`: `QLANALYSER_STORAGE_BACKEND=oss` is not set.
+- `oss_allow_write`: isolated staging write gate `QLANALYSER_ALIYUN_OSS_ALLOW_WRITE=1` is not set.
+- `oss_lifecycle_evidence`: exported OSS lifecycle policy evidence path is not set.
+- `oss2_dependency`: staging runtime still needs `python -m pip install -r requirements.txt` evidence.
+- `backup_required_env`: backup bucket and prefix are not set.
+- `deploy_origin_env`: public base URL, API base URL, and CORS origins are not set.
+- `provider_boundary_env`: payment/email/SMS/WeChat/provider callback evidence variables are not set.
+
+Verdict:
+
+- Local/sandbox publish-standard remains accepted.
+- Strict public-cloud/provider readiness remains open and blocked on external owner/provider inputs.
+
+## 2026-06-23 8501 service discovery and customer Oddball frontend wiring
+
+Task:
+
+- Locate the user-referenced `http://127.0.0.1:8501/` service and continue the current local development line.
+
+Actions:
+
+- Verified that `8501` is not listening and that the active local app is QLanalyser Online on `4174` frontend + `8001` backend.
+- Confirmed the active repository and startup commands from `README.md`, `frontend/package.json`, running process command lines, and HTTP smoke checks.
+- Wired the existing `frontend/assets/customer_oddball_case` result package into the active `frontend/index.html` result-review and report-delivery views.
+
+Verification:
+
+- `http://127.0.0.1:8001/api/health`: 200.
+- `http://127.0.0.1:4174/`: 200.
+- `http://127.0.0.1:8501/`: connection refused, confirming it is not the active service.
+
+Remaining:
+
+- Run final link extraction and asset HTTP checks after the HTML change.
+- Email remains draft/package-only until SMTP credentials are configured and verified.
+
+
+## 2026-06-25 Module Lab Chinese UI review page
+
+Task goal:
+
+- Translate the direct test-data Module Lab review page into Chinese while preserving real backend task execution.
+
+Changed files:
+
+- `frontend/module-lab.js`: translated visible Module Lab copy, form labels, status text, error/recovery text, section descriptions, and select-option display labels into Chinese. Internal API values, workflow ids, and method acronyms are preserved for backend compatibility.
+
+Validation:
+
+```powershell
+node --check frontend\module-lab.js
+python scripts\check_no_mojibake.py frontend\module-lab.js frontend\module-lab.html frontend\module-lab.css
+node C:\Users\XGN\Documents\Codex\2026-06-22\quanlan-02-qlanalyser-module-support-replacement\outputs\inspect_module_lab_visible_text_20260625.mjs
+node C:\Users\XGN\Documents\Codex\2026-06-22\quanlan-02-qlanalyser-module-support-replacement\outputs\smoke_module_lab_cn_run_qc_20260625.mjs
+```
+
+Evidence:
+
+- Narrow Chinese screenshot: `C:\Users\XGN\Documents\Codex\2026-06-22\quanlan-02-qlanalyser-module-support-replacement\outputs\module_lab_cn_20260625\module_lab_cn_390.png`.
+- Visible text capture: `C:\Users\XGN\Documents\Codex\2026-06-22\quanlan-02-qlanalyser-module-support-replacement\outputs\module_lab_cn_20260625\visible_text.txt`.
+- QC result screenshot: `C:\Users\XGN\Documents\Codex\2026-06-22\quanlan-02-qlanalyser-module-support-replacement\outputs\module_lab_cn_20260625\module_lab_cn_qc_result.png`.
+- QC smoke result: real backend task completed and result panel showed Chinese `任务完成`.
+
+Acceptance note:
+
+- Accepted for user review: the direct test-data page is now Chinese-first, with professional EEG method acronyms and file names intentionally retained.
+- 2026-06-25 12:18 CST - Module Lab grouped-method UI and generated-EDF E2E acceptance.
+
+  Objective:
+
+  - Merge methods of the same analysis family into one review card with a method selector and method-specific parameters.
+  - Generate a local EDF and run every runnable Module Lab method end-to-end against that generated EDF.
+
+  Changed files:
+
+  - `frontend/module-lab.js`: added grouped method cards, method picker behavior, and grouped Chinese method index while preserving existing `module_name` and `workflow_id` API contracts.
+  - `frontend/module-lab.css`: added scoped styling for grouped method cards and method panels.
+  - `scripts/generate_module_lab_grouped_methods_edf.py`: generates the local EDF fixture and event TSV for this acceptance run.
+  - `scripts/acceptance_module_lab_grouped_methods_e2e.mjs`: uploads the generated EDF through the Module Lab page and runs QC, PSD, TFR, multitaper PSD/TFR, ERP, reference/CSD, PAC, and connectivity end-to-end.
+
+  Validation:
+
+  ```powershell
+  node --check frontend\module-lab.js
+  node --check scripts\acceptance_module_lab_grouped_methods_e2e.mjs
+  python -X utf8 scripts\check_no_mojibake.py frontend\module-lab.js frontend\module-lab.html frontend\module-lab.css scripts\generate_module_lab_grouped_methods_edf.py scripts\acceptance_module_lab_grouped_methods_e2e.mjs
+  python -X utf8 scripts\generate_module_lab_grouped_methods_edf.py
+  node scripts\acceptance_module_lab_grouped_methods_e2e.mjs
+  ```
+
+  Evidence:
+
+  - Generated EDF: `work\release_evidence\20260625-module-lab-grouped-methods-e2e\module_lab_grouped_methods_local.edf`.
+  - Generated EDF summary: `work\release_evidence\20260625-module-lab-grouped-methods-e2e\generated_edf_summary.json` (`status=passed`, 8 channels, 250 Hz, 60 sec, 36 annotations).
+  - E2E evidence: `work\release_evidence\20260625-module-lab-grouped-methods-e2e\module_lab_grouped_methods_e2e.json` (`status=passed`, 5 grouped UI cards, 5 method pickers, 8/8 methods passed).
+  - Visual evidence: `work\release_evidence\20260625-module-lab-grouped-methods-e2e\module_lab_grouped_methods_e2e.png`.
+  - Normal review URL smoke: `C:\Users\XGN\Documents\Codex\2026-06-22\quanlan-02-qlanalyser-module-support-replacement\outputs\module_lab_grouped_normal_url_20260625\normal_url_grouped_page.json` (`status=passed`, 5 groups, 5 pickers, TFR panel visible after selection).
+  - Normal review URL screenshot: `C:\Users\XGN\Documents\Codex\2026-06-22\quanlan-02-qlanalyser-module-support-replacement\outputs\module_lab_grouped_normal_url_20260625\normal_url_grouped_page.png`.
+
+  Acceptance:
+
+  - Accepted for local review. The page now presents same-family methods as grouped entries with parameter selection inside the group, and the generated EDF E2E run confirms every current runnable method creates real backend tasks and downloadable artifacts.
+
+- 2026-06-25 13:02 CST - Module Lab method taxonomy correction after review.
+
+  Review finding:
+
+  - PSD and TFR were previously grouped too broadly as "spectral/time-frequency" because both use frequency parameters. This was rejected: PSD describes continuous/resting spectral power, while TFR describes event-locked time-frequency dynamics.
+  - PAC and connectivity were also split: PAC/CFC is cross-frequency coupling, while connectivity is channel-to-channel association.
+
+  Corrected taxonomy:
+
+  - `data-readiness`: QC / data readiness.
+  - `stationary-spectral-power`: PSD / bandpower.
+  - `event-locked-time-domain`: ERP / P300.
+  - `event-locked-time-frequency`: TFR / ERSP / ITC.
+  - `multitaper-estimation`: multitaper PSD/TFR estimator with its own internal analysis-family parameter.
+  - `reference-transform`: reference / CSD.
+  - `cross-frequency-coupling`: PAC / CFC.
+  - `sensor-connectivity`: sensor connectivity.
+
+  Changed files:
+
+  - `frontend/module-lab.js`: reclassified method groups and removed unnecessary single-method group dropdowns.
+  - `frontend/module-lab.css`: added single-method method-type styling.
+  - `scripts/acceptance_module_lab_grouped_methods_e2e.mjs`: updated expected group ids and E2E routing evidence.
+
+  Validation:
+
+  ```powershell
+  node --check frontend\module-lab.js
+  node --check scripts\acceptance_module_lab_grouped_methods_e2e.mjs
+  python -X utf8 scripts\check_no_mojibake.py frontend\module-lab.js frontend\module-lab.css scripts\acceptance_module_lab_grouped_methods_e2e.mjs
+  node C:\Users\XGN\Documents\Codex\2026-06-22\quanlan-02-qlanalyser-module-support-replacement\outputs\taxonomy_review_check_20260625.mjs
+  node scripts\acceptance_module_lab_grouped_methods_e2e.mjs
+  ```
+
+  Evidence:
+
+  - Taxonomy review JSON: `C:\Users\XGN\Documents\Codex\2026-06-22\quanlan-02-qlanalyser-module-support-replacement\outputs\module_lab_taxonomy_review_20260625\taxonomy_review.json` (`status=passed`, PSD separated from TFR, PAC separated from connectivity).
+  - Taxonomy screenshot: `C:\Users\XGN\Documents\Codex\2026-06-22\quanlan-02-qlanalyser-module-support-replacement\outputs\module_lab_taxonomy_review_20260625\taxonomy_review.png`.
+  - Full EDF E2E: `work\release_evidence\20260625-module-lab-grouped-methods-e2e\module_lab_grouped_methods_e2e.json` (`status=passed`, 8 groups, 0 unnecessary method pickers, 8/8 methods passed).
+
+- 2026-06-25 13:18 CST - PSD parameter exposure review and UI update.
+
+  Code review finding:
+
+  - `eeg_core/analysis/psd.py` already validates and applies `n_fft`, `n_overlap`, `bad_channels`, and `reject_by_annotation`.
+  - `n_fft` and `n_overlap` are passed into `Raw.compute_psd(method="welch", ...)` and recorded in `effective_call.json`.
+  - `bad_channels` is applied before EEG channel picking and recorded in source metadata / applied preparation.
+  - `reject_by_annotation` is passed to MNE PSD computation.
+  - `window` and `average` appear in `PSD_PARAMETER_SCHEMA`, but the current runner does not pass them into `compute_psd`; they are not exposed yet to avoid no-op UI controls.
+  - `bad_segments` is supported by JSON parameters but needs a structured interval editor before exposing safely in Module Lab.
+
+  Changed files:
+
+  - `frontend/module-lab.js`: exposed PSD `n_fft`, `n_overlap`, `bad_channels`, and `reject_by_annotation`.
+  - `scripts/acceptance_module_lab_grouped_methods_e2e.mjs`: updated PSD E2E to submit and verify the newly exposed parameters.
+
+  Validation:
+
+  ```powershell
+  node --check frontend\module-lab.js
+  node --check scripts\acceptance_module_lab_grouped_methods_e2e.mjs
+  python -X utf8 scripts\check_no_mojibake.py frontend\module-lab.js scripts\acceptance_module_lab_grouped_methods_e2e.mjs
+  python -X utf8 scripts\acceptance_psd_p0.py
+  node C:\Users\XGN\Documents\Codex\2026-06-22\quanlan-02-qlanalyser-module-support-replacement\outputs\psd_param_review_20260625.mjs
+  ```
+
+  Evidence:
+
+  - PSD backend acceptance: `scripts\acceptance_psd_p0.py` passed and confirmed `n_fft=256`, bad-channel exclusion, effective call, threshold validation, and artifact contract.
+  - PSD page smoke JSON: `C:\Users\XGN\Documents\Codex\2026-06-22\quanlan-02-qlanalyser-module-support-replacement\outputs\module_lab_psd_params_20260625\psd_params_review.json` (`status=passed`, fields present, parameters echoed, artifacts present).
+  - PSD page smoke screenshot: `C:\Users\XGN\Documents\Codex\2026-06-22\quanlan-02-qlanalyser-module-support-replacement\outputs\module_lab_psd_params_20260625\psd_params_review.png`.
+
+- 2026-06-25 13:24 CST - ERP parameter exposure review and UI update.
+
+  Code review finding:
+
+  - `eeg_core/analysis/erp.py` already applies and records `reference`, `reject_by_annotation`, `reject_eeg_uv`, `bad_channels`, and `roi_channels`.
+  - `reference` is applied through `raw.set_eeg_reference(...)` before epoching.
+  - `reject_by_annotation` and `reject_eeg_uv` are passed into `mne.Epochs(...)` and summarized in `drop_log_summary.json`.
+  - `bad_channels` is applied before epoching through data-preparation directives.
+  - `roi_channels` controls the channel set used for component amplitude/latency extraction and is recorded in ERP metrics and summaries.
+  - `components` / custom N100-P200-P300 windows are supported by the runner but not exposed yet; they need a structured component-window editor rather than loose text fields.
+  - `bad_segments` is supported but not exposed yet for the same reason: it needs a safe interval editor.
+
+  Changed files:
+
+  - `frontend/module-lab.js`: exposed ERP `reference_mode`, `reject_by_annotation`, `reject_eeg_uv`, `bad_channels`, and `roi_channels`.
+  - `scripts/acceptance_module_lab_grouped_methods_e2e.mjs`: updated ERP E2E to submit and verify the newly exposed parameters.
+
+  Validation:
+
+  ```powershell
+  node --check frontend\module-lab.js
+  node --check scripts\acceptance_module_lab_grouped_methods_e2e.mjs
+  python -X utf8 scripts\check_no_mojibake.py frontend\module-lab.js scripts\acceptance_module_lab_grouped_methods_e2e.mjs
+  node C:\Users\XGN\Documents\Codex\2026-06-22\quanlan-02-qlanalyser-module-support-replacement\outputs\erp_param_review_20260625.mjs
+  node scripts\acceptance_module_lab_grouped_methods_e2e.mjs
+  ```
+
+  Evidence:
+
+  - ERP page smoke JSON: `C:\Users\XGN\Documents\Codex\2026-06-22\quanlan-02-qlanalyser-module-support-replacement\outputs\module_lab_erp_params_20260625\erp_params_review.json` (`status=passed`, fields present, parameters echoed, artifacts present).
+  - ERP page smoke screenshot: `C:\Users\XGN\Documents\Codex\2026-06-22\quanlan-02-qlanalyser-module-support-replacement\outputs\module_lab_erp_params_20260625\erp_params_review.png`.
+  - Full generated-EDF Module Lab E2E: `work\release_evidence\20260625-module-lab-grouped-methods-e2e\module_lab_grouped_methods_e2e.json` (`status=passed`, 8/8 runnable methods passed after ERP parameter exposure).
+
+- 2026-06-25 13:52 CST - Remaining beta modules parameter exposure and layout review.
+
+  Scope:
+
+  - Upgraded remaining Module Lab method forms after reviewing live runner parameters.
+  - Exposed only parameters that are validated/applied by backend runners and recorded in task evidence.
+
+  Added UI parameters:
+
+  - TFR: `picks`, `average`.
+  - PAC: `n_surrogates`, `random_state`, `filter_edge_padding_sec`, `edge_trim_sec`.
+  - Reference/CSD: `bad_channels`, `bipolar_pairs` text shorthand (`anode-cathode`).
+  - Multitaper PSD/TFR: `remove_dc`, `bad_channels`, `picks`, `baseline_mode`, `use_fft`, `zero_mean`.
+  - Connectivity: visible `reference=current_recording` selector.
+
+  Not exposed yet:
+
+  - `bad_segments` interval arrays and complex multi-pair editors remain blocked until a structured interval/pair editor is added.
+  - CSD mode remains available but still requires montage/electrode positions; E2E uses average reference to avoid false CSD success on non-montage EDF.
+
+  Validation:
+
+  ```powershell
+  node --check frontend\module-lab.js
+  node --check scripts\acceptance_module_lab_grouped_methods_e2e.mjs
+  python -X utf8 scripts\check_no_mojibake.py frontend\module-lab.js frontend\module-lab.css scripts\acceptance_module_lab_grouped_methods_e2e.mjs
+  python -X utf8 scripts\acceptance_tfr_module.py
+  python -X utf8 scripts\acceptance_reference_csd_module.py
+  python -X utf8 C:\Users\XGN\Documents\Codex\2026-06-22\quanlan-02-qlanalyser-module-support-replacement\outputs\run_remaining_acceptance_serial_20260625.py
+  node scripts\acceptance_module_lab_grouped_methods_e2e.mjs
+  node C:\Users\XGN\Documents\Codex\2026-06-22\quanlan-02-qlanalyser-module-support-replacement\outputs\layout_review_20260625.mjs
+  ```
+
+  Evidence:
+
+  - TFR acceptance: `work\release_evidence\20260622-tfr-module\acceptance_tfr_module.json` passed.
+  - PAC acceptance: `work\release_evidence\20260622-pac-module\acceptance_pac_module.json` passed.
+  - Reference/CSD acceptance: `work\release_evidence\20260622-reference-csd-module\acceptance_reference_csd_module.json` passed.
+  - Multitaper acceptance: `work\release_evidence\20260622-multitaper-psd-tfr-module\acceptance_multitaper_psd_tfr_module.json` passed.
+  - Connectivity acceptance: `work\release_evidence\20260622-connectivity-module\acceptance_connectivity_module.json` passed.
+  - Full generated-EDF Module Lab E2E: `work\release_evidence\20260625-module-lab-grouped-methods-e2e\module_lab_grouped_methods_e2e.json` (`status=passed`, 8/8 methods passed with upgraded parameters).
+  - Layout review JSON: `C:\Users\XGN\Documents\Codex\2026-06-22\quanlan-02-qlanalyser-module-support-replacement\outputs\module_lab_layout_review_20260625\layout_review.json` (`status=passed`, desktop+narrow, no horizontal overflow).
+  - Layout screenshots: `C:\Users\XGN\Documents\Codex\2026-06-22\quanlan-02-qlanalyser-module-support-replacement\outputs\module_lab_layout_review_20260625\desktop.png`, `...\narrow.png`.
+
+  Layout decision:
+
+  - Analysis cards now use auto-fit minimum widths to avoid narrow three-column beta cards on desktop.
+  - Mobile parameters switch to single-column fields under 560 px.
+
+- 2026-06-25 14:26 CST - Multitaper PSD and multitaper TFR split into independent review entries.
+
+  Review finding:
+
+  - `multitaper_psd_tfr` was still presented as one UI method even after PSD and TFR were separated elsewhere.
+  - This was misleading for review: multitaper PSD is continuous spectral-power estimation, while multitaper TFR is event-locked time-frequency analysis.
+
+  Implementation:
+
+  - Added independent UI entries:
+    - `multitaper_psd`: title `多窗 PSD`, fixed `analysis_family=psd`.
+    - `multitaper_tfr`: title `事件锁定多窗 TFR`, fixed `analysis_family=tfr`.
+  - Both entries still route to the existing backend module `multitaper_psd_tfr` and workflow `multitaper_psd_tfr`.
+  - `runModule()` now supports `backendModule` mapping so UI method ids can be scientifically precise without breaking backend contracts.
+  - Multitaper PSD automatically sends backend-required internal validation defaults for TFR-shaped fields (`freqs`, `baseline`, `n_cycles`, `time_bandwidth`, `decim`) without exposing them as PSD UI controls.
+
+  Validation:
+
+  ```powershell
+  node --check frontend\module-lab.js
+  node --check scripts\acceptance_module_lab_grouped_methods_e2e.mjs
+  python -X utf8 scripts\check_no_mojibake.py frontend\module-lab.js scripts\acceptance_module_lab_grouped_methods_e2e.mjs
+  node C:\Users\XGN\Documents\Codex\2026-06-22\quanlan-02-qlanalyser-module-support-replacement\outputs\layout_review_20260625.mjs
+  node scripts\acceptance_module_lab_grouped_methods_e2e.mjs
+  ```
+
+  Evidence:
+
+  - Full generated-EDF Module Lab E2E: `work\release_evidence\20260625-module-lab-grouped-methods-e2e\module_lab_grouped_methods_e2e.json` (`status=passed`, 9 independent UI entries, including `multitaper_psd` and `multitaper_tfr`).
+  - Layout review: `C:\Users\XGN\Documents\Codex\2026-06-22\quanlan-02-qlanalyser-module-support-replacement\outputs\module_lab_layout_review_20260625\layout_review.json` (`status=passed`, 9 groups, no horizontal overflow).
+
+- 2026-06-25 15:10 CST - Module Lab method test bench requirements and test plan documented.
+
+  Scope:
+
+  - Added a detailed product and testing baseline for the Module Lab method development test bench.
+  - Clarified that Module Lab is a no-account, no-formal-project method development, review, and QA bench, not the final customer workbench.
+  - Recorded the scientific taxonomy rule that PSD and TFR stay separate, multitaper PSD and multitaper TFR stay separate UI entries, and ERSP/ITC are current TFR outputs/metrics rather than separate methods.
+  - Documented parameter exposure rules, UI requirements, backend task requirements, E2E testing requirements, layout checks, release criteria, current evidence, and future editor work.
+
+  Artifact:
+
+  - `docs\product\module_lab_method_test_bench_requirements_and_test_plan.md`.
+
+- 2026-06-25 15:35 CST - Module Lab method test bench visual polish pass.
+
+  Scope:
+
+  - Upgraded Module Lab first-screen presentation from a stacked form feel to a polished method test bench surface.
+  - Updated cache-busting resource versions in `frontend\module-lab.html`.
+  - Added Chinese-first hero positioning for "method development test bench", no-account usage, 9 independent method entries, and real backend execution.
+  - Added method-card evidence chips for real task execution, parameter echo, and artifact evidence.
+  - Improved card, method index, data-source panel, button, input, empty-state, artifact, and parameter-echo styling in `frontend\module-lab.css`.
+  - Kept backend contracts unchanged: module ids, workflow ids, `/api/tasks`, parameter names, and method taxonomy remain stable.
+
+  Changed files:
+
+  - `frontend\module-lab.html`
+  - `frontend\module-lab.js`
+  - `frontend\module-lab.css`
+
+  Validation:
+
+  ```powershell
+  node --check frontend\module-lab.js
+  node --check scripts\acceptance_module_lab_grouped_methods_e2e.mjs
+  python -X utf8 scripts\check_no_mojibake.py frontend\module-lab.js frontend\module-lab.css frontend\module-lab.html
+  node C:\Users\XGN\Documents\Codex\2026-06-22\quanlan-02-qlanalyser-module-support-replacement\outputs\layout_review_20260625.mjs
+  ```
+
+  Browser evidence:
+
+  - Current page URL: `http://127.0.0.1:4174/module-lab.html?api=http://127.0.0.1:8001/api`.
+  - Polished QC smoke evidence: `C:\Users\XGN\Documents\Codex\2026-06-22\quanlan-02-qlanalyser-module-support-replacement\outputs\module_lab_polish_20260625\module_lab_polished_qc_smoke.json`.
+  - Polished QC smoke screenshot: `C:\Users\XGN\Documents\Codex\2026-06-22\quanlan-02-qlanalyser-module-support-replacement\outputs\module_lab_polish_20260625\module_lab_polished_qc_smoke.png`.
+  - QC UI smoke created real completed task `task_2ec674631d4c`, showed parameter echo, and exposed 8 artifact links.
+  - Layout review JSON remains passed with 9 groups, Chinese body text, and no horizontal overflow.
+
+  E2E note:
+
+  - A full generated-EDF all-method E2E rerun was started after the polish fix. The first failed attempt revealed that closed parameter details hid parameter text from the acceptance script; this was fixed by leaving parameter echo open by default.
+  - The subsequent full all-method E2E run exceeded the interactive window and was stopped to avoid a stale long-running test process. A focused real-browser QC smoke plus full layout review replaced it for this visual-only slice.
+
+- 2026-06-26 00:05 CST - Module Lab grouped-methods closed-parameter E2E repair accepted.
+
+  Scope:
+
+  - Resume the inherited 02 grouped-methods Module Lab task and close the real browser E2E failure.
+  - Do not alter router, Headroom, IPC, gateway, or process-communication files.
+
+  Root cause:
+
+  - The page and backend runner were healthy after starting the local 8001 backend.
+  - The failing E2E point was `multitaper_psd`: `input[name="picks"]` existed but was hidden inside a closed advanced-parameter `details` block.
+  - This made the field unavailable to the real browser runner and to normal visible editing, while leaving the DOM present enough to make the failure easy to misread.
+
+  Implementation:
+
+  - Updated `frontend\module-lab.js` so `renderParameterFields()` emits `<details class="advanced-params" open>`.
+  - No backend dispatch, parameter contract, module taxonomy, task-service path, or artifact output contract was changed.
+
+  Validation:
+
+  ```powershell
+  node --check frontend\module-lab.js
+  python -X utf8 scripts\check_no_mojibake.py frontend\module-lab.js scripts\acceptance_module_lab_grouped_methods_e2e.mjs
+  python scripts\acceptance_multitaper_psd_tfr_module.py
+  node scripts\acceptance_module_lab_grouped_methods_e2e.mjs
+  ```
+
+  Evidence:
+
+  - Module acceptance: `work\release_evidence\20260622-multitaper-psd-tfr-module\acceptance_multitaper_psd_tfr_module.json` passed with 22 artifacts and no failures.
+  - Full generated-EDF Module Lab E2E: `work\release_evidence\20260625-module-lab-grouped-methods-e2e\module_lab_grouped_methods_e2e.json` passed with modules `qc, psd, tfr, multitaper_psd, multitaper_tfr, erp, reference_csd, pac, connectivity`, 9 groups, 0 errors.
+  - Screenshot: `work\release_evidence\20260625-module-lab-grouped-methods-e2e\module_lab_grouped_methods_e2e.png`.
+
+  Process note:
+
+  - Temporary local backend `8001` was started for verification and stopped after the pass. The pre-existing `4174` frontend process was not modified.
+
+- 2026-06-26 01:10 CST - 07 accepted 02 Module Lab grouped-methods into mainline.
+
+  Scope:
+
+  - Read the 02 -> 07 production integration design and execution packet from real repo files.
+  - Merge the beta zone into the 07 mainline as an internal beta / review surface.
+  - Preserve the distinction between stable methods and beta methods; do not promote beta methods to public stable customer entry.
+  - Preserve backend contracts and do not touch router, Headroom, IPC, gateway, or process-communication configuration.
+
+  Changes:
+
+  - Added `scripts\acceptance_module_lab_visible_fields.mjs` for closed-details / hidden-input regression.
+  - Added `scripts\acceptance_module_lab_layout_review.mjs` for desktop, mobile, and narrow Module Lab layout evidence.
+  - Added `scripts\run_module_lab_acceptance_stack.py` to standardize the local 8001/4174 acceptance stack.
+  - Added `scripts\build_module_lab_mainline_acceptance_packet.py` to generate 07 manifest and final acceptance packet.
+  - Strengthened `scripts\acceptance_module_lab_grouped_methods_e2e.mjs` with `/api/tasks.module_name` assertions.
+  - Updated `frontend\module-lab.js` with clearer beta boundary wording and unique PAC dataset/upload test ids.
+
+  Validation:
+
+  ```powershell
+  node --check frontend\module-lab.js
+  node --check scripts\acceptance_module_lab_grouped_methods_e2e.mjs
+  node --check scripts\acceptance_module_lab_visible_fields.mjs
+  node --check scripts\acceptance_module_lab_layout_review.mjs
+  python -X utf8 -m py_compile scripts\run_module_lab_acceptance_stack.py scripts\build_module_lab_mainline_acceptance_packet.py
+  python -X utf8 scripts\check_no_mojibake.py frontend\module-lab.js frontend\module-lab.css frontend\module-lab.html scripts\acceptance_module_lab_visible_fields.mjs scripts\acceptance_module_lab_layout_review.mjs scripts\run_module_lab_acceptance_stack.py scripts\build_module_lab_mainline_acceptance_packet.py
+  python -X utf8 scripts\acceptance_multitaper_psd_tfr_module.py
+  python -X utf8 scripts\acceptance_connectivity_module.py
+  python -X utf8 scripts\acceptance_reference_csd_module.py
+  python -X utf8 scripts\acceptance_pac_module.py
+  python -X utf8 scripts\run_module_lab_acceptance_stack.py --mode both
+  python -X utf8 scripts\build_module_lab_mainline_acceptance_packet.py
+  ```
+
+  Evidence:
+
+  - `work\release_evidence\07-mainline-integration\module_lab_integration_manifest.json`.
+  - `work\release_evidence\07-mainline-integration\module_lab_visible_fields.json`.
+  - `work\release_evidence\07-mainline-integration\module_lab_layout_review.json`.
+  - `work\release_evidence\07-mainline-integration\module_lab_acceptance_stack.json`.
+  - `work\release_evidence\07-mainline-integration\module_lab_mainline_acceptance_packet.json`.

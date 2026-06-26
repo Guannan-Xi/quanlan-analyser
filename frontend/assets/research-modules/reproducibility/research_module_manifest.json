@@ -1,15 +1,15 @@
 {
   "generatedAt": "2026-06-18",
   "product": "QLanalyser Online v0.1 Pilot",
-  "purpose": "Standalone static research-module pages for customer testing and scientific UI review.",
-  "researchGuardrail": "All displayed data are synthetic and for research workflow testing only; not for clinical diagnosis.",
+  "purpose": "用于分析方法预览、结果材料查看和科研复核说明的静态页面。",
+  "researchGuardrail": "所有展示数据均为合成示例，只用于科研流程演示和结果材料复核，不作为临床诊断依据。",
   "sampleData": {
     "metadata": "/assets/research-modules/reproducibility/synthetic_research_metadata.json",
     "events_tsv": "/assets/research-modules/data/synthetic_events.tsv",
     "raw_preview_csv": "/assets/research-modules/data/synthetic_raw_preview_8ch_12s.csv",
     "subject_metrics_csv": "/assets/research-modules/tables/synthetic_subject_level_metrics.csv",
-    "source_edf": "/assets/synthetic_8ch_120s.edf",
-    "source_events": "/assets/synthetic_8ch_120s_events.tsv"
+    "source_edf": "/assets/teaching_oddball.edf",
+    "source_events": "/assets/teaching_oddball_events.tsv"
   },
   "shared": {
     "mne_reference": "assets/research-modules/reproducibility/mne_research_reference.json",
@@ -29,7 +29,7 @@
         "mne.io.Raw",
         "mne.Annotations",
         "Raw.plot",
-        "metadata summary"
+        "元数据摘要"
       ],
       "inputs": [
         "EEG 原始文件：EDF/BDF/FIF/BrainVision/SET/CNT",
@@ -45,8 +45,8 @@
         "极端振幅阈值"
       ],
       "outputs": [
-        "QC summary JSON",
-        "subject-level QC CSV",
+        "QC 摘要记录",
+        "受试者级 QC 表",
         "原始片段预览图",
         "方法说明与复现参数",
         "下一步是否允许 PSD/ERP 的建议"
@@ -57,14 +57,14 @@
       ],
       "figures": [
         {
-          "label": "Publication QC dashboard",
+          "label": "投稿用 QC 概览图",
           "src": "/assets/research-modules/figures/qc-dashboard-publication.png",
-          "alt": "QC publication dashboard"
+          "alt": "QC 概览图"
         },
         {
-          "label": "Raw trace preview",
+          "label": "波形预览图",
           "src": "/assets/research-modules/figures/analysis-raw-segment.png",
-          "alt": "Raw trace preview"
+          "alt": "波形预览图"
         }
       ],
       "tables": [
@@ -75,7 +75,7 @@
       ],
       "docs": [
         {
-          "label": "参数 JSON",
+          "label": "参数记录",
           "src": "/assets/research-modules/reproducibility/parameters_qc.json",
           "type": "json"
         },
@@ -90,7 +90,7 @@
           "type": "text"
         },
         {
-          "label": "总结 JSON",
+          "label": "总结记录",
           "src": "/assets/research-modules/reproducibility/summary_qc.json",
           "type": "json"
         }
@@ -122,13 +122,13 @@
         "Welch window",
         "频段定义",
         "参考方式",
-        "是否输出 channel-level 表"
+        "是否输出通道级表"
       ],
       "outputs": [
         "Welch PSD 曲线图",
         "band_power CSV",
         "alpha topomap",
-        "subject-level paired statistics",
+        "受试者级配对统计",
         "方法、参数、软件版本与结果包"
       ],
       "risks": [
@@ -137,14 +137,14 @@
       ],
       "figures": [
         {
-          "label": "PSD publication figure",
+          "label": "PSD 频段功率图",
           "src": "/assets/research-modules/figures/psd-bandpower-publication.png",
-          "alt": "PSD publication figure"
+          "alt": "PSD 频段功率图"
         },
         {
           "label": "Alpha topomap",
           "src": "/assets/research-modules/figures/analysis-source.png",
-          "alt": "Alpha topography preview"
+          "alt": "Alpha 地形图预览"
         }
       ],
       "tables": [
@@ -159,7 +159,7 @@
       ],
       "docs": [
         {
-          "label": "参数 JSON",
+          "label": "参数记录",
           "src": "/assets/research-modules/reproducibility/parameters_psd.json",
           "type": "json"
         },
@@ -174,7 +174,7 @@
           "type": "text"
         },
         {
-          "label": "总结 JSON",
+          "label": "总结记录",
           "src": "/assets/research-modules/reproducibility/summary_psd.json",
           "type": "json"
         }
@@ -224,9 +224,9 @@
       ],
       "figures": [
         {
-          "label": "ERP publication figure",
+          "label": "ERP 结果图",
           "src": "/assets/research-modules/figures/erp-grand-average-publication.png",
-          "alt": "ERP publication figure"
+          "alt": "ERP 结果图"
         },
         {
           "label": "ERP main figure",
@@ -246,7 +246,7 @@
       ],
       "docs": [
         {
-          "label": "参数 JSON",
+          "label": "参数记录",
           "src": "/assets/research-modules/reproducibility/parameters_erp.json",
           "type": "json"
         },
@@ -261,7 +261,7 @@
           "type": "text"
         },
         {
-          "label": "总结 JSON",
+          "label": "总结记录",
           "src": "/assets/research-modules/reproducibility/summary_erp.json",
           "type": "json"
         }
@@ -275,7 +275,7 @@
       "subtitle": "Morlet 小波、baseline、ERSP、ITC、cluster 统计",
       "status": "预览，即将开放",
       "statusLevel": "preview",
-      "scenario": "ASSR、Stroop、运动想象等范式需要时频功率和锁相指标；本页用于确认科研交互和输出合同。",
+      "scenario": "ASSR、Stroop、运动想象等范式需要时频功率和锁相指标；本页用于确认输入、参数和输出是否符合科研使用预期。",
       "mneObjects": [
         "mne.time_frequency.tfr_morlet",
         "Epochs",
@@ -310,9 +310,9 @@
       ],
       "figures": [
         {
-          "label": "TFR preview chart",
+          "label": "TFR 时频图预览",
           "src": "/assets/research-modules/figures/tfr-ersp-itc-preview-publication.png",
-          "alt": "TFR preview chart"
+          "alt": "TFR 时频图预览"
         },
         {
           "label": "Time-frequency reference",
@@ -328,7 +328,7 @@
       ],
       "docs": [
         {
-          "label": "参数 JSON",
+          "label": "参数记录",
           "src": "/assets/research-modules/reproducibility/parameters_tfr.json",
           "type": "json"
         },
@@ -343,7 +343,7 @@
           "type": "text"
         },
         {
-          "label": "总结 JSON",
+          "label": "总结记录",
           "src": "/assets/research-modules/reproducibility/summary_tfr_preview.json",
           "type": "json"
         }
@@ -357,7 +357,7 @@
       "subtitle": "theta phase × gamma amplitude、comodulogram、surrogate 检验",
       "status": "预览，即将开放",
       "statusLevel": "preview",
-      "scenario": "麻醉苏醒、睡眠、记忆任务等客户可能关注 cross-frequency coupling；本页先定义完整输入输出与审稿风险。",
+      "scenario": "麻醉苏醒、睡眠、记忆任务等客户可能关注跨频耦合；本页先说明输入输出和复核风险。",
       "mneObjects": [
         "Raw/Epochs filtering",
         "Hilbert transform design",
@@ -393,14 +393,14 @@
       ],
       "figures": [
         {
-          "label": "PAC preview chart",
+          "label": "PAC 耦合图预览",
           "src": "/assets/research-modules/figures/pac-comodulogram-preview-publication.png",
-          "alt": "PAC preview chart"
+          "alt": "PAC 耦合图预览"
         },
         {
           "label": "ICA component reference",
           "src": "/assets/research-modules/figures/analysis-ica.png",
-          "alt": "ICA reference preview"
+          "alt": "ICA 参考图"
         }
       ],
       "tables": [
@@ -411,7 +411,7 @@
       ],
       "docs": [
         {
-          "label": "参数 JSON",
+          "label": "参数记录",
           "src": "/assets/research-modules/reproducibility/parameters_pac.json",
           "type": "json"
         },
@@ -426,7 +426,7 @@
           "type": "text"
         },
         {
-          "label": "总结 JSON",
+          "label": "总结记录",
           "src": "/assets/research-modules/reproducibility/summary_pac_preview.json",
           "type": "json"
         }
@@ -477,14 +477,14 @@
       ],
       "figures": [
         {
-          "label": "Connectivity preview chart",
+          "label": "连接性网络图预览",
           "src": "/assets/research-modules/figures/connectivity-network-preview-publication.png",
-          "alt": "Connectivity preview chart"
+          "alt": "连接性网络图预览"
         },
         {
           "label": "Scalp/source reference",
           "src": "/assets/research-modules/figures/analysis-source.png",
-          "alt": "Source reference preview"
+          "alt": "空间参考图"
         }
       ],
       "tables": [
@@ -495,7 +495,7 @@
       ],
       "docs": [
         {
-          "label": "参数 JSON",
+          "label": "参数记录",
           "src": "/assets/research-modules/reproducibility/parameters_connectivity.json",
           "type": "json"
         },
@@ -510,7 +510,7 @@
           "type": "text"
         },
         {
-          "label": "总结 JSON",
+          "label": "总结记录",
           "src": "/assets/research-modules/reproducibility/summary_connectivity_preview.json",
           "type": "json"
         }

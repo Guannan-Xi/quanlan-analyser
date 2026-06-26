@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>TimeChart EEG Renderer Benchmark | QLanalyser Lab</title>
+  <link rel="stylesheet" href="./timechart-eeg-benchmark.css" />
+</head>
+<body>
+  <main class="tc-shell" data-testid="timechart-benchmark-page">
+    <section class="tc-hero">
+      <div>
+        <p class="tc-kicker">QLanalyser Lab · isolated renderer benchmark</p>
+        <h1>TimeChart EEG Renderer Benchmark</h1>
+        <p class="tc-note">独立 WebGL 波形渲染试验台。只验证 TimeChart 对多通道 EEG 堆叠、缩放、平移和 overlay 同步的可行性，不接入主工作台。</p>
+      </div>
+      <div class="tc-badges">
+        <span>no mainline wiring</span>
+        <span>CDN probe</span>
+        <span>Canvas fallback</span>
+      </div>
+    </section>
+
+    <section class="tc-toolbar" aria-label="Benchmark controls">
+      <label>Channels
+        <select id="channels" data-testid="channels-select">
+          <option value="8">8</option>
+          <option value="16">16</option>
+          <option value="32" selected>32</option>
+          <option value="64">64</option>
+        </select>
+      </label>
+      <label>Duration
+        <select id="duration" data-testid="duration-select">
+          <option value="10">10 s</option>
+          <option value="30">30 s</option>
+          <option value="60" selected>60 s</option>
+          <option value="120">120 s</option>
+        </select>
+      </label>
+      <label>Sample rate
+        <select id="sampleRate" data-testid="sample-rate-select">
+          <option value="200" selected>200 Hz</option>
+          <option value="500">500 Hz</option>
+          <option value="1000">1000 Hz</option>
+        </select>
+      </label>
+      <button id="runBenchmark" data-testid="run-benchmark">Run benchmark</button>
+    </section>
+
+    <section class="tc-status-grid">
+      <article>
+        <strong>Renderer</strong>
+        <span id="rendererStatus" data-testid="renderer-status">initializing</span>
+      </article>
+      <article>
+        <strong>Points</strong>
+        <span id="pointCount" data-testid="point-count">-</span>
+      </article>
+      <article>
+        <strong>Generate</strong>
+        <span id="generateMs" data-testid="generate-ms">-</span>
+      </article>
+      <article>
+        <strong>Render</strong>
+        <span id="renderMs" data-testid="render-ms">-</span>
+      </article>
+      <article>
+        <strong>Overlay</strong>
+        <span id="overlayStatus" data-testid="overlay-status">-</span>
+      </article>
+    </section>
+
+    <section class="tc-stage">
+      <div id="chartHost" class="tc-chart" data-testid="timechart-host" aria-label="TimeChart EEG waveform host"></div>
+      <canvas id="fallbackCanvas" class="tc-fallback" data-testid="canvas-fallback" width="1280" height="720" hidden></canvas>
+      <div id="overlayLayer" class="tc-overlay" data-testid="overlay-layer" aria-hidden="true">
+        <div class="event event-a" title="Synthetic event A"></div>
+        <div class="event event-b" title="Synthetic event B"></div>
+        <div class="bad-segment" title="Synthetic bad segment"></div>
+      </div>
+    </section>
+
+    <pre id="metricsJson" data-testid="metrics-json" class="tc-metrics">{}</pre>
+  </main>
+  <script type="module" src="./timechart-eeg-benchmark.js"></script>
+</body>
+</html>

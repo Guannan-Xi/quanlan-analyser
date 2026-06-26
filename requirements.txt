@@ -4,3 +4,6 @@ pydantic>=2.7
 python-multipart>=0.0.9
 mne>=1.8
 edfio>=0.4.13
+oss2>=2.18
+reportlab>=4.0
+xgboost>=2.1

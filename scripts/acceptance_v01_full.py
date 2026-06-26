@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 import sys
 import tempfile
+import time
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -28,6 +29,10 @@ def assert_status(response, expected: int, name: str):
         record(name, False, f"expected {expected}, got {response.status_code}: {response.text[:500]}")
     record(name, True, f"HTTP {expected}")
     return response
+
+
+def auth_headers(session: dict) -> dict:
+    return {"Authorization": f"Bearer {session['token']}"}
 
 
 def assert_contract_artifacts(module: str, workflow: str, artifacts: list[dict]) -> None:
@@ -269,7 +274,17 @@ def main() -> None:
     html_path = Path(report["html_path"])
     record("report files exist", package_path.exists() and html_path.exists(), json.dumps(report))
     html = html_path.read_text(encoding="utf-8")
-    record("report contains guardrails", "Clinical/research interpretation guardrails" in html and "Software versions" in html, html[:500])
+    record(
+        "report is customer-safe",
+        "解释边界" in html
+        and "软件版本" in html
+        and "Acceptance PSD Report" not in html
+        and "Registered artifacts" not in html
+        and "Task metadata" not in html
+        and "D:\\Quanlan" not in html
+        and "D:/Quanlan" not in html,
+        html[:800],
+    )
     with zipfile.ZipFile(package_path) as zf:
         names = set(zf.namelist())
         required = {"reports/report.html", "tables/band_power.csv", "tables/channel_band_power.csv", "reproducibility/psd_summary.json", "reproducibility/software_versions.json", "reproducibility/workflow.json", "result.json", "manifest.json", "log.txt"}
@@ -280,23 +295,90 @@ def main() -> None:
     record("report package content-type", package_download.headers["content-type"].startswith("application/zip"), package_download.headers["content-type"])
     assert_status(client.get("/api/reports/missing"), 404, "missing report 404")
 
-    # Billing/admin are honest, not fake commerce.
-    wallet = assert_status(client.get("/api/billing/wallet"), 200, "billing disabled wallet").json()
-    record("billing disabled", wallet.get("enabled") is False and wallet.get("balance") == 0.0, json.dumps(wallet))
-    assert_status(client.post("/api/billing/recharge?amount=100"), 501, "billing recharge disabled")
-    ledger = assert_status(client.get("/api/billing/ledger"), 200, "billing ledger empty").json()
-    record("billing ledger empty", ledger == [], json.dumps(ledger))
-    admin = assert_status(client.get("/api/admin/dashboard"), 200, "admin dashboard").json()
-    record("admin counts tasks", admin.get("total_tasks", 0) >= 3 and admin.get("failed_tasks", 0) >= 1, json.dumps(admin))
-    failed = assert_status(client.get("/api/admin/tasks/failed"), 200, "admin failed tasks").json()
+    # Billing/admin are production-operable in sandbox mode for V1 and require
+    # authenticated account context.
+    auth_suffix = str(int(time.time() * 1000))
+    auth_email = f"full-{auth_suffix}@example.com"
+    verify = assert_status(
+        client.post("/api/auth/verification-code", json={"channel": "email", "target": auth_email}),
+        200,
+        "billing auth verification code",
+    ).json()
+    record("billing auth sandbox verification", verify.get("provider_mode") == "sandbox" and verify.get("sandbox_code") == "000000", json.dumps(verify, ensure_ascii=False))
+    customer_session = assert_status(
+        client.post(
+            "/api/auth/register",
+            json={
+                "register_method": "email",
+                "email": auth_email,
+                "password": "StrongPass123",
+                "name": "Full Acceptance Customer",
+                "organization_name": "Full Acceptance Lab",
+                "verification_code": "000000",
+            },
+        ),
+        200,
+        "billing auth register",
+    ).json()
+    customer_headers = auth_headers(customer_session)
+    customer_account_id = customer_session["account"]["id"]
+    admin_session = assert_status(
+        client.post("/api/auth/login", json={"email": "ops@quanlan.cn", "password": "ops-demo-2026"}),
+        200,
+        "admin auth login",
+    ).json()
+    admin_headers = auth_headers(admin_session)
+    assert_status(client.get("/api/billing/wallet"), 401, "billing wallet rejects anonymous")
+    assert_status(client.get("/api/admin/overview"), 401, "admin overview rejects anonymous")
+
+    wallet = assert_status(client.get(f"/api/billing/wallet?account_id={customer_account_id}", headers=customer_headers), 200, "billing wallet").json()
+    record("billing wallet sandbox mode", wallet.get("payment_provider_mode") == "sandbox", json.dumps(wallet, ensure_ascii=False))
+    record("billing wallet has customer balance", wallet.get("balance_credits", 0) >= 0, json.dumps(wallet, ensure_ascii=False))
+    recharge = assert_status(
+        client.post(
+            "/api/billing/recharge",
+            json={"account_id": customer_account_id, "amount_credits": 25, "payment_method": "alipay"},
+            headers=customer_headers,
+        ),
+        200,
+        "billing recharge order",
+    ).json()
+    record(
+        "billing recharge pending",
+        recharge.get("status") == "pending" and recharge.get("payment_method") == "alipay",
+        json.dumps(recharge, ensure_ascii=False),
+    )
+    paid = assert_status(
+        client.post(
+            f"/api/billing/recharge/{recharge['id']}/confirm",
+            json={"status": "paid", "provider_trade_no": "ACCEPTANCE-ALIPAY"},
+            headers=customer_headers,
+        ),
+        200,
+        "billing recharge confirm",
+    ).json()
+    record("billing recharge paid", paid.get("status") == "paid", json.dumps(paid, ensure_ascii=False))
+    ledger = assert_status(client.get(f"/api/billing/ledger?account_id={customer_account_id}", headers=customer_headers), 200, "billing ledger").json()
+    record("billing ledger records transactions", len(ledger) >= 1, json.dumps(ledger[:5], ensure_ascii=False))
+    admin_tasks = assert_status(client.get("/api/admin/tasks", headers=admin_headers), 200, "admin tasks").json()
+    record("admin counts tasks", len(admin_tasks) >= 3, json.dumps(admin_tasks[:5], ensure_ascii=False))
+    overview = assert_status(client.get("/api/admin/overview", headers=admin_headers), 200, "admin overview").json()
+    record(
+        "admin overview includes operations counts",
+        "active_customers" in overview and "invoice_requests" in overview,
+        json.dumps(overview, ensure_ascii=False),
+    )
+    failed = assert_status(client.get("/api/admin/tasks/failed", headers=admin_headers), 200, "admin failed tasks").json()
     record("admin failed task list", any(item["task_id"] == failed_task_id for item in failed), json.dumps(failed))
 
-    # Deletion after all analysis should remove file from storage registry and disk.
+    # V1 keeps customer EEG data soft-deleted and auditable unless a retention
+    # policy explicitly allows a physical purge.
     delete_target = upload_file(client, project["id"], build_fif(work / "delete_target_raw.fif", with_events=False))
     delete_path = Path(delete_target["stored_path"])
     assert_status(client.delete(f"/api/data/files/{delete_target['id']}"), 200, "delete uploaded file")
-    record("deleted file removed from disk", not delete_path.exists(), str(delete_path))
-    assert_status(client.get(f"/api/eeg/files/{delete_target['id']}"), 404, "deleted file registry removed")
+    record("soft-deleted file retained on disk", delete_path.exists(), str(delete_path))
+    deleted_file = assert_status(client.get(f"/api/eeg/files/{delete_target['id']}"), 200, "deleted file registry retained").json()
+    record("deleted file marked", deleted_file.get("status") == "deleted" and deleted_file.get("upload_status") == "deleted", json.dumps(deleted_file))
 
     # Produce machine-readable acceptance report.
     summary = {
