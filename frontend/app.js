@@ -22,6 +22,27 @@ const ENTRY_PAGE = "expert-entry-demo.html";
 const DEFAULT_API_BASE = ["localhost", "127.0.0.1"].includes(window.location.hostname)
   ? "http://127.0.0.1:8001/api"
   : "/api";
+const isLocalHost = () => ["localhost", "127.0.0.1"].includes(window.location.hostname);
+const isE2EAutomationContext = () => {
+  if (isLocalHost()) return true;
+  const params = new URLSearchParams(window.location.search);
+  const marker = `${params.get("v") || ""} ${params.get("acceptance") || ""} ${params.get("e2e") || ""}`.toLowerCase();
+  return /(^|[^a-z0-9])(e2e[a-z0-9-]*|acceptance|aliyun-epilepsy-v0-1|epilepsy-upload-to-export|deeplink)([^a-z0-9]|$)/.test(marker);
+};
+const initialDeepLinkHash = (() => {
+  try { return decodeURIComponent(String(window.location.hash || "").replace(/^#/, "")); }
+  catch { return String(window.location.hash || "").replace(/^#/, ""); }
+})();
+function currentHashViewName() {
+  try { return decodeURIComponent(String(window.location.hash || "").replace(/^#/, "")); }
+  catch { return String(window.location.hash || "").replace(/^#/, ""); }
+}
+function isEpilepsyWorkbenchDeepLinkIntent() {
+  const params = new URLSearchParams(window.location.search);
+  const workbench = String(params.get("workbench") || params.get("module") || "").toLowerCase();
+  const target = currentHashViewName() || initialDeepLinkHash;
+  return target === "epilepsyWorkbenchInline" || workbench === "epilepsy" || workbench === "epilepsy_ml";
+}
 
 const demoCustomer = {
   name: "\u5ba2\u6237\u8d26\u6237",
@@ -61,9 +82,11 @@ const state = {
     selectedPlanId: null,
     projectSearch: "",
     showReviewProjects: false,
+    sessionProjectIds: new Set(),
   },
   teaching: {
     active: false,
+    loading: false,
     guideActive: false,
     stepIndex: 0,
     datasetLoaded: false,
@@ -71,7 +94,65 @@ const state = {
     demoProjectId: "proj_demo_learning",
     demoFileId: "eeg_demo_teaching_oddball",
   },
+  deepLink: {
+    initialHash: initialDeepLinkHash,
+    epilepsyBootstrapInFlight: false,
+    epilepsyBootstrapStatus: "idle",
+    epilepsyBootstrapError: "",
+  },
+  epilepsyInline: {
+    selectedEventId: "",
+    timeScaleSec: 30,
+    reader: {
+      startSec: 0,
+      durationSec: 30,
+      sensitivityUvPerRow: 50,
+      visibleChannelCount: 8,
+      overlayVisibility: {
+        candidates: true,
+        stageCode: true,
+        reviewEdits: true,
+      },
+      middlePan: null,
+    },
+    resultTaskId: "",
+    epochRows: [],
+    eventRows: [],
+    resultLoadStatus: "idle",
+    resultLoadError: "",
+    spectrogramPayload: null,
+    spectrogramLoadStatus: "idle",
+    spectrogramLoadError: "",
+    screeningStatus: "idle",
+    screeningProgress: 0,
+    screeningMessage: "",
+    waveformStatus: "idle",
+    waveformFetchStatus: "idle",
+    waveformError: "",
+    waveformPayload: null,
+    waveformRequestKey: "",
+    waveformPayloadKey: "",
+    waveformActiveRequestKey: "",
+    waveformAbortController: null,
+    waveformDebounceTimer: null,
+    waveformCache: new Map(),
+    reviewSession: null,
+    reviewSaveStatus: "idle",
+    reviewSaveError: "",
+    exportResult: null,
+    exportStatus: "idle",
+    exportError: "",
+    draftCommands: [],
+    redoCommands: [],
+    draftSaved: false,
+    published: false,
+  },
 };
+
+function publishE2EState() {
+  if (!isE2EAutomationContext()) return;
+  window.__QLANALYSER_E2E_STATE__ = state;
+}
 
 function refreshLabLinks() {
   qsa("[data-lab-link]").forEach((link) => {
@@ -83,6 +164,22 @@ function refreshLabLinks() {
     link.href = url.toString();
   });
 }
+
+const EDF_BROWSER_INTERACTION_CONSTANTS = Object.freeze({
+  wheelPanRatio: 0.08,
+  arrowPanRatio: 0.10,
+  pagePanRatio: 1.00,
+  zoomFactor: 1.20,
+  minWindowSec: 2,
+  maxWindowSec: 300,
+  gainStepRatio: 1.20,
+  minSensitivityUvPerRow: 5,
+  maxSensitivityUvPerRow: 500,
+});
+const INLINE_EPILEPSY_WAVEFORM_CACHE_LIMIT = 16;
+const INLINE_EPILEPSY_WAVEFORM_FETCH_DEBOUNCE_MS = 120;
+
+const DATA_PREPARATION_CONTRACT_VERSION = "qlanalyser-data-preparation-v0.2";
 
 const eegState = {
   data: null,
@@ -98,7 +195,12 @@ const eegState = {
   start: 0,
   windowSec: 10,
   gain: 2,
+  sensitivityUvPerRow: 50,
   visibleChannels: 8,
+  interactionMode: "browse",
+  middlePan: null,
+  hoverTimeSec: null,
+  hoverChannelName: "",
   showFiltered: false,
   filterEnabled: false,
   filterLfreq: 1,
@@ -123,6 +225,10 @@ function clearEegPreviewState() {
   eegState.showFiltered = false;
   eegState.filterEnabled = false;
   eegState.lastPreviewParameters = null;
+  eegState.interactionMode = "browse";
+  eegState.middlePan = null;
+  eegState.hoverTimeSec = null;
+  eegState.hoverChannelName = "";
   const canvas = qs("#eegCanvas");
   const ctx = canvas?.getContext?.("2d");
   if (canvas && ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -165,7 +271,7 @@ const teachingSteps = [
   {
     view: "dashboard",
     selector: "#teachingModeBtn",
-    title: "教学模式 1/8",
+    title: "示例模式 1/8",
     body: "这里会载入一份练习用 EEG 数据，帮助你从项目、数据准备、分析到报告完整走一遍。",
     require: () => state.teaching.datasetLoaded,
     blocked: "练习数据正在载入，请稍候。",
@@ -173,7 +279,7 @@ const teachingSteps = [
   {
     view: "dashboard",
     selector: '[data-testid="project-data-crud-panel"]',
-    title: "教学模式 2/8",
+    title: "示例模式 2/8",
     body: "先看当前项目和数据。普通模式不会自动放入这份练习数据。",
     require: () => Boolean(state.real.project?.id && state.real.eegFile?.id),
     blocked: "请等待练习项目和样本数据载入完成。",
@@ -181,51 +287,51 @@ const teachingSteps = [
   {
     view: "analysis",
     selector: '[data-testid="single-file-preview-panel"]',
-    title: "教学模式 3/8",
+    title: "示例模式 3/8",
     body: "单击数据后，波形和基础质量信息会自动预览，无需再点运行按钮。",
     require: () => Boolean(state.real.eegFile?.id),
-    blocked: "请先选择教学 EEG 数据。",
+    blocked: "请先选择示例 EEG 数据。",
     onEnter: () => requestAutoQcPreviewForSelectedFile(state.real.eegFile).catch(() => null),
   },
   {
     view: "analysis",
     selector: ".eeg-toolbar",
-    title: "教学模式 4/8",
+    title: "示例模式 4/8",
     body: "在波形附近完成坏道、片段和事件修改，所有修改都可以恢复。",
     require: () => Boolean(state.real.eegFile?.id),
-    blocked: "请先载入教学 EEG 数据。",
+    blocked: "请先载入示例 EEG 数据。",
   },
   {
     view: "analysis",
     selector: "#presetPrepReference",
-    title: "教学模式 5/8",
+    title: "示例模式 5/8",
     body: "重参考属于预处理，可选择保留原始参考、平均参考、指定通道或双极参考。",
     require: () => Boolean(state.real.eegFile?.id),
-    blocked: "请先载入教学 EEG 数据。",
+    blocked: "请先载入示例 EEG 数据。",
   },
   {
     view: "analysis",
     selector: '[data-real-action="confirm-plan-inline"]',
-    title: "教学模式 6/8",
+    title: "示例模式 6/8",
     body: "确认数据准备后，再进入分析方法选择。",
     require: () => Boolean(state.real.eegFile?.id),
-    blocked: "请先载入教学 EEG 数据。",
+    blocked: "请先载入示例 EEG 数据。",
   },
   {
     view: "workflow",
     selector: '[data-testid="analysis-method-scope-panel"]',
-    title: "教学模式 7/8",
+    title: "示例模式 7/8",
     body: "这里只放分析方法；重参考和质量检查留在数据准备里。",
     require: () => Boolean(state.real.eegFile?.id),
-    blocked: "请先完成教学数据载入。",
+    blocked: "请先完成示例数据载入。",
   },
   {
     view: "statistics",
     selector: '[data-testid="result-review-workbench"]',
-    title: "教学模式 8/8",
+    title: "示例模式 8/8",
     body: "运行分析后，在结果和报告页查看图表、参数记录和边界说明。",
     require: () => Boolean(state.real.eegFile?.id),
-    blocked: "请先完成教学数据载入。",
+    blocked: "请先完成示例数据载入。",
   },
 ];
 
@@ -267,6 +373,7 @@ const titles = {
   journey: "\u6d41\u7a0b\u8bf4\u660e",
   analysis: "\u6570\u636e\u51c6\u5907",
   workflow: "\u5206\u6790\u4efb\u52a1",
+  epilepsyWorkbenchInline: "癫痫样事件分析台",
   paradigms: "\u8303\u5f0f\u5e93",
   statistics: "\u7ed3\u679c\u67e5\u770b",
   publication: "\u62a5\u544a\u4e0b\u8f7d",
@@ -385,7 +492,7 @@ const modalContent = {
         <span>大文件会分段上传，请保持页面打开。</span>
         <span>网络中断后，可以回到同一个项目继续处理。</span>
         <span>如果事件表缺失，请先上传原始 EEG 数据，再补充或生成事件信息。</span>
-        <span>也可以先使用教学样本熟悉流程，再切换到自己的项目数据。</span>
+        <span>也可以先使用示例样本熟悉流程，再切换到自己的项目数据。</span>
       </div>
     `,
   },
@@ -501,6 +608,87 @@ function renderPreparationEditSummary(message = "") {
 }
 
 
+function formatWaveformHms(seconds = 0) {
+  const total = Math.max(0, Math.floor(Number(seconds || 0)));
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const secs = total % 60;
+  return [hours, minutes, secs].map((part) => String(part).padStart(2, "0")).join(":");
+}
+
+function waveformModeLabel(mode = eegState.interactionMode) {
+  const labels = {
+    browse: "浏览模式",
+    selectSegment: "选段模式",
+    markBadSegment: "坏段模式",
+    markBadChannel: "坏道模式",
+  };
+  return labels[mode] || labels.browse;
+}
+
+function isWaveformWriteMode(mode = eegState.interactionMode) {
+  return mode === "selectSegment" || mode === "markBadSegment" || mode === "markBadChannel";
+}
+
+function preparationPlanStatusLabel() {
+  const plan = state.real.plan;
+  if (hasConfirmedPlan()) return `准备方案：已确认 r${Number(plan.revision)}`;
+  if (plan?.id && !plan.is_default) return "准备方案：草稿未确认";
+  return "准备方案：未确认";
+}
+
+function waveformDisplaySampleRate() {
+  const payload = currentWaveformPayload();
+  const value = Number(payload?.display_sample_rate_hz || payload?.sample_rate_hz || payload?.sfreq_display || 0);
+  return Number.isFinite(value) && value > 0 ? value : 200;
+}
+
+function waveformAnchorDriftToleranceSec() {
+  return Math.max(0.05, 2 / Math.max(1, waveformDisplaySampleRate()));
+}
+
+function waveformSensitivityUvPerRow() {
+  const payload = currentWaveformPayload();
+  const baseUv = Number(payload?.scale_uv || 100);
+  const gain = Math.max(0.1, Number(eegState.gain || 2));
+  const sensitivity = clampNumber(baseUv / gain, EDF_BROWSER_INTERACTION_CONSTANTS.minSensitivityUvPerRow, EDF_BROWSER_INTERACTION_CONSTANTS.maxSensitivityUvPerRow);
+  eegState.sensitivityUvPerRow = sensitivity;
+  return sensitivity;
+}
+
+function syncWaveformModeUi() {
+  const mode = eegState.interactionMode || "browse";
+  qsa("[data-mode-target]").forEach((button) => {
+    const active = button.dataset.modeTarget === mode;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", active ? "true" : "false");
+  });
+  qsa('[data-testid="preview-edit-workbench"]').forEach((node) => {
+    node.dataset.mode = mode;
+  });
+  const canvas = qs("#eegCanvas");
+  if (canvas) {
+    canvas.dataset.mode = mode;
+    canvas.classList.toggle("waveform-write-mode", isWaveformWriteMode(mode));
+    canvas.classList.toggle("waveform-browse-mode", mode === "browse");
+  }
+}
+
+function setWaveformInteractionMode(mode = "browse", options = {}) {
+  const allowed = new Set(["browse", "selectSegment", "markBadSegment", "markBadChannel"]);
+  eegState.interactionMode = allowed.has(mode) ? mode : "browse";
+  eegState.drag = null;
+  eegState.middlePan = null;
+  syncWaveformModeUi();
+  if (!options.silent) {
+    const hint = isWaveformWriteMode()
+      ? `${waveformModeLabel()}：只写入准备草稿，不修改原始 EEG。`
+      : "浏览模式：滚轮水平浏览，Ctrl/Cmd + 滚轮缩放时间窗。";
+    renderWaveformInteractionHint(hint);
+  }
+  renderWaveformWorkbenchStatus();
+}
+
 function renderWaveformWorkbenchStatus(message = "") {
   const target = qs("#waveformWorkbenchStatus");
   if (!target) return;
@@ -509,26 +697,42 @@ function renderWaveformWorkbenchStatus(message = "") {
   const windowSec = Number(eegState.windowSec || 10);
   const referenceSelect = qs("#presetPrepReference");
   const referenceLabel = referenceSelect?.selectedOptions?.[0]?.textContent?.trim() || "平均参考";
-  const filterState = Boolean(eegState.filterEnabled || eegState.showFiltered) ? "滤波预览开启" : "原始波形";
+  const filterState = Boolean(eegState.filterEnabled || eegState.showFiltered) ? "Filter" : "Raw";
+  const sensitivity = waveformSensitivityUvPerRow();
+  const mode = eegState.interactionMode || "browse";
+  const writeHint = isWaveformWriteMode(mode) ? "只写入准备草稿，不修改原始 EEG。" : "默认浏览不会写入选段、坏段或坏道。";
   const pieces = [
-    ["当前窗口", `${start.toFixed(1)}-${(start + windowSec).toFixed(1)} s`],
-    ["显示", `${Number(eegState.visibleChannels || 8)} 通道 / 增益 ${Number(eegState.gain || 2)}x`],
-    ["选段", selected ? `${selected.start_sec.toFixed(2)}-${selected.end_sec.toFixed(2)} s` : "拖拽波形选择片段"],
-    ["滤波", filterState],
+    ["模式", waveformModeLabel(mode)],
+    ["时间窗", `${formatWaveformHms(start)}-${formatWaveformHms(start + windowSec)}`],
+    ["窗口", `${Number(windowSec.toFixed(1))} s/page`],
+    ["通道", `${Number(eegState.visibleChannels || 8)} ch`],
+    ["灵敏度", `${Number(sensitivity.toFixed(1))} uV/row`],
+    ["显示", filterState],
+    ["准备", preparationPlanStatusLabel()],
+    ["选段", selected ? `${selected.start_sec.toFixed(2)}-${selected.end_sec.toFixed(2)} s` : "未选择"],
     ["参考", referenceLabel],
     ["坏道草稿", `${prepEditState.badChannels.length} 条，可恢复 ${prepEditState.restoredBadChannels.length} 条`],
     ["片段草稿", `剔除 ${prepEditState.excludedSegments.length} 段，恢复 ${prepEditState.restoredSegments.length} 段`],
   ];
+  target.classList.toggle("is-write-mode", isWaveformWriteMode(mode));
   target.innerHTML = [
     message ? `<strong>${escapeHtml(cleanRuntimeMessage(message))}</strong>` : "",
     ...pieces.map(([label, value]) => `<span><b>${escapeHtml(label)}</b>${escapeHtml(value)}</span>`),
-    `<em>预处理只生成数据准备记录，不改写原始 EEG。</em>`,
+    `<em>${escapeHtml(writeHint)}</em>`,
   ].filter(Boolean).join("");
+  syncWaveformModeUi();
 }
 
 function hasConfirmedPlan() {
   const plan = state.real.plan;
   return Boolean(plan && !plan.is_default && plan.status === "confirmed" && plan.id && Number.isFinite(Number(plan.revision)));
+}
+
+function dataPreparationContractVersion(plan) {
+  return plan?.schema_version
+    || plan?.data_preparation_contract_version
+    || plan?.contract_version
+    || DATA_PREPARATION_CONTRACT_VERSION;
 }
 
 function latestAnalysisTask() {
@@ -547,11 +751,14 @@ function latestAnalysisTask() {
 
 function currentWorkspaceFile() {
   const selectedId = qs("#workspaceFileFocusSelect")?.value || qs("#workspaceFileSelect")?.value || state.workspace.selectedFileId;
-  const selected = (state.workspace.files || []).find((item) => item.id === selectedId);
-  const file = state.real.eegFile || selected || null;
+  const selected = activeWorkspaceFiles(state.workspace.files || []).find((item) => item.id === selectedId);
+  const file = state.real.eegFile && !isDeletedEegFile(state.real.eegFile) ? state.real.eegFile : selected || null;
   if (file?.id) {
     state.real.eegFile = file;
     state.workspace.selectedFileId = file.id;
+  } else {
+    state.real.eegFile = null;
+    state.workspace.selectedFileId = null;
   }
   return file;
 }
@@ -559,7 +766,7 @@ function currentWorkspaceFile() {
 function currentWorkspaceProject() {
   const selectedId = state.workspace.selectedProjectId;
   const selected = (state.workspace.projects || []).find((item) => item.id === selectedId);
-  const project = state.real.project || selected || null;
+  const project = state.real.project && !isArchivedProject(state.real.project) ? state.real.project : selected || null;
   if (project?.id) {
     state.real.project = project;
     state.workspace.selectedProjectId = project.id;
@@ -587,6 +794,7 @@ async function chooseWorkspaceProject(projectId) {
   }
   const project = (state.workspace.projects || []).find((item) => item.id === nextProjectId) || null;
   state.real.project = project;
+  if (project?.id) state.workspace.sessionProjectIds?.add?.(project.id);
   state.real.eegFile = null;
   state.real.plan = null;
   state.real.epochSet = null;
@@ -605,13 +813,16 @@ async function chooseWorkspaceFile(fileId, options = {}) {
     await refreshProjectWorkspace();
     return;
   }
-  const file = (state.workspace.files || []).find((item) => item.id === fileId) || null;
+  const file = activeWorkspaceFiles(state.workspace.files || []).find((item) => item.id === fileId) || null;
   state.real.eegFile = file;
   state.real.plan = null;
   state.real.epochSet = null;
   clearEegPreviewState();
   await refreshProjectWorkspace();
-  if (jumpToAnalysis) setView("analysis");
+  if (jumpToAnalysis) {
+    setView("analysis");
+    revealWaveformPreview({ delayMs: 350 });
+  }
   if (autoPreview && file?.id) {
     requestAutoQcPreviewForSelectedFile(file).catch((error) => {
       eegState.autoPreviewError = error.message || String(error);
@@ -628,25 +839,25 @@ function ensureTeachingOverlay() {
   overlay.id = "teachingOverlay";
   overlay.className = "teaching-overlay";
   overlay.setAttribute("role", "dialog");
-  overlay.setAttribute("aria-modal", "true");
+  overlay.setAttribute("aria-modal", "false");
   overlay.setAttribute("aria-live", "polite");
   overlay.innerHTML = `
     <div class="teaching-mask" data-teaching-action="next"></div>
     <div class="teaching-spotlight" aria-hidden="true"></div>
     <section class="teaching-card" data-testid="teaching-step-card">
       <div class="teaching-card-head">
-        <span class="teaching-kicker">教学数据</span>
-        <button class="icon-btn" type="button" data-teaching-action="close" title="结束教学"><i data-lucide="x"></i></button>
+        <span class="teaching-kicker">示例数据</span>
+        <button class="icon-btn" type="button" data-teaching-action="close" title="结束引导"><i data-lucide="x"></i></button>
       </div>
-      <h2 id="teachingStepTitle">教学模式</h2>
-      <p id="teachingStepBody">正在准备教学步骤。</p>
+      <h2 id="teachingStepTitle">示例模式</h2>
+      <p id="teachingStepBody">正在准备示例引导。</p>
       <div class="teaching-progress" aria-hidden="true"><span></span></div>
       <div class="teaching-actions">
         <button class="ghost-btn" type="button" data-teaching-action="prev"><i data-lucide="chevron-left"></i><span>上一步</span></button>
         <button class="primary-btn" type="button" data-teaching-action="next"><span>下一步</span><i data-lucide="chevron-right"></i></button>
-        <button class="ghost-btn" type="button" data-teaching-action="close"><i data-lucide="x"></i><span>结束教学</span></button>
+        <button class="ghost-btn" type="button" data-teaching-action="close"><i data-lucide="x"></i><span>结束引导</span></button>
       </div>
-      <small class="teaching-boundary">教学数据为合成 EEG，仅用于熟悉流程，不作为科学结论。</small>
+      <small class="teaching-boundary">示例数据为合成 EEG，仅用于熟悉流程，不作为科学结论。</small>
     </section>
   `;
   document.body.append(overlay);
@@ -720,11 +931,15 @@ function applyTeachingModeChrome() {
   document.body.classList.toggle("teaching-sandbox-active", Boolean(state.teaching.active));
   const button = qs("#teachingModeBtn");
   if (button) {
+    const loading = Boolean(state.teaching.loading);
     button.dataset.teachingAction = state.teaching.active ? "exit" : "start";
     button.classList.toggle("active", Boolean(state.teaching.active));
+    button.classList.toggle("is-loading", loading);
+    button.disabled = loading;
     button.setAttribute("aria-pressed", state.teaching.active ? "true" : "false");
+    button.setAttribute("aria-busy", loading ? "true" : "false");
     const label = button.querySelector("span");
-    if (label) label.textContent = state.teaching.active ? "\u8fd4\u56de\u666e\u901a\u6a21\u5f0f" : "\u6559\u5b66\u6a21\u5f0f";
+    if (label) label.textContent = loading ? "载入示例数据" : state.teaching.active ? "\u8fd4\u56de\u666e\u901a\u6a21\u5f0f" : "\u793a\u4f8b\u6a21\u5f0f";
     button.title = state.teaching.active ? "\u9000\u51fa\u6559\u5b66\u6c99\u76d2\uff0c\u8fd4\u56de\u4f60\u7684\u6b63\u5f0f\u9879\u76ee" : "\u4f7f\u7528\u5185\u7f6e\u8111\u7535\u6570\u636e\u4f53\u9a8c\u5b8c\u6574\u6d41\u7a0b";
   }
   let banner = qs("#teachingSandboxBanner");
@@ -736,7 +951,7 @@ function applyTeachingModeChrome() {
       const topbar = qs(".topbar");
       topbar?.insertAdjacentElement("afterend", banner);
     }
-    banner.innerHTML = `<strong>\u6559\u5b66\u6a21\u5f0f</strong><span>\u4f60\u6b63\u5728\u4f7f\u7528\u5185\u7f6e\u8111\u7535\u6570\u636e\u8bd5\u8dd1\u6d41\u7a0b\uff0c\u65e0\u9700\u4e0a\u4f20\u6570\u636e\uff1b\u6559\u5b66\u6570\u636e\u4e0d\u53ef\u5220\u9664\uff0c\u7ed3\u679c\u4ec5\u7528\u4e8e\u5b66\u4e60\u64cd\u4f5c\u3002</span><button class="ghost-btn mini" type="button" data-teaching-action="guide"><i data-lucide="route"></i><span>\u91cd\u65b0\u6253\u5f00\u5f15\u5bfc</span></button>`;
+    banner.innerHTML = `<strong>\u793a\u4f8b\u6a21\u5f0f</strong><span>\u4f60\u6b63\u5728\u4f7f\u7528\u5185\u7f6e\u8111\u7535\u6570\u636e\u8bd5\u8dd1\u6d41\u7a0b\uff0c\u65e0\u9700\u4e0a\u4f20\u6570\u636e\uff1b\u793a\u4f8b\u6570\u636e\u4e0d\u53ef\u5220\u9664\uff0c\u7ed3\u679c\u4ec5\u7528\u4e8e\u5b66\u4e60\u64cd\u4f5c\u3002</span><button class="ghost-btn mini" type="button" data-teaching-action="guide"><i data-lucide="route"></i><span>\u91cd\u65b0\u6253\u5f00\u5f15\u5bfc</span></button>`;
     banner.hidden = false;
   } else if (banner) {
     banner.hidden = true;
@@ -744,44 +959,83 @@ function applyTeachingModeChrome() {
   if (window.lucide) window.lucide.createIcons();
 }
 
+function applyTeachingDataset(dataset, options = {}) {
+  const project = dataset?.project || null;
+  const file = dataset?.file || null;
+  const plan = dataset?.data_preparation_plan || dataset?.plan || null;
+  if (project?.id) {
+    state.real.project = project;
+    state.workspace.selectedProjectId = project.id;
+    if (!state.workspace.projects.some((item) => item.id === project.id)) state.workspace.projects.unshift(project);
+  }
+  if (file?.id) {
+    state.real.eegFile = { ...file, teaching_demo: true };
+    state.workspace.selectedFileId = file.id;
+    eegState.selectedFilePreviewId = "";
+    if (!state.workspace.files.some((item) => item.id === file.id)) state.workspace.files.unshift(state.real.eegFile);
+  }
+  if (plan?.id) {
+    state.real.plan = { ...plan, schema_version: dataPreparationContractVersion(plan) };
+    state.workspace.selectedPlanId = plan.id;
+    if (!state.workspace.plans.some((item) => item.id === plan.id)) state.workspace.plans.unshift(state.real.plan);
+  } else if (options.clearPlan !== false) {
+    state.real.plan = null;
+    state.workspace.selectedPlanId = "";
+  }
+  state.teaching.datasetLoaded = Boolean(project?.id && file?.id);
+  return { project, file, plan };
+}
+
+async function loadTeachingDatasetForModule(moduleName = "") {
+  const endpoint = moduleName === "epilepsy_ml" ? "/lab/demo/epilepsy" : "/lab/demo/dataset";
+  const dataset = await apiJson(endpoint);
+  const applied = applyTeachingDataset(dataset);
+  await refreshProjectWorkspace();
+  state.real.project = state.workspace.projects.find((item) => item.id === applied.project?.id) || applied.project || state.real.project;
+  state.real.eegFile = state.workspace.files.find((item) => item.id === applied.file?.id) || state.real.eegFile || applied.file;
+  state.real.plan = state.workspace.plans.find((item) => item.id === applied.plan?.id) || state.real.plan || applied.plan || null;
+  state.workspace.selectedProjectId = state.real.project?.id || state.workspace.selectedProjectId;
+  state.workspace.selectedFileId = state.real.eegFile?.id || state.workspace.selectedFileId;
+  if (state.real.plan?.id) state.workspace.selectedPlanId = state.real.plan.id;
+  return { ...dataset, project: state.real.project, file: state.real.eegFile, plan: state.real.plan };
+}
+
 async function startTeachingMode(options = {}) {
+  if (state.teaching.loading) return;
   const { showGuide = true } = options;
+  const intendedModuleName = options.moduleName || options.module || (isEpilepsyWorkbenchDeepLinkIntent() ? "epilepsy_ml" : "");
+  const isEpilepsyIntent = intendedModuleName === "epilepsy_ml";
+  const viewAtStart = qs(".view.active")?.id || "";
+  state.teaching.loading = true;
   state.teaching.active = true;
-  state.teaching.guideActive = Boolean(showGuide);
+  state.teaching.guideActive = Boolean(showGuide && !isEpilepsyIntent);
   state.teaching.stepIndex = 0;
   state.teaching.datasetLoaded = false;
   ensureTeachingOverlay();
-  setRealStatus("正在载入教学数据。", "info");
+  applyTeachingModeChrome();
+  setRealStatus(isEpilepsyIntent ? "正在载入癫痫样事件示例 EDF 数据。" : "正在载入示例数据。", "info");
   try {
-    const dataset = await apiJson("/lab/demo/dataset");
-    const project = dataset?.project || null;
-    const file = dataset?.file || null;
-    if (project?.id) {
-      state.real.project = project;
-      state.workspace.selectedProjectId = project.id;
+    await loadTeachingDatasetForModule(intendedModuleName);
+    const currentView = qs(".view.active")?.id || "";
+    const userMovedToAnotherView = Boolean(currentView && viewAtStart && currentView !== viewAtStart);
+    if (currentView === "epilepsyWorkbenchInline" || isEpilepsyIntent) {
+      state.teaching.guideActive = false;
+      if (isEpilepsyIntent) setView("epilepsyWorkbenchInline");
+      await ensureTeachingSandboxReady({ preview: false, moduleName: "epilepsy_ml" });
+    } else {
+      if (!userMovedToAnotherView && !options.preserveView) setView("dashboard");
+      await ensureTeachingSandboxReady({ preview: false });
     }
-    if (file?.id) {
-      state.real.eegFile = { ...file, teaching_demo: true };
-      state.workspace.selectedFileId = file.id;
-      eegState.selectedFilePreviewId = "";
-    }
-    state.teaching.datasetLoaded = Boolean(project?.id && file?.id);
-    await refreshProjectWorkspace();
-    state.real.project = state.workspace.projects.find((item) => item.id === project?.id) || project || state.real.project;
-    state.real.eegFile = state.workspace.files.find((item) => item.id === file?.id) || state.real.eegFile || file;
-    state.workspace.selectedProjectId = state.real.project?.id || state.workspace.selectedProjectId;
-    state.workspace.selectedFileId = state.real.eegFile?.id || state.workspace.selectedFileId;
-    setView("dashboard");
-    await ensureTeachingSandboxReady({ preview: false });
-    recordUiAction("teaching:start", "pass", "教学模式已载入合成 EEG 数据。", {
+    recordUiAction("teaching:start", "pass", "示例模式已载入合成 EEG 数据。", {
       project_id: state.real.project?.id,
       file_id: state.real.eegFile?.id,
       demo: true,
     });
   } catch (error) {
     state.teaching.datasetLoaded = false;
-    recordUiAction("teaching:start", "blocked", `教学数据载入失败：${error.message || error}`);
+    recordUiAction("teaching:start", "blocked", `示例数据载入失败：${error.message || error}`);
   }
+  state.teaching.loading = false;
   applyTeachingModeChrome();
   if (state.teaching.guideActive) renderTeachingOverlay();
   else hideTeachingGuideOverlay();
@@ -829,7 +1083,7 @@ function closeTeachingMode() {
     clearEegPreviewState();
     refreshProjectWorkspace().catch(() => renderProjectDataManagement());
   }
-  recordUiAction("teaching:close", "pass", "教学模式已结束。");
+  recordUiAction("teaching:close", "pass", "示例模式已结束。");
 }
 
 function goTeachingStep(delta) {
@@ -904,8 +1158,10 @@ function projectSearchText(project) {
 
 function isAutoGeneratedPilotProject(project) {
   const text = projectSearchText(project);
+  const rawName = String(project?.name || project?.title || "").trim();
   const owner = String(project?.owner_id || project?.owner_user_id || project?.created_by || project?.metadata_json?.owner_id || "").toLowerCase();
   if (owner === "pilot-user" || owner === "pilot_user" || owner === "demo-user") return true;
+  if (rawName === "我的研究项目") return true;
   if (text.includes("qlanalyser pilot project")) return true;
   if (text.includes("pilot generated") || text.includes("pilot-generated")) return true;
   if (text.includes("我的分析项目") && (owner.includes("pilot") || text.includes("pilot"))) return true;
@@ -916,6 +1172,8 @@ function isReviewOrInternalProject(project) {
   const text = projectSearchText(project);
   return [
     "acceptance",
+    "cloud trial",
+    "mismatch",
     "persistence",
     "smoke",
     "fixture",
@@ -976,10 +1234,13 @@ function updateProjectRowActionState(project) {
   const protectedTeaching = Boolean(project?.id && isTeachingDemoProject(project));
   qsa('[data-ia-action="edit-project"], [data-ia-action="archive-project"], [data-ia-action="delete-project"]').forEach((button) => {
     if (!rowActions.contains(button)) return;
-    const disabled = archived || protectedTeaching;
+    const action = button.dataset.iaAction;
+    const disabled = protectedTeaching || (archived && action !== "delete-project");
     button.disabled = disabled;
     button.setAttribute("aria-disabled", disabled ? "true" : "false");
-    button.title = protectedTeaching ? teachingProtectedMessage() : (archived ? "归档项目为只读；如需修改，请先恢复到普通项目。" : "");
+    button.title = protectedTeaching
+      ? teachingProtectedMessage()
+      : (archived && action !== "delete-project" ? "归档项目为只读；可继续删除该项目记录。" : "");
   });
 }
 
@@ -1010,11 +1271,11 @@ function isTeachingDemoFile(file) {
 }
 
 function teachingProtectedMessage() {
-  return "内置教学数据用于练习，不能删除、归档或改名。";
+  return "内置示例数据用于练习，不能删除、归档或改名。";
 }
 
 function scopedProjectFiles(project, files = []) {
-  const rows = project?.id ? (files || []).filter((item) => item.project_id === project.id) : [];
+  const rows = project?.id ? (files || []).filter((item) => item.project_id === project.id && !isDeletedEegFile(item)) : [];
   if (state.teaching.active && isTeachingDemoProject(project)) {
     return rows.filter((item) => isTeachingDemoFile(item));
   }
@@ -1026,6 +1287,15 @@ function isArchivedProject(project) {
   return ["archived", "archive", "deleted", "delete"].includes(rawStatus);
 }
 
+function isDeletedEegFile(file) {
+  const rawStatus = String(file?.status || file?.upload_status || file?.data_status || "").toLowerCase();
+  return ["deleted", "delete", "archived", "archive"].includes(rawStatus);
+}
+
+function activeWorkspaceFiles(files = state.workspace.files || []) {
+  return (files || []).filter((item) => !isDeletedEegFile(item));
+}
+
 function projectUpdatedTime(project) {
   const value = Date.parse(project?.updated_at || project?.created_at || "");
   return Number.isFinite(value) ? value : 0;
@@ -1033,9 +1303,7 @@ function projectUpdatedTime(project) {
 
 function projectFileCount(project, files = []) {
   if (!project?.id) return 0;
-  return Number.isFinite(Number(project.data_count))
-    ? Number(project.data_count)
-    : files.filter((item) => item.project_id === project.id).length;
+  return activeWorkspaceFiles(files).filter((item) => item.project_id === project.id).length;
 }
 
 function projectOptionScopeLabel(project, files = []) {
@@ -1073,6 +1341,9 @@ function filteredWorkspaceProjects(projects, files = []) {
       return true;
   });
   let filtered = list.filter((project) => {
+    if (isCustomerTrialP0Mode() && !state.teaching.active && !showReview && !query) {
+      return shouldShowProjectInCustomerTrial(project, files);
+    }
     if (isTeachingDemoProject(project) && !state.teaching.active) return false;
     if (query) return projectSearchText(project).includes(query);
     if (!showReview && isHiddenFromCustomerProjectList(project)) return false;
@@ -1090,9 +1361,689 @@ function filteredWorkspaceProjects(projects, files = []) {
   }
   if (selectedId && !filtered.some((project) => project.id === selectedId)) {
     const selected = list.find((project) => project.id === selectedId) || state.real.project;
-    if (selected?.id) filtered = [selected, ...filtered];
+    const allowSelected = !isCustomerTrialP0Mode()
+      || state.teaching.active
+      || state.workspace.showReviewProjects
+      || state.workspace.sessionProjectIds?.has?.(selected.id);
+    if (selected?.id && allowSelected) filtered = [selected, ...filtered];
   }
   return filtered;
+}
+
+function isCustomerTrialP0Mode() {
+  const params = new URLSearchParams(window.location.search || "");
+  return ["auto", "demo", "login"].includes(String(params.get("customer_demo") || "").toLowerCase());
+}
+
+function isEpilepsyResultReviewV3() {
+  const params = new URLSearchParams(window.location.search || "");
+  return params.get("epilepsy_result_review_v3") === "1";
+}
+
+/* ===== epilepsy result review v3 panel (feature-gated) ===== */
+const EPILEPSY_V3 = {
+  events: [
+    {id:"E-001",index:1,start:"00:10:42.3",duration:"14.8 s",channel:"T3-T5",feature:"节律性尖波样候选活动增强",score:"0.86",statusShort:"保留候选",statusFilter:"keep",statusClass:"ok",focus:["T3-T5","T4-T6","F7-T3","F8-T4","C3-T3","C4-T4"],event_start_sec:642.3,event_end_sec:657.1,event_duration_sec:14.8},
+    {id:"E-002",index:2,start:"00:18:11.0",duration:"22.4 s",channel:"Fp2-F4",feature:"低频伪迹混入，形态不稳定",score:"0.74",statusShort:"不纳入",statusFilter:"exclude",statusClass:"bad",focus:["Fp1-F3","Fp2-F4","F3-C3","F4-C4","F7-T3","F8-T4"],event_start_sec:1091.0,event_end_sec:1113.4,event_duration_sec:22.4},
+    {id:"E-007",index:3,start:"00:42:08.6",duration:"19.6 s",channel:"T3/T4",feature:"双侧颞区同步样尖波成分，频率演变",score:"0.91",statusShort:"保留候选",statusFilter:"keep",statusClass:"ok",focus:["T3-T5","T4-T6","F7-T3","F8-T4","C3-T3","C4-T4"],event_start_sec:2528.6,event_end_sec:2548.2,event_duration_sec:19.6},
+    {id:"E-009",index:4,start:"00:47:36.2",duration:"31.2 s",channel:"T4-C4",feature:"短时节律活动边界不清",score:"0.79",statusShort:"待复核",statusFilter:"pending",statusClass:"warn",focus:["F8-T4","T4-T6","C4-T4","F4-C4","C4-P4","P4-O2"],event_start_sec:2856.2,event_end_sec:2887.4,event_duration_sec:31.2},
+    {id:"E-013",index:5,start:"00:53:22.9",duration:"18.1 s",channel:"T3-T5",feature:"尖波样成分伴随背景活动改变",score:"0.88",statusShort:"保留候选",statusFilter:"keep",statusClass:"ok",focus:["F7-T3","T3-T5","C3-T3","F3-C3","C3-P3","P3-O1"],event_start_sec:3202.9,event_end_sec:3221.0,event_duration_sec:18.1},
+    {id:"E-018",index:6,start:"01:08:44.1",duration:"11.7 s",channel:"F7-T3",feature:"前额伪迹活动，缺少明确演变",score:"0.62",statusShort:"不纳入",statusFilter:"exclude",statusClass:"bad",focus:["Fp1-F3","F7-T3","F3-C3","T3-T5","C3-P3","P3-O1"],event_start_sec:4124.1,event_end_sec:4135.8,event_duration_sec:11.7},
+    {id:"E-026",index:7,start:"01:39:02.4",duration:"25.3 s",channel:"T4-T6",feature:"右侧颞后区候选节律成分",score:"0.84",statusShort:"保留候选",statusFilter:"keep",statusClass:"ok",focus:["F8-T4","T4-T6","C4-T4","F4-C4","C4-P4","P4-O2"],event_start_sec:5942.4,event_end_sec:5967.7,event_duration_sec:25.3},
+    {id:"E-034",index:8,start:"02:01:15.8",duration:"16.5 s",channel:"C3-T3",feature:"疑似节律活动，需排除伪迹",score:"0.77",statusShort:"待复核",statusFilter:"pending",statusClass:"warn",focus:["F7-T3","C3-T3","T3-T5","F3-C3","C3-P3","P3-O1"],event_start_sec:7275.8,event_end_sec:7292.3,event_duration_sec:16.5},
+  ],
+  summary: {auto_candidates:38,visible_events:8,kept_candidates:21,pending_review:5,candidate_rate_per_hour:"9.3/h"},
+  views: {
+    focus:{label:"核心通道",suffix:"focus_channels_1_35hz",description:"默认复核视图：显示算法提示相关的核心导联，适合快速核对事件形态。"},
+    overview:{label:"全通道概览",suffix:"all_channels_overview_1_35hz",description:"显示所有可视化导联。"},
+    temporal:{label:"颞区导联组",suffix:"temporal_channels_1_35hz",description:"颞区导联分组，用于核对左右颞区同步性和局灶性形态差异。"},
+    frontal:{label:"额区导联组",suffix:"frontal_channels_1_35hz",description:"额区导联分组，用于核对前额伪迹与前部活动。"},
+    central_parietal_occipital:{label:"中央-顶枕导联组",suffix:"central_parietal_occipital_channels_1_35hz",description:"中央、顶区和枕区导联分组，用于判断事件是否跨区扩展。"},
+  },
+  /* static asset base path for P0 prototype; P1 will use real task artifact API */
+  assetBase: "",
+};
+let epilepsyV3SelectedId = "E-001";
+let epilepsyV3SelectedView = "focus";
+let epilepsyV3ReviewState = {};
+
+function epilepsyV3EventFromHash() {
+  const m = (window.location.hash || "").match(/E-\d{3}/);
+  return m && EPILEPSY_V3.events.some(e => e.id === m[0]) ? m[0] : null;
+}
+function epilepsyV3CurrentEvent() {
+  return EPILEPSY_V3.events.find(e => e.id === epilepsyV3SelectedId) || EPILEPSY_V3.events[0];
+}
+function epilepsyV3CurrentMeta() {
+  return EPILEPSY_V3.views[epilepsyV3SelectedView] || EPILEPSY_V3.views.focus;
+}
+
+/**
+ * P1: fetch real epilepsy_ml task events from backend.
+ * Calls GET /api/epilepsy-workbench/{task_id}/events and updates EPILEPSY_V3
+ * events/summary. Falls back to prototype data if the call fails or returns
+ * no events. Idempotent — subsequent calls reuse cached _liveTaskId.
+ */
+async function fetchEpilepsyV3LiveEvents(taskId) {
+  if (!taskId) throw new Error("missing task id");
+  const resp = await fetch(`${state.apiBase}/epilepsy-workbench/${encodeURIComponent(taskId)}/events`, { headers: { "Accept": "application/json" } });
+  if (!resp.ok) throw new Error(`events endpoint ${resp.status}`);
+  const dto = await resp.json();
+  const events = Array.isArray(dto?.events) ? dto.events : [];
+  if (!events.length) {
+    // No real events discovered yet — reset summary if backend didn't provide one (GLM-03).
+    EPILEPSY_V3.summary = dto?.summary || {auto_candidates:0, visible_events:0, kept_candidates:0, pending_review:0, candidate_rate_per_hour:"0.0/h"};
+    EPILEPSY_V3._liveEmpty = true;
+    return;
+  }
+  EPILEPSY_V3.events = events.map(ev => {
+    try {
+      const id = String(ev.event_id || ev.id || "");
+      const startSec = Number(ev.event_start_sec ?? ev.start_sec ?? 0);
+      const durSec = Number(ev.event_duration_sec ?? ev.duration_sec ?? 0);
+      // Prefer backend computed score over recalculating from raw rms (GLM-02).
+      const scoreRaw = ev.score ? parseFloat(ev.score) : Number(ev.rms ?? ev.max_abs_amplitude ?? 0);
+      const reviewStatus = ev.statusFilter || ev.review_status || "pending";
+      const statusClass = reviewStatus === "keep" ? "ok" : reviewStatus === "exclude" ? "bad" : "warn";
+      const statusShort = reviewStatus === "keep" ? "保留" : reviewStatus === "exclude" ? "不纳入" : "待复核";
+      return {
+        id,
+        start: ev.time_label || _formatEpilepsySec(startSec),
+        duration: `${durSec.toFixed(1)} s`,
+        channel: ev.channel || "多通道",
+        score: scoreRaw ? scoreRaw.toFixed(2) : "—",
+        feature: ev.feature || "1-35 Hz 带通",
+        statusFilter: reviewStatus,
+        statusClass,
+        statusShort,
+      };
+    } catch (_err) {
+      // GLM-01: skip malformed events rather than crashing the whole list
+      return null;
+    }
+  }).filter(Boolean);
+  if (dto?.summary) {
+    const sIn = dto.summary;
+    EPILEPSY_V3.summary = {
+      auto_candidates: sIn.auto_candidates ?? EPILEPSY_V3.events.length,
+      kept_candidates: sIn.kept_candidates ?? 0,
+      pending_review: sIn.pending_review ?? EPILEPSY_V3.events.length,
+      candidate_rate_per_hour: sIn.candidate_rate_per_hour || EPILEPSY_V3.summary.candidate_rate_per_hour,
+      visible_events: sIn.visible_events ?? EPILEPSY_V3.events.length,
+    };
+  }
+  if (!EPILEPSY_V3.events.some(e => e.id === epilepsyV3SelectedId)) {
+    epilepsyV3SelectedId = EPILEPSY_V3.events[0].id;
+  }
+}
+
+function _formatEpilepsySec(sec) {
+  const total = Math.max(0, Number(sec) || 0);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = Math.floor(total % 60);
+  const pad = (n) => String(n).padStart(2, "0");
+  return h > 0 ? `${pad(h)}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
+}
+
+function renderEpilepsyResultReviewV3Panel() {
+  const container = qs("#epilepsyResultReviewV3");
+  if (!container) return;
+  if (!isEpilepsyResultReviewV3()) { container.innerHTML = ""; return; }
+  /* P1: if a real epilepsy_ml task exists, fetch its events from the backend.
+     P0 fallback: use the static EPILEPSY_V3 prototype data. */
+  const epilepsyTask = state.real.tasks?.epilepsy_ml || Object.values(state.real.tasks || {}).find(t => t?.module_name === "epilepsy_ml");
+  if (epilepsyTask?.id && !EPILEPSY_V3._liveLoaded) {
+    EPILEPSY_V3._liveLoaded = true;
+    EPILEPSY_V3._liveTaskId = epilepsyTask.id;
+    EPILEPSY_V3._loading = true;
+    container.innerHTML = '<p style="padding:14px;color:var(--steel)">正在加载候选事件数据…</p>';
+    fetchEpilepsyV3LiveEvents(epilepsyTask.id).then(() => {
+      EPILEPSY_V3._loading = false;
+      renderEpilepsyResultReviewV3Panel();
+    }).catch(err => {
+      EPILEPSY_V3._loading = false;
+      EPILEPSY_V3._liveError = err.message || String(err);
+      renderEpilepsyResultReviewV3Panel();
+    });
+    return;
+  }
+
+  const ev = epilepsyV3CurrentEvent();
+  if (!ev) {
+    container.innerHTML = `<p class="epilepsy-v3-loading-msg">${EPILEPSY_V3._liveError ? "实时数据加载失败，原型数据不可用：" + escapeHtml(EPILEPSY_V3._liveError) : "无候选事件数据。"}</p>`;
+    return;
+  }
+  const meta = epilepsyV3CurrentMeta();
+  const st = epilepsyV3ReviewState[ev.id] || {status: ev.statusFilter, note: ""};
+  const s = EPILEPSY_V3.summary;
+  const isLive = !!EPILEPSY_V3._liveTaskId;
+  const evidenceBase = isLive ? `${state.apiBase}/epilepsy-workbench/${encodeURIComponent(EPILEPSY_V3._liveTaskId)}/events` : EPILEPSY_V3.assetBase;
+  const taskArtifacts = state.real.artifacts?.epilepsy_ml || [];
+  const allEventZipArtifact = taskArtifacts.find(a => (a.label || "").includes("all_events_evidence_package"));
+
+  container.innerHTML = `
+    <section class="panel epilepsy-v3-workspace" data-testid="epilepsy-v3-review-workspace">
+      <div class="panel-head">
+        <div>
+          <h2>候选事件复核工作区</h2>
+          <p>选择候选事件 → 查看 1-35 Hz 证据图 → 记录复核结论 → 到交付中心导出证据包。科研筛查辅助工具，仅供研究参考。</p>
+        </div>
+        <div class="epilepsy-v3-summary-pills">
+          <span class="epilepsy-v3-pill info">自动候选 ${s.auto_candidates}</span>
+          <span class="epilepsy-v3-pill ok">保留 ${s.kept_candidates}</span>
+          <span class="epilepsy-v3-pill warn">待复核 ${s.pending_review}</span>
+          <span class="epilepsy-v3-pill soft">${s.candidate_rate_per_hour}</span>
+        </div>
+      </div>
+      <div class="epilepsy-v3-layout">
+        <aside class="epilepsy-v3-event-index" data-testid="v3-event-index">
+          <div class="epilepsy-v3-filter-bar">
+            <button class="epilepsy-v3-filter-btn active" data-v3-filter="all">全部 (${s.visible_events})</button>
+            <button class="epilepsy-v3-filter-btn" data-v3-filter="keep">保留</button>
+            <button class="epilepsy-v3-filter-btn" data-v3-filter="pending">待复核</button>
+            <button class="epilepsy-v3-filter-btn" data-v3-filter="exclude">不纳入</button>
+          </div>
+          <div class="epilepsy-v3-event-list">
+            ${EPILEPSY_V3.events.map(e => `
+              <div class="epilepsy-v3-event-item ${e.id === ev.id ? "selected" : ""}" data-v3-event="${escapeHtml(e.id)}" data-v3-status="${e.statusFilter}">
+                <span class="epilepsy-v3-event-thumb"><img src="${isLive ? `${evidenceBase}/${encodeURIComponent(e.id)}/evidence` : `${EPILEPSY_V3.assetBase}event_previews/${e.id}.png`}" alt="${escapeHtml(e.id)}" loading="lazy" onerror="this.style.display='none'"></span>
+                <div class="epilepsy-v3-event-info">
+                  <strong>${escapeHtml(e.id)}</strong>
+                  <span class="epilepsy-v3-event-time">${escapeHtml(e.start)}</span>
+                  <span class="epilepsy-v3-event-meta">${escapeHtml(e.channel)} · ${escapeHtml(e.duration)}</span>
+                  <span class="epilepsy-v3-pill ${e.statusClass}">${escapeHtml(e.statusShort)}</span>
+                </div>
+              </div>
+            `).join("")}
+          </div>
+        </aside>
+        <section class="epilepsy-v3-viewer" id="epilepsyV3Viewer" data-testid="v3-evidence-viewer">
+          <div class="epilepsy-v3-viewer-toolbar">
+            <div class="epilepsy-v3-view-selector">
+              ${Object.entries(EPILEPSY_V3.views).map(([key, v]) =>
+                `<button class="epilepsy-v3-view-btn ${key === epilepsyV3SelectedView ? "active" : ""}" data-v3-view="${key}">${v.label}</button>`
+              ).join("")}
+            </div>
+          </div>
+          <div class="epilepsy-v3-viewer-header">
+            <h3 id="epilepsyV3ViewerTitle">${escapeHtml(ev.id)} — ${escapeHtml(meta.label)}</h3>
+            <p id="epilepsyV3ViewerSubtitle" class="epilepsy-v3-viewer-sub">原始波形预览（1-35 Hz 滤波） — ${escapeHtml(ev.start)} — ${escapeHtml(ev.channel)} — ${escapeHtml(ev.feature)}</p>
+            <p id="epilepsyV3ViewerHint" class="epilepsy-v3-viewer-hint">${escapeHtml(meta.description)}</p>
+          </div>
+          <div class="epilepsy-v3-detail-grid">
+            <div><small>开始时间</small><strong>${escapeHtml(ev.start)}</strong></div>
+            <div><small>持续时间</small><strong>${escapeHtml(ev.duration)}</strong></div>
+            <div><small>通道</small><strong>${escapeHtml(ev.channel)}</strong></div>
+            <div><small>筛查分数</small><strong>${escapeHtml(ev.score)}</strong></div>
+          </div>
+          <div class="epilepsy-v3-image-frame" id="epilepsyV3ImageFrame">
+            <img id="epilepsyV3MainImage" src="${isLive ? `${evidenceBase}/${encodeURIComponent(ev.id)}/evidence` : `${EPILEPSY_V3.assetBase}event_previews/${ev.id}_${meta.suffix}.png`}" alt="${escapeHtml(ev.id)} ${escapeHtml(meta.label)}" onerror="this.alt='证据图加载中…'">
+          </div>
+          <div class="epilepsy-v3-download-row">
+            <a id="epilepsyV3DlPng" class="epilepsy-v3-dl-btn" href="${isLive ? `${evidenceBase}/${encodeURIComponent(ev.id)}/evidence` : `${EPILEPSY_V3.assetBase}event_previews/${ev.id}_${meta.suffix}.png`}" download="${ev.id}_${epilepsyV3SelectedView}_evidence.png">导出当前视图 PNG</a>
+            <a id="epilepsyV3DlSvg" class="epilepsy-v3-dl-btn" href="${EPILEPSY_V3.assetBase}event_previews/${ev.id}_${meta.suffix}.svg" download="${ev.id}_${epilepsyV3SelectedView}_1_35hz.svg">导出当前视图 SVG</a>
+          </div>
+        </section>
+        <aside class="epilepsy-v3-review-panel" data-testid="v3-review-panel">
+          <div class="epilepsy-v3-review-current">
+            <h4>当前事件</h4>
+            <strong id="epilepsyV3ReviewEventId">${escapeHtml(ev.id)} · ${escapeHtml(ev.channel)}</strong>
+            <p id="epilepsyV3ReviewMeta">${escapeHtml(ev.start)} · ${escapeHtml(ev.duration)} · 筛查分数 ${escapeHtml(ev.score)}</p>
+            <span id="epilepsyV3ReviewStatusPill" class="epilepsy-v3-pill ${st.status === "keep" ? "ok" : st.status === "exclude" ? "bad" : "warn"}">${st.status === "keep" ? "保留候选" : st.status === "exclude" ? "不纳入" : "待复核"}</span>
+          </div>
+          <div class="epilepsy-v3-review-actions">
+            <h4>复核结论</h4>
+            <button class="epilepsy-v3-review-btn keep ${st.status === "keep" ? "active" : ""}" data-v3-review="keep">保留候选</button>
+            <button class="epilepsy-v3-review-btn pending ${st.status === "pending" ? "active" : ""}" data-v3-review="pending">待复核</button>
+            <button class="epilepsy-v3-review-btn exclude ${st.status === "exclude" ? "active" : ""}" data-v3-review="exclude">不纳入</button>
+          </div>
+          <div class="epilepsy-v3-review-note">
+            <h4>复核备注</h4>
+            <textarea id="epilepsyV3ReviewNote" rows="3" placeholder="输入科研复核备注（可选）">${st.note || ""}</textarea>
+          </div>
+          <div class="epilepsy-v3-current-zip">
+            <a id="epilepsyV3CurrentZip" class="epilepsy-v3-dl-btn primary" href="${isLive ? `${evidenceBase}/${encodeURIComponent(ev.id)}/evidence` : `${EPILEPSY_V3.assetBase}event_previews/qlanalyser_epilepsy_event_${ev.id}_evidence_package.zip`}" download="${isLive ? `${ev.id}_evidence.png` : `qlanalyser_epilepsy_event_${ev.id}_evidence_package.zip`}">导出 ${ev.id} 事件证据${isLive ? "图 PNG" : "包 ZIP"}</a>
+          </div>
+        </aside>
+      </div>
+      <section class="epilepsy-v3-delivery-center" data-testid="v3-delivery-center">
+        <div class="panel-head compact"><h3>交付中心</h3><p>全量证据包下载，含所有候选事件的证据图、数据文件和校验信息。</p></div>
+        <a id="epilepsyV3AllZip" class="epilepsy-v3-dl-btn" href="${isLive && allEventZipArtifact ? `${state.apiBase}/artifacts/${encodeURIComponent(allEventZipArtifact.id)}/download` : `${EPILEPSY_V3.assetBase}event_previews/qlanalyser_epilepsy_all_events_evidence_package.zip`}" download="${isLive && allEventZipArtifact ? `qlanalyser_epilepsy_all_events_evidence_package.zip` : `qlanalyser_epilepsy_all_events_evidence_package.zip`}">导出全部事件证据包 ZIP</a>
+        <p class="epilepsy-v3-delivery-note">包含 ${s.visible_events} 个候选事件的 PNG/SVG 证据图、manifest.json、manifest.csv 和 checksums.sha256。科研证据包，仅供研究参考。</p>
+      </section>
+    </section>
+  `;
+
+  initEpilepsyResultReviewV3Interactions();
+}
+
+function initEpilepsyResultReviewV3Interactions() {
+  const workspace = qs(".epilepsy-v3-workspace");
+  if (!workspace || workspace.dataset.v3Init === "true") return;
+  workspace.dataset.v3Init = "true";
+
+  /* event selection */
+  workspace.addEventListener("click", (ev) => {
+    const eventItem = ev.target.closest("[data-v3-event]");
+    if (eventItem) {
+      epilepsyV3SelectedId = eventItem.dataset.v3Event;
+      renderEpilepsyResultReviewV3Panel();
+      return;
+    }
+    const viewBtn = ev.target.closest("[data-v3-view]");
+    if (viewBtn) {
+      epilepsyV3SelectedView = viewBtn.dataset.v3View;
+      renderEpilepsyResultReviewV3Panel();
+      return;
+    }
+    const filterBtn = ev.target.closest("[data-v3-filter]");
+    if (filterBtn) {
+      const filter = filterBtn.dataset.v3Filter;
+      workspace.querySelectorAll("[data-v3-filter]").forEach(b => b.classList.remove("active"));
+      filterBtn.classList.add("active");
+      workspace.querySelectorAll("[data-v3-event]").forEach(item => {
+        item.hidden = filter !== "all" && item.dataset.v3Status !== filter;
+      });
+      /* if selected event is hidden, pick first visible */
+      const selected = workspace.querySelector("[data-v3-event].selected");
+      if (selected && selected.hidden) {
+        const first = workspace.querySelector("[data-v3-event]:not([hidden])");
+        if (first) { epilepsyV3SelectedId = first.dataset.v3Event; renderEpilepsyResultReviewV3Panel(); }
+      }
+      return;
+    }
+    const reviewBtn = ev.target.closest("[data-v3-review]");
+    if (reviewBtn) {
+      const status = reviewBtn.dataset.v3Review;
+      const ev2 = epilepsyV3CurrentEvent();
+      epilepsyV3ReviewState[ev2.id] = {
+        ...(epilepsyV3ReviewState[ev2.id] || {}),
+        status,
+        note: (qs("#epilepsyV3ReviewNote")?.value) || "",
+      };
+      try { localStorage.setItem("qlanalyser_v3_review_" + ev2.id, JSON.stringify(epilepsyV3ReviewState[ev2.id])); } catch(e) {}
+      renderEpilepsyResultReviewV3Panel();
+      return;
+    }
+  });
+
+  /* review note persistence */
+  const noteEl = qs("#epilepsyV3ReviewNote");
+  if (noteEl) {
+    noteEl.addEventListener("input", () => {
+      const ev2 = epilepsyV3CurrentEvent();
+      if (!epilepsyV3ReviewState[ev2.id]) epilepsyV3ReviewState[ev2.id] = {status: ev2.statusFilter, note: ""};
+      epilepsyV3ReviewState[ev2.id].note = noteEl.value;
+      try { localStorage.setItem("qlanalyser_v3_review_" + ev2.id, JSON.stringify(epilepsyV3ReviewState[ev2.id])); } catch(e) {}
+    });
+  }
+
+  /* restore review state from localStorage */
+  EPILEPSY_V3.events.forEach(e => {
+    try {
+      const saved = localStorage.getItem("qlanalyser_v3_review_" + e.id);
+      if (saved) epilepsyV3ReviewState[e.id] = JSON.parse(saved);
+    } catch(err) {}
+  });
+
+  /* hash-driven event selection */
+  const hashEvent = epilepsyV3EventFromHash();
+  if (hashEvent) epilepsyV3SelectedId = hashEvent;
+}
+/* ===== end epilepsy result review v3 ===== */
+
+function isCurrentSessionProject(project) {
+  if (!project?.id) return false;
+  if (state.real.project?.id && project.id === state.real.project.id) return true;
+  if (state.workspace.sessionProjectIds?.has?.(project.id)) return true;
+  const account = typeof currentAccountId === "function" ? currentAccountId() : "";
+  const ownerFields = [
+    project.account_id,
+    project.owner_id,
+    project.created_by,
+    project.user_id,
+    project.customer_id,
+  ].filter(Boolean).map((item) => String(item));
+  return Boolean(account && ownerFields.includes(String(account)));
+}
+
+function shouldShowProjectInCustomerTrial(project, files = state.workspace.files || []) {
+  if (!isCustomerTrialP0Mode()) return true;
+  if (state.teaching.active) return isTeachingDemoProject(project);
+  if (isTeachingDemoProject(project) || isHiddenFromCustomerProjectList(project)) return false;
+  return Boolean(
+    state.workspace.sessionProjectIds?.has?.(project.id)
+    || (state.real.project?.id && project.id === state.real.project.id && state.workspace.sessionProjectIds?.has?.(project.id))
+  );
+}
+
+function applyCustomerTrialProjectSurfaceCleanup() {
+  const hideSurface = isCustomerTrialP0Mode() && !state.teaching.active;
+  const teachingSurface = isCustomerTrialP0Mode() && state.teaching.active;
+  const hideInternalProjectTools = hideSurface || teachingSurface;
+  const search = qs("#workspaceProjectSearch");
+  const reviewToggle = qs("#workspaceShowReviewProjects");
+  const filterSummary = qs("#workspaceProjectFilterSummary");
+  const searchField = search?.closest?.(".project-search-field");
+  const searchLabel = search?.closest?.("label");
+  const reviewToggleLabel = reviewToggle?.closest?.("label");
+  const filterSummaryField = filterSummary?.closest?.(".project-filter-field");
+  const projectSelect = qs("#workspaceProjectSelect");
+  const projectRows = qs("#iaProjectRows");
+  const projectRowActions = qs('[data-testid="project-crud-panel"] .ia-row-actions');
+  const projectLedger = qs(".ia-project-ledger");
+  const projectDataMaster = qs(".project-data-master-detail");
+  const dataLedger = qs(".ia-data-ledger");
+  const dataRows = qs("#iaDataRows");
+  const prepQueue = qs("#prepDataQueue");
+  const dataActions = qs(".ia-data-actions");
+  const uploadRow = qs(".ia-data-upload-row");
+  [search, searchLabel, reviewToggle, reviewToggleLabel, filterSummary, filterSummaryField, projectSelect, projectRows, projectRowActions, projectLedger, dataLedger, dataRows, prepQueue].forEach((node) => {
+    if (node) node.hidden = hideInternalProjectTools;
+  });
+  [projectDataMaster].forEach((node) => {
+    if (node) node.hidden = hideSurface;
+  });
+  if (searchField) searchField.classList.toggle("customer-project-surface", hideInternalProjectTools);
+  if (dataActions) dataActions.hidden = hideInternalProjectTools;
+  if (uploadRow) uploadRow.hidden = hideInternalProjectTools || !state.real.project?.id;
+  if (teachingSurface) {
+    qsa('[data-real-action="create-project"], [data-ia-action="edit-project"], [data-ia-action="archive-project"], [data-ia-action="delete-project"], [data-ia-action="rename-data"], [data-ia-action="delete-data"]').forEach((button) => {
+      button.hidden = true;
+      button.setAttribute("aria-hidden", "true");
+    });
+  }
+  if (hideSurface && filterSummary) {
+    filterSummary.textContent = "历史项目默认收起，只保留当前会话项目。";
+  }
+  if (hideSurface) {
+    const projectSummary = qs("#prepContextSummary");
+    const revisionState = qs("#prepRevisionState");
+    const project = currentWorkspaceProject();
+    const file = currentWorkspaceFile();
+    if (projectSummary) {
+      projectSummary.textContent = project?.id
+        ? `当前项目：${projectDisplayName(project) || project.id}${file?.id ? `；当前数据：${eegFileDisplayName(file) || file.id}` : "；尚未选择数据"}`
+        : "先创建项目，再上传 EEG 数据。";
+    }
+    if (revisionState) {
+      revisionState.textContent = project?.id
+        ? (file?.id ? "当前数据可继续预处理" : "当前项目等待上传数据")
+        : "先创建项目。";
+    }
+  }
+}
+
+function setSurfaceHiddenForCustomer(selector, hidden) {
+  qsa(selector).forEach((node) => {
+    node.hidden = hidden;
+    node.setAttribute("aria-hidden", hidden ? "true" : "false");
+  });
+}
+
+function compactWaveformWorkbenchStatusForCustomer() {
+  const target = qs("#waveformWorkbenchStatus");
+  if (!target || !isCustomerTrialP0Mode()) return;
+  const hasFile = Boolean(currentWorkspaceFile()?.id || state.real.eegFile?.id);
+  const start = Number(eegState.start || 0);
+  const windowSec = Number(eegState.windowSec || 10);
+  const channels = Number(eegState.visibleChannels || 8);
+  const sensitivity = waveformSensitivityUvPerRow();
+  target.classList.remove("is-write-mode");
+  target.innerHTML = hasFile
+    ? [
+        `<span><b>时间窗</b>${escapeHtml(formatWaveformHms(start))}-${escapeHtml(formatWaveformHms(start + windowSec))}</span>`,
+        `<span><b>通道</b>${escapeHtml(String(channels))} ch</span>`,
+        `<span><b>增益</b>${escapeHtml(Number(sensitivity.toFixed(1)))} uV/row</span>`,
+      ].join("")
+    : `<span><b>波形预览</b>选择或上传 EEG 数据后显示</span>`;
+}
+
+function applyCustomerTrialAnalysisSurfaceCleanup() {
+  const enabled = isCustomerTrialP0Mode();
+  const teachingSurface = enabled && state.teaching.active;
+  const { project, projectFiles, file } = currentWorkspaceContext();
+  const hasProject = Boolean(project?.id);
+  const hasFile = Boolean(file?.id || state.real.eegFile?.id);
+  const layout = qs('[data-testid="data-preparation-workbench"]');
+  if (layout) {
+    layout.classList.toggle("customer-analysis-surface", enabled);
+    layout.classList.toggle("has-current-file", enabled && hasFile);
+    layout.classList.toggle("teaching-customer-analysis-surface", teachingSurface);
+  }
+
+  const protectedNote = qs('[data-testid="teaching-data-protected"]');
+  if (protectedNote) {
+    protectedNote.hidden = !(teachingSurface && hasFile);
+    protectedNote.setAttribute("aria-hidden", protectedNote.hidden ? "true" : "false");
+  }
+  setSurfaceHiddenForCustomer('[data-testid="preprocessing-readiness-panel"]', enabled);
+  setSurfaceHiddenForCustomer('[data-testid="event-epoch-panel"]', enabled);
+  setSurfaceHiddenForCustomer('[data-testid="data-preparation-submit-last"]', enabled && !hasFile);
+  setSurfaceHiddenForCustomer('[data-real-action="save-bad-channel-audit"]', enabled);
+  setSurfaceHiddenForCustomer('[data-real-action="discard-bad-channel-audit"]', enabled);
+  setSurfaceHiddenForCustomer('[data-real-action="save-epoch-set"]', enabled);
+  setSurfaceHiddenForCustomer('[data-real-action="download-epoch-record"]', enabled);
+  setSurfaceHiddenForCustomer('[data-real-action="download-plan-json"]', enabled);
+  setSurfaceHiddenForCustomer('[data-preview-jump="segment"], [data-preview-jump="bad-channel"], [data-preview-jump="reference"]', enabled);
+  setSurfaceHiddenForCustomer("#eegPrevBtn, #eegNextBtn, #eegZoomOutBtn, #eegZoomInBtn, #eegResetBtn", enabled && !hasFile);
+  setSurfaceHiddenForCustomer("#loadEegBtn", enabled && !hasFile);
+
+  const queuePanel = qs("#prepDataQueue")?.closest?.(".ia-data-queue");
+  if (queuePanel) {
+    queuePanel.hidden = false;
+    queuePanel.setAttribute("aria-hidden", "false");
+    queuePanel.classList.toggle("customer-context-card", enabled);
+    if (enabled) {
+      const title = queuePanel.querySelector(".ia-section-title strong");
+      const subtitle = queuePanel.querySelector(".ia-section-title span");
+      if (title) title.textContent = "当前上下文";
+      if (subtitle) subtitle.textContent = hasFile ? "当前数据已选择，可继续预览与确认" : "先选择或上传 EEG 数据";
+      const boundary = queuePanel.querySelector('[data-testid="prep-no-upload-boundary"] span');
+      if (boundary) boundary.textContent = hasProject
+        ? "当前项目已就绪。请到数据管理上传或选择 EEG 数据。"
+        : "请先创建或打开项目，再上传 EEG 数据。";
+      const dashboardButton = queuePanel.querySelector('[data-view-jump="dashboard"]');
+      const storageButton = queuePanel.querySelector('[data-view-jump="storage"]');
+      if (dashboardButton) {
+        dashboardButton.hidden = hasProject;
+        dashboardButton.setAttribute("aria-hidden", hasProject ? "true" : "false");
+        const label = dashboardButton.querySelector("span");
+        if (label) label.textContent = "创建或打开项目";
+      }
+      if (storageButton) {
+        storageButton.hidden = !hasProject;
+        storageButton.setAttribute("aria-hidden", hasProject ? "false" : "true");
+        const label = storageButton.querySelector("span");
+        if (label) label.textContent = "上传或选择 EEG 数据";
+      }
+    }
+  }
+
+  qsa(".ia-prep-steps .ia-step-card").forEach((card, index) => {
+    if (!enabled) return;
+    card.hidden = index > 2;
+    card.setAttribute("aria-hidden", index > 2 ? "true" : "false");
+    const copy = [
+      ["选择数据", hasProject ? "确认当前项目内的 EEG 文件" : "先创建或打开项目"],
+      ["预览波形", hasFile ? "查看波形、通道和显示范围" : "上传或选择数据后自动显示"],
+      ["确认准备", hasFile ? "确认后进入分析任务" : "选择数据后可继续"],
+    ][index];
+    if (copy) {
+      const strong = card.querySelector("strong");
+      const span = card.querySelector("span");
+      if (strong) strong.textContent = copy[0];
+      if (span) span.textContent = copy[1];
+    }
+  });
+
+  const previewPanel = qs('[data-testid="single-file-preview-panel"]');
+  if (previewPanel) {
+    setTextIfPresent('[data-testid="single-file-preview-panel"] h2', "波形预览与数据准备");
+    setTextIfPresent("#previewCaption", hasFile
+      ? "先确认波形和数据概况，再进入分析任务。高级片段、坏道和事件记录已收起。"
+      : "请先在当前项目中选择或上传 EEG 数据；页面会自动显示波形预览和必要检查。");
+  }
+
+  const editWorkbench = qs('[data-testid="preview-edit-workbench"]');
+  if (editWorkbench) {
+    editWorkbench.hidden = enabled && !hasFile;
+    editWorkbench.setAttribute("aria-hidden", editWorkbench.hidden ? "true" : "false");
+  }
+
+  const preprocessingPanel = qs('[data-testid="preprocessing-inline-panel"]');
+  if (preprocessingPanel) {
+    preprocessingPanel.classList.toggle("customer-compact-panel", enabled);
+    setTextIfPresent('[data-testid="preprocessing-inline-panel"] h2', "准备设置");
+    setTextIfPresent('[data-testid="preprocessing-inline-panel"] .panel-head p', hasFile
+      ? "保留默认科研预览设置；需要精细调整时再进入高级模式。"
+      : "选择数据后可查看概况并确认准备。");
+  }
+
+  const confirmButtons = qsa('[data-real-action="confirm-plan-inline"]');
+  confirmButtons.forEach((button, index) => {
+    const hideDuplicate = enabled && index > 0;
+    button.hidden = hideDuplicate;
+    button.setAttribute("aria-hidden", hideDuplicate ? "true" : "false");
+  });
+
+  const prepContextSummary = qs("#prepContextSummary");
+  if (prepContextSummary && enabled) {
+    prepContextSummary.textContent = hasProject
+      ? `当前项目：${projectDisplayName(project) || project.id}；${hasFile ? `当前数据：${eegFileDisplayName(file || state.real.eegFile) || "已选择 EEG 数据"}` : `数据文件：${projectFiles.length} 个，等待选择或上传`}`
+      : "先创建或打开项目，再上传 EEG 数据。";
+  }
+  const prepRevisionState = qs("#prepRevisionState");
+  if (prepRevisionState && enabled) {
+    prepRevisionState.textContent = hasFile
+      ? "下一步：检查波形与数据概况，然后确认数据准备。"
+      : "下一步：上传或选择 EEG 数据。";
+  }
+
+  if (teachingSurface) {
+    const teachingQueue = qs("#prepDataQueue")?.closest?.(".ia-data-queue");
+    const title = teachingQueue?.querySelector?.(".ia-section-title strong");
+    const subtitle = teachingQueue?.querySelector?.(".ia-section-title span");
+    const boundary = teachingQueue?.querySelector?.('[data-testid="prep-no-upload-boundary"] span');
+    const storageButton = teachingQueue?.querySelector?.('[data-view-jump="storage"]');
+    if (title) title.textContent = "\u5f53\u524d\u793a\u4f8b\u6570\u636e";
+    if (subtitle) subtitle.textContent = "\u793a\u4f8b\u6570\u636e\u5df2\u8f7d\u5165\uff0c\u53ef\u76f4\u63a5\u9884\u89c8\u6ce2\u5f62\u5e76\u8fdb\u5165\u5206\u6790\u4efb\u52a1\u3002";
+    if (boundary) boundary.textContent = "\u793a\u4f8b\u9879\u76ee\u5df2\u5c31\u7eea\uff0c\u65e0\u9700\u4e0a\u4f20\u6570\u636e\u3002";
+    if (storageButton) {
+      const label = storageButton.querySelector("span");
+      if (label) label.textContent = "\u67e5\u770b\u793a\u4f8b\u6570\u636e";
+      storageButton.title = "\u67e5\u770b\u5f53\u524d\u793a\u4f8b EEG \u6570\u636e";
+    }
+    if (prepContextSummary) {
+      prepContextSummary.textContent = hasFile
+        ? "\u5f53\u524d\u793a\u4f8b\u6570\u636e\u5df2\u9009\u62e9\uff0c\u53ef\u7ee7\u7eed\u9884\u89c8\u4e0e\u786e\u8ba4\u3002"
+        : "\u793a\u4f8b\u9879\u76ee\u5df2\u6253\u5f00\uff0c\u6b63\u5728\u7b49\u5f85\u793a\u4f8b\u6570\u636e\u3002";
+    }
+    if (prepRevisionState) {
+      prepRevisionState.textContent = hasFile
+        ? "\u4e0b\u4e00\u6b65\uff1a\u786e\u8ba4\u6ce2\u5f62\u548c\u6570\u636e\u6982\u51b5\uff0c\u7136\u540e\u8fdb\u5165\u5206\u6790\u4efb\u52a1\u3002"
+        : "\u4e0b\u4e00\u6b65\uff1a\u7b49\u5f85\u793a\u4f8b\u6570\u636e\u8f7d\u5165\u3002";
+    }
+    qsa(".ia-prep-steps .ia-step-card").forEach((card, index) => {
+      const copy = [
+        ["\u786e\u8ba4\u793a\u4f8b\u6570\u636e", "\u5df2\u8f7d\u5165\u53d7\u4fdd\u62a4\u7684 EEG \u793a\u4f8b\u6587\u4ef6"],
+        ["\u9884\u89c8\u6ce2\u5f62", "\u68c0\u67e5\u6ce2\u5f62\u3001\u901a\u9053\u548c\u663e\u793a\u8303\u56f4"],
+        ["\u8fdb\u5165\u5206\u6790", "\u786e\u8ba4\u51c6\u5907\u540e\u8fdb\u5165\u5206\u6790\u4efb\u52a1"],
+      ][index];
+      if (!copy) return;
+      const strong = card.querySelector("strong");
+      const span = card.querySelector("span");
+      if (strong) strong.textContent = copy[0];
+      if (span) span.textContent = copy[1];
+    });
+  }
+
+  compactWaveformWorkbenchStatusForCustomer();
+}
+
+function applyCustomerTrialP0Fixes() {
+  Object.assign(titles, {
+    dashboard: "项目管理",
+    storage: "数据管理",
+    analysis: "数据准备",
+    workflow: "分析任务",
+    epilepsyWorkbenchInline: "癫痫样事件分析台",
+    statistics: "结果查看",
+    publication: "报告交付",
+    journey: "质量检查",
+    userCenter: "个人中心",
+  });
+  Object.assign(PRODUCT_NAV_LABELS, {
+    dashboard: "项目管理",
+    storage: "数据管理",
+    analysis: "数据准备",
+    workflow: "分析任务",
+    statistics: "结果查看",
+    publication: "报告交付",
+    journey: "质量检查",
+    userCenter: "个人中心",
+  });
+  Object.assign(PRODUCT_VIEW_TITLES, {
+    dashboard: "项目管理",
+    storage: "数据管理",
+    analysis: "数据准备",
+    workflow: "分析任务",
+    epilepsyWorkbenchInline: "癫痫样事件分析台",
+    statistics: "结果查看",
+    publication: "报告交付",
+    journey: "质量检查",
+    userCenter: "个人中心",
+  });
+  Object.entries(PRODUCT_NAV_LABELS).forEach(([view, label]) => setTextIfPresent(`[data-view="${view}"] span`, label));
+  const activeView = qs(".view.active")?.id || "dashboard";
+  setTextIfPresent("#viewTitle", PRODUCT_VIEW_TITLES[activeView] || "项目分析");
+  setTextIfPresent("#topEyebrow", "QLanalyser Online · EEG 数据到报告");
+  setTextIfPresent("#logoutBtn span", "退出");
+  setTextIfPresent("#roleLabel", state.role === "admin" ? "后台管理" : "个人中心");
+  setTextIfPresent("#balanceSide", "账号与服务");
+  setTextIfPresent("#accountHint", "余额、充值、发票、权限和设置");
+  setTextIfPresent('[data-testid="project-crud-panel"] h2', "项目管理");
+  setTextIfPresent('[data-testid="project-crud-panel"] .panel-head p', "先创建或打开一个研究项目，再上传或选择项目内的 EEG 数据。");
+  setTextIfPresent('[data-testid="project-data-crud-panel"] h2', "项目内数据");
+  setTextIfPresent('[data-testid="project-data-crud-panel"] .panel-head p', "这里只显示当前项目的数据概况和下一步入口；文件上传与整理请进入“数据管理”。");
+  setTextIfPresent('label:has(#workspaceProjectSearch) span', "搜索项目");
+  const search = qs("#workspaceProjectSearch");
+  if (search) search.placeholder = "按项目名、研究类型或项目编号搜索";
+  setTextIfPresent('label[for="workspaceShowReviewProjects"] span', "显示内部/归档项目");
+  const summary = qs("#workspaceProjectFilterSummary");
+  if (summary && isCustomerTrialP0Mode() && !state.teaching.active) {
+    summary.textContent = "普通模式只显示当前客户项目；没有上传或创建过项目时，列表保持为空。";
+  }
+  setTextIfPresent('[data-real-action="create-project"] span', "创建项目");
+  setTextIfPresent('[data-real-action="upload-eeg"] span', "上传到当前项目");
+  setTextIfPresent('[data-file-trigger="real-eeg-file"] span', "选择 EEG 数据");
+  setTextIfPresent('[data-ia-action="edit-project"] span', "重命名");
+  setTextIfPresent('[data-ia-action="archive-project"] span', "归档");
+  setTextIfPresent('[data-ia-action="delete-project"] span', "删除");
+  setTextIfPresent('[data-testid="result-review-workbench"] h2', "结果查看");
+  setTextIfPresent('[data-testid="result-review-workbench"] .panel-head p', "查看已完成任务的图、表、参数记录和可复核产物。结果仅用于科研分析支持，不作为诊断结论。");
+  setTextIfPresent('[data-testid="report-delivery-workbench"] h2', "报告交付");
+  setTextIfPresent('[data-testid="report-delivery-workbench"] .panel-head p', "管理已生成的交付报告、在线预览、完整下载和交付清单。");
+  const selectedProject = currentWorkspaceProject();
+  qsa('[data-ia-action="delete-project"]').forEach((button) => {
+    const protectedProject = Boolean(selectedProject?.id && isTeachingDemoProject(selectedProject));
+    const disabled = !selectedProject?.id || protectedProject;
+    button.disabled = disabled;
+    button.setAttribute("aria-disabled", disabled ? "true" : "false");
+    button.title = !selectedProject?.id
+      ? "请先选择一个普通项目。"
+      : protectedProject
+        ? "教学示例用于练习，不能删除。"
+        : "删除当前普通项目记录。";
+  });
+  const confirmButtons = qsa('[data-real-action="confirm-plan-inline"]');
+  confirmButtons.forEach((button) => {
+    if (confirmButtons.length > 1 && button.closest('[data-testid="preprocessing-inline-panel"]')) {
+      button.hidden = true;
+      button.setAttribute("aria-hidden", "true");
+    }
+  });
 }
 
 function projectStatusLabel(project, files = []) {
@@ -1253,10 +2204,17 @@ function updateRealActionGate() {
   const hasProject = Boolean(state.real.project?.id);
   const hasFile = Boolean(state.real.eegFile?.id);
   const hasPendingUpload = Boolean(qs("#real-eeg-file")?.files?.[0]);
+  const protectedTeaching = Boolean(state.teaching.active && (isTeachingDemoProject(state.real.project) || isTeachingDemoFile(state.real.eegFile)));
   const planReady = hasConfirmedPlan();
+  const teachingEpilepsyWorkbenchReady = Boolean(state.teaching.active && (hasFile || protectedTeaching));
   const planTitle = planReady
     ? "数据准备已确认，可以继续分析"
     : "请先完成数据准备并确认方案";
+  const epilepsyWorkbenchTitle = planReady
+    ? "进入癫痫样事件分析台，先初筛再人工矫正"
+    : teachingEpilepsyWorkbenchReady
+      ? "示例模式可直接进入癫痫样事件分析台；系统会自动载入癫痫示例数据和准备方案"
+      : planTitle;
   setRealActionEnabled("create-project", !hasProject, hasProject ? "当前已有项目，可继续选择或编辑" : "创建当前项目");
   setRealActionEnabled("upload-eeg", hasProject && hasPendingUpload, hasProject ? (hasPendingUpload ? "上传所选 EEG 文件到当前项目" : "请先选择 EEG 文件") : "请先选择或创建项目");
   setRealActionEnabled("run-qc-preview-inline", hasFile, hasFile ? "自动预览失败或数据已更新时，可重新加载预览" : "请先选择并上传 EEG 文件");
@@ -1268,6 +2226,8 @@ function updateRealActionGate() {
   setRealActionEnabled("confirm-plan-inline", hasFile, hasFile ? "确认当前数据准备方案" : "请先上传 EEG 文件");
   setRealActionEnabled("download-plan-json", Boolean(plan), plan ? "下载当前数据准备记录" : "请先确认或载入准备方案");
   setRealActionEnabled("run-psd", planReady, planTitle);
+  setRealActionEnabled("open-epilepsy-workbench", planReady || teachingEpilepsyWorkbenchReady, epilepsyWorkbenchTitle);
+  setRealActionEnabled("run-epilepsy-ml", planReady, planReady ? "\u5f00\u59cb\u766b\u75eb\u6837\u4e8b\u4ef6\u521d\u7b5b" : planTitle);
   setRealActionEnabled("run-erp", planReady, planReady ? "可运行 ERP；若事件标记缺失，系统会给出具体提示" : planTitle);
   setRealActionEnabled("run-tfr", planReady, planReady ? "可运行时频分析；若事件或分段条件不足，系统会给出具体提示" : planTitle);
   setRealActionEnabled("run-multitaper-psd", planReady, planReady ? "数据准备已确认，可以运行 Multitaper PSD" : "请先完成数据准备并确认方案");
@@ -1287,9 +2247,9 @@ function updateRealActionGate() {
   }
   const protectedNote = qs('[data-testid="teaching-data-protected"]');
   if (protectedNote) {
-    const protectedTeaching = Boolean(state.teaching.active && (isTeachingDemoProject(state.real.project) || isTeachingDemoFile(state.real.eegFile)));
     protectedNote.hidden = !protectedTeaching;
   }
+  if (protectedTeaching) setRealActionEnabled("upload-eeg", false, teachingProtectedMessage());
   let nextActions = ["create-project"];
   if (hasProject && (!hasFile || hasPendingUpload)) nextActions = ["upload-eeg"];
   if (hasFile && !planReady) nextActions = ["run-qc-preview-inline", "run-metadata-qc-inline", "confirm-plan-inline"];
@@ -1302,6 +2262,7 @@ function updateRealActionGate() {
   renderDisabledReason("confirm-plan-inline", "#prepPrimaryReason");
   renderDisabledReason("run-psd", "#analysisPrimaryReason");
   renderDisabledReason("create-report", "#reportPrimaryReason");
+  applyCustomerTrialAnalysisSurfaceCleanup();
 }
 function getAuthSession() {
   try {
@@ -1318,7 +2279,8 @@ function currentAuthToken() {
 
 function currentAccountId() {
   const session = getAuthSession();
-  return session.accountId || session.account_id || getStoredCustomer().id || "demo-customer";
+  const customer = getStoredCustomer();
+  return session.accountId || session.account_id || customer.accountId || customer.account_id || customer.id || "demo-customer";
 }
 
 function withAuthHeaders(headers = {}) {
@@ -1414,7 +2376,7 @@ function renderEegPreviewEmptyState() {
       empty.innerHTML = `<strong>已选择当前数据：${fileName}</strong><span>系统会自动生成波形和基础质量预览；无需额外点击预览按钮。</span>`;
     }
   } else {
-    empty.innerHTML = `<strong>等待选择 EEG 数据</strong><span>请先在左侧数据队列选择文件，或返回数据管理上传到当前项目。</span>`;
+    empty.innerHTML = `<strong>等待选择 EEG 数据</strong><span>请到数据管理上传或选择当前项目的 EEG 数据。</span>`;
   }
 }
 
@@ -1652,13 +2614,27 @@ function redrawCurrentWaveform() {
   else drawEegPreviewSkeleton(currentWorkspaceFile());
 }
 
+function revealWaveformPreview(options = {}) {
+  const { delayMs = 0 } = options;
+  const run = () => {
+    const target = qs("#eegCanvas")?.closest?.(".waveform-main-column") || qs("#eegCanvas");
+    if (!target || qs(".view.active")?.id !== "analysis") return;
+    target.scrollIntoView?.({ behavior: delayMs ? "smooth" : "auto", block: "center", inline: "nearest" });
+    qs("#eegCanvas")?.focus?.({ preventScroll: true });
+  };
+  if (delayMs) window.setTimeout(run, delayMs);
+  else window.requestAnimationFrame(run);
+}
+
 function renderWaveformInteractionHint(message = "") {
   const target = qs("#eegEvents");
   if (!target) return;
   const selected = normalizeSegmentRange(eegState.selectedSegment?.start_sec, eegState.selectedSegment?.end_sec);
-  const selectedText = selected ? `当前选区 ${selected.start_sec.toFixed(2)}-${selected.end_sec.toFixed(2)} s` : "拖拽波形可选择片段";
+  const selectedText = selected ? `当前选区 ${selected.start_sec.toFixed(2)}-${selected.end_sec.toFixed(2)} s` : "当前预览窗未发现事件标记";
   const excludedText = prepEditState.excludedSegments.length ? `已剔除 ${prepEditState.excludedSegments.length} 段` : "尚未剔除片段";
-  target.innerHTML = `<span>${escapeHtml(message || selectedText)}</span><span>${escapeHtml(excludedText)}</span><span>滚轮平移，Ctrl + 滚轮缩放</span>`;
+  const pieces = [message || selectedText];
+  if (selected || prepEditState.excludedSegments.length) pieces.push(excludedText);
+  target.innerHTML = pieces.map((item) => `<span>${escapeHtml(item)}</span>`).join("");
 }
 
 function formatPreviewFilterSummary() {
@@ -1678,29 +2654,33 @@ function syncEegControlsFromState() {
   const channelInput = qs("#eegChannelInput");
   const filterToggle = qs("#eegFilterPreviewToggle");
   const file = currentWorkspaceFile();
+  eegState.windowSec = clampEegWindowDuration(eegState.windowSec || 10);
   const maxStart = Math.max(0, Number(file?.duration_sec || 0) - Number(eegState.windowSec || 10));
   eegState.start = Math.max(0, Math.min(Number(eegState.start || 0), Number.isFinite(maxStart) ? maxStart : Number(eegState.start || 0)));
-  eegState.windowSec = Math.max(2, Math.min(30, Number(eegState.windowSec || 10)));
   eegState.visibleChannels = Math.max(1, Math.min(64, Math.round(Number(eegState.visibleChannels || 8))));
   eegState.gain = Math.max(0.5, Math.min(8, Number(eegState.gain || 2)));
   if (startInput) {
     startInput.value = Number(eegState.start || 0).toFixed(1).replace(/\.0$/, "");
     if (file?.duration_sec) startInput.max = String(Math.max(0, Number(file.duration_sec) - Number(eegState.windowSec || 10)));
   }
-  if (windowInput) windowInput.value = String(eegState.windowSec);
+  if (windowInput) {
+    windowInput.max = String(maxEegWindowDuration());
+    windowInput.value = String(Number(eegState.windowSec.toFixed(1)));
+  }
   if (gainInput) gainInput.value = String(eegState.gain);
   if (channelInput) channelInput.value = String(eegState.visibleChannels);
   if (filterToggle) filterToggle.checked = Boolean(eegState.showFiltered || eegState.filterEnabled);
   setTextIfPresent("#eegWindowLabel", `${eegState.windowSec} s`);
-  setTextIfPresent("#eegGainLabel", `${eegState.gain}x`);
+  setTextIfPresent("#eegGainLabel", `${Number(waveformSensitivityUvPerRow().toFixed(1))} uV/row`);
   setTextIfPresent("#eegChannelLabel", String(eegState.visibleChannels));
+  syncWaveformModeUi();
   renderWaveformWorkbenchStatus();
 }
 
 function buildQcPreviewParametersFromUi(options = {}) {
   const file = currentWorkspaceFile();
   eegState.start = Math.max(0, Number(numberFromInput("#eegStartInput", eegState.start || 0)) || 0);
-  eegState.windowSec = Math.max(2, Math.min(30, Number(numberFromInput("#eegWindowInput", eegState.windowSec || 10)) || 10));
+  eegState.windowSec = clampEegWindowDuration(Number(numberFromInput("#eegWindowInput", eegState.windowSec || 10)) || 10);
   eegState.visibleChannels = Math.max(1, Math.min(64, Math.round(Number(numberFromInput("#eegChannelInput", eegState.visibleChannels || 8)) || 8)));
   eegState.gain = Math.max(0.5, Math.min(8, Number(numberFromInput("#eegGainInput", eegState.gain || 2)) || 2));
   eegState.filterEnabled = Boolean(qs("#eegFilterPreviewToggle")?.checked);
@@ -1766,18 +2746,85 @@ async function reloadWaveformPreview() {
   return runQcPreviewFromUi();
 }
 
-function shiftEegWindow(direction = 1) {
-  const step = Math.max(1, Number(eegState.windowSec || 10) / 2);
-  eegState.start = Math.max(0, Number(eegState.start || 0) + step * direction);
-  syncEegControlsFromState();
-  return reloadWaveformPreview();
+function eegFileDurationSec() {
+  const file = currentWorkspaceFile();
+  const payload = currentWaveformPayload();
+  const candidates = [
+    file?.duration_sec,
+    payload?.file_duration_sec,
+    payload?.metadata?.duration_sec,
+    payload?.window?.file_duration_sec,
+  ].map(Number).filter((value) => Number.isFinite(value) && value > 0);
+  return candidates[0] || Math.max(30, Number(eegState.start || 0) + Number(eegState.windowSec || 10));
 }
 
-function zoomEegWindow(factor = 1) {
-  const nextWindow = Math.max(2, Math.min(30, Math.round(Number(eegState.windowSec || 10) * factor)));
-  eegState.windowSec = nextWindow;
+function clampEegWindowStart(start = eegState.start, duration = eegState.windowSec) {
+  const fileDuration = eegFileDurationSec();
+  const windowSec = clampEegWindowDuration(duration || eegState.windowSec || 10);
+  const maxStart = Math.max(0, fileDuration - windowSec);
+  return clampNumber(Number(start || 0), 0, maxStart);
+}
+
+function maxEegWindowDuration() {
+  return Math.min(
+    EDF_BROWSER_INTERACTION_CONSTANTS.maxWindowSec,
+    Math.max(EDF_BROWSER_INTERACTION_CONSTANTS.minWindowSec, eegFileDurationSec()),
+  );
+}
+
+function clampEegWindowDuration(duration = eegState.windowSec) {
+  return clampNumber(
+    Number(duration || 10),
+    EDF_BROWSER_INTERACTION_CONSTANTS.minWindowSec,
+    maxEegWindowDuration(),
+  );
+}
+
+async function reloadWaveformAfterViewportChange(options = {}) {
   syncEegControlsFromState();
-  return reloadWaveformPreview();
+  qs("#eegCanvas")?.focus?.({ preventScroll: true });
+  if (!options.silent) return reloadWaveformPreview();
+  const file = currentWorkspaceFile();
+  if (!file?.id) {
+    renderWaveformInteractionHint("请先选择 EEG 数据。");
+    return null;
+  }
+  try {
+    return await reloadWaveformPreview();
+  } catch (error) {
+    renderWaveformInteractionHint(error.message || "波形预览更新失败。");
+    return null;
+  }
+}
+
+function shiftEegWindow(direction = 1, ratio = 0.5, options = {}) {
+  const windowSec = clampEegWindowDuration(eegState.windowSec || 10);
+  const step = Math.max(0.05, windowSec * Number(ratio || 0.5));
+  eegState.start = clampEegWindowStart(Number(eegState.start || 0) + step * direction, windowSec);
+  return reloadWaveformAfterViewportChange(options);
+}
+
+function zoomEegWindow(factor = 1, anchorTime = null, options = {}) {
+  const oldStart = Number(eegState.start || 0);
+  const oldDuration = clampEegWindowDuration(eegState.windowSec || 10);
+  const scale = Number(factor || 1);
+  const newDuration = clampEegWindowDuration(oldDuration * scale);
+  const anchor = Number.isFinite(Number(anchorTime)) ? Number(anchorTime) : oldStart + oldDuration / 2;
+  const anchorRatio = clampNumber((anchor - oldStart) / oldDuration, 0, 1);
+  eegState.windowSec = newDuration;
+  eegState.start = clampEegWindowStart(anchor - anchorRatio * newDuration, newDuration);
+  return reloadWaveformAfterViewportChange(options);
+}
+
+function adjustEegAmplitudeSensitivity(direction = 1) {
+  const factor = EDF_BROWSER_INTERACTION_CONSTANTS.gainStepRatio;
+  eegState.gain = direction > 0
+    ? Math.min(8, Number(eegState.gain || 2) * factor)
+    : Math.max(0.5, Number(eegState.gain || 2) / factor);
+  syncEegControlsFromState();
+  redrawCurrentWaveform();
+  qs("#eegCanvas")?.focus?.({ preventScroll: true });
+  return Promise.resolve();
 }
 
 function resetEegPreviewControls() {
@@ -1787,8 +2834,8 @@ function resetEegPreviewControls() {
   eegState.visibleChannels = 8;
   eegState.showFiltered = false;
   eegState.filterEnabled = false;
-  syncEegControlsFromState();
-  return reloadWaveformPreview();
+  setWaveformInteractionMode("browse", { silent: true });
+  return reloadWaveformAfterViewportChange();
 }
 
 function drawEegWaveformPreview(payload = currentWaveformPayload()) {
@@ -2130,6 +3177,7 @@ async function runQcPreviewFromUi(options = {}) {
   await loadWaveformPreviewFromTask(task, eegFile, { requestSeq });
   if (requestSeq !== eegState.previewRequestSeq) return task;
   setRealStatus("波形预览已更新，可以看着波形修订片段、标签、坏道和预处理参数。", "ok");
+  revealWaveformPreview({ delayMs: 120 });
   return task;
 }
 
@@ -2414,9 +3462,28 @@ async function refreshProjectWorkspace() {
   state.workspace.projects = Array.isArray(projects) ? projects : [];
   state.workspace.files = Array.isArray(files) ? files : [];
   const selectedProjectId = state.workspace.selectedProjectId || null;
-  const project = selectedProjectId
+  let project = selectedProjectId
     ? state.workspace.projects.find((item) => item.id === selectedProjectId) || (state.real.project?.id === selectedProjectId ? state.real.project : null)
     : null;
+  if (
+    project?.id
+    && isCustomerTrialP0Mode()
+    && !state.teaching.active
+    && !state.workspace.showReviewProjects
+    && !state.workspace.sessionProjectIds?.has?.(project.id)
+  ) {
+    project = null;
+    state.real.project = null;
+    state.workspace.selectedProjectId = null;
+    state.workspace.selectedFileId = null;
+    state.workspace.selectedPlanId = null;
+  }
+  if (project?.id && !state.workspace.showReviewProjects && isHiddenFromCustomerProjectList(project)) {
+    project = null;
+    state.workspace.selectedProjectId = null;
+    state.workspace.selectedFileId = null;
+    state.workspace.selectedPlanId = null;
+  }
   const projectFiles = scopedProjectFiles(project, state.workspace.files);
   const selectedFileId = project?.id ? state.workspace.selectedFileId || null : null;
   const file = project?.id
@@ -2454,6 +3521,7 @@ async function refreshProjectWorkspace() {
   renderRealPlanState();
   renderRealFlowSummary();
   updateRealActionGate();
+  publishE2EState();
   return { projects: state.workspace.projects, files: state.workspace.files, plans: state.workspace.plans, epochSets: state.workspace.epochSets };
 }
 
@@ -2469,7 +3537,7 @@ function workspaceProjectOptions(projects, files = []) {
 }
 
 function workspaceFileOptions(files) {
-  return files.map((item) => {
+  return activeWorkspaceFiles(files).map((item) => {
     const status = fileStatusLabelReadable(item);
     const shortId = String(item.id || "").slice(-6);
     const suffix = [status, shortId ? `#${shortId}` : ""].filter(Boolean).join(" · ");
@@ -2479,7 +3547,9 @@ function workspaceFileOptions(files) {
 
 async function ensureRealProject() {
   if (state.real.project) return state.real.project;
-  const projectName = qs("#realProjectName")?.value.trim() || "我的研究项目";
+  const now = new Date();
+  const stamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+  const projectName = qs("#realProjectName")?.value.trim() || `未命名 EEG 项目 ${stamp}`;
   const project = await apiJson("/projects", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -2492,6 +3562,7 @@ async function ensureRealProject() {
     }),
   });
   state.real.project = project;
+  state.workspace.sessionProjectIds?.add?.(project.id);
   state.real.eegFile = null;
   state.real.plan = null;
   state.real.epochSet = null;
@@ -2505,10 +3576,16 @@ async function ensureRealProject() {
 async function uploadRealEeg() {
   const file = qs("#real-eeg-file")?.files?.[0];
   if (!file) throw new Error("\u8bf7\u5148\u9009\u62e9 EEG \u6570\u636e\u6587\u4ef6\uff0c\u518d\u4e0a\u4f20\u5230\u5f53\u524d\u9879\u76ee\u3002");
+  const authorizationConfirmed = qsa("[data-upload-authorization='eeg']").some((item) => item.checked);
+  if (!authorizationConfirmed) {
+    throw new Error("请先确认你有权上传该 EEG 数据，并同意本次云端试用仅用于科研分析。");
+  }
   const project = await ensureRealProject();
   const form = new FormData();
   form.append("file", file);
-  const uploaded = await apiJson(`/eeg/upload?project_id=${encodeURIComponent(project.id)}`, {
+  const uploadAuthorizationText = "Uploader confirms authorization to upload this EEG file for QLanalyser cloud trial research analysis and candidate event screening.";
+  const uploadUrl = `/eeg/upload?project_id=${encodeURIComponent(project.id)}&upload_authorization_confirmed=true&upload_authorization_text=${encodeURIComponent(uploadAuthorizationText)}`;
+  const uploaded = await apiJson(uploadUrl, {
     method: "POST",
     body: form,
   });
@@ -2559,7 +3636,7 @@ async function confirmRealDataPreparationPlan(options = {}) {
       input_file_id: eegFile.id,
       base_revision: baseRevision,
       status: "confirmed",
-      module_scope: ["qc", "psd", "erp", "tfr", "pac", "reference_csd"],
+      module_scope: ["qc", "psd", "erp", "epilepsy", "epilepsy_ml", "tfr", "pac", "reference_csd", "multitaper_psd_tfr", "connectivity"],
       source_file: {
         file_id: eegFile.id,
         original_filename: eegFile.original_filename,
@@ -2603,6 +3680,7 @@ async function confirmRealDataPreparationPlan(options = {}) {
       },
       next_step_recommendation: {
         psd: { status: "allowed", reasons: [] },
+        epilepsy_ml: { status: "allowed_after_screening_review", reasons: [] },
         erp: { status: "allowed_after_event_review", reasons: [] },
         tfr: { status: "allowed_after_epoch_review", reasons: [] },
         pac: { status: "allowed_after_epoch_review", reasons: [] },
@@ -2615,13 +3693,63 @@ async function confirmRealDataPreparationPlan(options = {}) {
 return plan;
 }
 
+async function bootstrapEpilepsyDeepLinkWorkbench(reason = "deeplink") {
+  if (!isEpilepsyWorkbenchDeepLinkIntent()) return false;
+  if (state.deepLink.epilepsyBootstrapInFlight) return true;
+  state.deepLink.epilepsyBootstrapInFlight = true;
+  state.deepLink.epilepsyBootstrapStatus = "running";
+  state.deepLink.epilepsyBootstrapError = "";
+  state.teaching.active = true;
+  state.teaching.guideActive = false;
+  hideTeachingGuideOverlay();
+  applyTeachingModeChrome();
+  setView("epilepsyWorkbenchInline");
+  renderInlineEpilepsyWorkbench();
+  setRealStatus("正在进入癫痫样事件分析台：自动准备示例 EDF 数据。", "info");
+  try {
+    await loadTeachingDatasetForModule("epilepsy_ml");
+    await ensureTeachingSandboxReady({ preview: false, moduleName: "epilepsy_ml" });
+    setView("epilepsyWorkbenchInline");
+    renderInlineEpilepsyWorkbench();
+    state.deepLink.epilepsyBootstrapStatus = "ready";
+    recordUiAction("epilepsy:deeplink-bootstrap", "pass", "已进入癫痫样事件分析台，并加载示例 EDF 数据。", {
+      reason,
+      project_id: state.real.project?.id || "",
+      file_id: state.real.eegFile?.id || "",
+      plan_id: state.real.plan?.id || "",
+    });
+    return true;
+  } catch (error) {
+    state.deepLink.epilepsyBootstrapStatus = "failed";
+    state.deepLink.epilepsyBootstrapError = error?.message || String(error);
+    setView("epilepsyWorkbenchInline");
+    renderInlineEpilepsyWorkbench();
+    recordUiAction("epilepsy:deeplink-bootstrap", "blocked", state.deepLink.epilepsyBootstrapError);
+    showToast(`进入癫痫样事件分析台未完成：${state.deepLink.epilepsyBootstrapError}`);
+    return false;
+  } finally {
+    state.deepLink.epilepsyBootstrapInFlight = false;
+    hideTeachingGuideOverlay();
+    applyTeachingModeChrome();
+    publishE2EState();
+  }
+}
+
 async function ensureTeachingSandboxReady(options = {}) {
   if (!state.teaching.active) return null;
+  const moduleName = options.moduleName || options.module || "";
+  if (moduleName === "epilepsy_ml" && (!state.real.eegFile?.id || state.real.eegFile.id !== "eeg_demo_epilepsy_high_amplitude")) {
+    await loadTeachingDatasetForModule("epilepsy_ml");
+  }
   if (!state.real.project?.id || !state.real.eegFile?.id || !state.teaching.datasetLoaded) {
     await startTeachingMode({ showGuide: false });
   }
   const eegFile = currentWorkspaceFile();
   if (!eegFile?.id) throw new Error("\u6559\u5b66\u6a21\u5f0f\u672a\u80fd\u52a0\u8f7d\u5185\u7f6e\u8111\u7535\u6570\u636e\uff0c\u8bf7\u91cd\u65b0\u8fdb\u5165\u6559\u5b66\u6a21\u5f0f\u3002");
+  if (moduleName === "epilepsy_ml" && state.real.plan?.input_file_id && state.real.plan.input_file_id !== eegFile.id) {
+    state.real.plan = null;
+    state.workspace.selectedPlanId = "";
+  }
   let plan = state.real.plan || await getCurrentDataPreparationPlan(eegFile);
   if (!plan || plan.is_default || plan.status !== "confirmed") {
     plan = await confirmRealDataPreparationPlan({ allowUpload: false });
@@ -2773,26 +3901,56 @@ function backendTaskModuleName(moduleName) {
 }
 
 function buildTaskParameters(moduleName, plan) {
-  const parameters = {};
+  const parameters = { non_medical_scope: "research_screening_support_only" };
   Object.assign(parameters, collectPresetParameters(moduleName));
   if (plan && !plan.is_default && plan.id && Number.isFinite(Number(plan.revision))) {
     parameters.data_preparation_plan_id = plan.id;
     parameters.data_preparation_revision = Number(plan.revision);
-    parameters.data_preparation_contract_version = plan.schema_version || "qlanalyser-data-preparation-v0.2";
+    parameters.data_preparation_contract_version = dataPreparationContractVersion(plan);
   }
   return parameters;
 }
 
+function estimateEpilepsyScreeningSeconds(eegFile = {}) {
+  const sizeBytes = Number(eegFile.size_bytes || eegFile.file_size_bytes || eegFile.size || 0);
+  const durationSec = Number(eegFile.duration_sec || eegFile.duration_seconds || 0);
+  if (sizeBytes >= 1_000_000_000 || durationSec >= 60 * 60 * 12) return 300;
+  if (sizeBytes >= 250_000_000 || durationSec >= 60 * 60 * 2) return 120;
+  if (durationSec >= 20 * 60 || sizeBytes >= 25_000_000) return 45;
+  return 15;
+}
+
+function startInlineEpilepsyProgressHeartbeat(eegFile = {}) {
+  const estimatedSec = estimateEpilepsyScreeningSeconds(eegFile);
+  const startedAt = Date.now();
+  window.clearInterval(state.epilepsyInline.progressTimer);
+  state.epilepsyInline.progressTimer = window.setInterval(() => {
+    const elapsedSec = Math.max(0, (Date.now() - startedAt) / 1000);
+    const ratio = Math.min(0.88, elapsedSec / Math.max(10, estimatedSec));
+    const progress = Math.max(28, Math.min(68, Math.round(28 + ratio * 40)));
+    const longHint = estimatedSec >= 120
+      ? "长记录正在本地分块提取特征，页面没有卡死；请保持本页打开。"
+      : "正在分块提取特征并生成候选事件。";
+    setInlineEpilepsyScreeningProgress("running", progress, longHint);
+  }, 2500);
+  return () => {
+    window.clearInterval(state.epilepsyInline.progressTimer);
+    state.epilepsyInline.progressTimer = null;
+  };
+}
+
 async function runRealTask(moduleName, workflowId) {
-  if (state.teaching.active) await ensureTeachingSandboxReady({ preview: false });
+  const isInlineEpilepsy = moduleName === "epilepsy_ml";
+  if (isInlineEpilepsy) setInlineEpilepsyScreeningProgress("submitting", 8, "已收到操作，正在提交癫痫样事件初筛任务。");
+  if (state.teaching.active) await ensureTeachingSandboxReady({ preview: false, moduleName });
   const project = await ensureRealProject();
   const eegFile = currentWorkspaceFile() || (state.teaching.active ? null : await uploadRealEeg());
   if (!eegFile?.id) throw new Error(state.teaching.active ? "\u6559\u5b66\u6a21\u5f0f\u672a\u52a0\u8f7d\u5185\u7f6e\u8111\u7535\u6570\u636e\uff0c\u8bf7\u91cd\u65b0\u8fdb\u5165\u6559\u5b66\u6a21\u5f0f\u3002" : "\u8bf7\u5148\u4e0a\u4f20\u6216\u9009\u62e9 EEG \u6570\u636e\u3002");
-  const requiresPlan = ["psd", "erp", "tfr", "multitaper_psd", "multitaper_tfr", "reference_csd", "pac", "connectivity"].includes(moduleName);
+  const requiresPlan = ["psd", "erp", "tfr", "multitaper_psd", "multitaper_tfr", "reference_csd", "pac", "connectivity", "epilepsy_ml"].includes(moduleName);
   const requiresEpochSet = ["erp", "tfr", "multitaper_tfr", "pac"].includes(moduleName);
   const plan = state.real.plan || await getCurrentDataPreparationPlan(eegFile);
-  const planContract = plan?.schema_version || plan?.data_preparation_contract_version || "qlanalyser-data-preparation-v0.2";
-  if (requiresPlan && (!plan || plan.is_default || plan.status !== "confirmed" || !plan.id || !Number.isFinite(Number(plan.revision)) || planContract !== "qlanalyser-data-preparation-v0.2")) {
+  const planContract = dataPreparationContractVersion(plan);
+  if (requiresPlan && (!plan || plan.is_default || plan.status !== "confirmed" || !plan.id || !Number.isFinite(Number(plan.revision)) || planContract !== DATA_PREPARATION_CONTRACT_VERSION)) {
     throw new Error("请先确认数据准备方案，再开始分析。");
   }
   if (requiresEpochSet && !state.real.epochSet?.id) {
@@ -2803,23 +3961,76 @@ async function runRealTask(moduleName, workflowId) {
   const backendModule = backendTaskModuleName(moduleName);
   const planText = state.real.plan?.id ? `，数据准备记录第 ${state.real.plan.revision} 版` : "";
   setRealStatus(`正在运行 ${moduleDisplayName(moduleName)}${planText}`, "info");
-  const task = await apiJson("/tasks", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      project_id: project.id,
-      input_file_id: eegFile.id,
+  let stopEpilepsyProgress = null;
+  if (isInlineEpilepsy) {
+    setInlineEpilepsyScreeningProgress("running", 28, "已提交任务，正在进行癫痫样事件初筛。");
+    state.real.tasks[moduleName] = {
+      id: `pending_${Date.now()}`,
+      status: "running",
+      queue_status: "running",
+      progress: 28,
       module_name: backendModule,
       workflow_id: workflowId,
+      input_file_id: eegFile.id,
       parameters_json: parametersJson,
-      owner_user_id: currentAccountId(),
-      created_by: currentAccountId(),
-    }),
-  });
+    };
+    state.real.latestTaskModule = moduleName;
+    if (isE2EAutomationContext()) {
+      window.__QLANALYSER_LAST_REAL_ACTION__ = { action: "run-epilepsy-ml", status: "submitted_to_backend", taskId: "" };
+      window.__QLANALYSER_EPILEPSY_E2E_TASK__ = state.real.tasks[moduleName];
+    }
+    renderInlineEpilepsyWorkbench();
+    stopEpilepsyProgress = startInlineEpilepsyProgressHeartbeat(eegFile);
+  }
+  let task;
+  try {
+    task = await apiJson("/tasks", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        project_id: project.id,
+        input_file_id: eegFile.id,
+        module_name: backendModule,
+        workflow_id: workflowId,
+        parameters_json: parametersJson,
+        owner_user_id: currentAccountId(),
+        created_by: currentAccountId(),
+      }),
+    });
+  } catch (error) {
+    if (isInlineEpilepsy) {
+      if (stopEpilepsyProgress) stopEpilepsyProgress();
+      setInlineEpilepsyScreeningProgress("failed", 100, `初筛未完成：${error.message || error}`);
+      if (isE2EAutomationContext()) {
+        window.__QLANALYSER_LAST_REAL_ACTION__ = { action: "run-epilepsy-ml", status: "failed", error: error.message || String(error) };
+      }
+      renderInlineEpilepsyWorkbench();
+    }
+    throw error;
+  } finally {
+    if (stopEpilepsyProgress) stopEpilepsyProgress();
+  }
+  if (isInlineEpilepsy && isE2EAutomationContext()) {
+    window.__QLANALYSER_LAST_REAL_ACTION__ = { action: "run-epilepsy-ml", status: "task_created", taskId: task?.id || "" };
+  }
   state.real.tasks[moduleName] = task;
   state.real.latestTaskModule = moduleName;
+  if (isInlineEpilepsy) setInlineEpilepsyScreeningProgress("loading_results", 72, "\u521d\u7b5b\u4efb\u52a1\u5df2\u8fd4\u56de\uff0c\u6b63\u5728\u8bfb\u53d6 Stage_Code \u4e0e\u5019\u9009\u4e8b\u4ef6\u7ed3\u679c\u3002");
+  if (moduleName === "epilepsy_ml" && isE2EAutomationContext()) {
+    window.__QLANALYSER_LAST_EPILEPSY_TASK__ = task;
+    window.__QLANALYSER_EPILEPSY_E2E_TASK__ = task;
+    window.__QLANALYSER_E2E_STATE__ = state;
+  }
   const artifacts = await fetchTaskArtifacts(task.id);
   state.real.artifacts[moduleName] = artifacts;
+  if (moduleName === "epilepsy_ml") {
+    await loadInlineEpilepsyResultData(task, artifacts);
+    setInlineEpilepsyScreeningProgress("completed", 100, "\u766b\u75eb\u6837\u4e8b\u4ef6\u521d\u7b5b\u5b8c\u6210\uff0c\u53ef\u7ee7\u7eed\u9605\u7247\u548c\u4eba\u5de5\u77eb\u6b63\u3002");
+    if (isE2EAutomationContext()) {
+      window.__QLANALYSER_LAST_REAL_ACTION__ = { action: "run-epilepsy-ml", status: "completed", taskId: task?.id || "" };
+    }
+    renderInlineEpilepsyWorkbench();
+  }
   setRealStatus(`${moduleDisplayName(moduleName)} 已完成，结果已更新。`, "ok");
   renderRealResultReview();
   renderRealDelivery();
@@ -2838,6 +4049,7 @@ async function createRealReport() {
   state.real.report = report;
   addReportDownload(report);
   renderRealDelivery();
+  setView("publication");
   setRealStatus("交付报告已生成，可在报告交付页下载。", "ok");
   return report;
 }
@@ -2855,6 +4067,7 @@ function moduleDisplayName(moduleName) {
     tfr: "TFR / ERSP / ITC",
     multitaper_psd: "Multitaper PSD",
     multitaper_tfr: "Multitaper TFR",
+    epilepsy_ml: "癫痫样事件初筛",
     reference_csd: "CSD 电流源密度计算",
     pac: "PAC 相位-振幅耦合",
     connectivity: "Connectivity 连接性分析",
@@ -2933,6 +4146,14 @@ function readableArtifactLabel(artifact = {}) {
     [/psd_mean_spectrum|power_spectrum|spectrum_long|powerspectrum/, "PSD 频谱图"],
     [/erp_metrics|erp_metric|p300/, "ERP 指标表"],
     [/drop_log_summary|epoch_drop|reject/, "Epoch 剔除记录"],
+    [/epilepsy_ml_event_timeline_figure|event_timeline/, "癫痫样候选事件初筛时间轴"],
+    [/epilepsy_ml_spectrogram_figure|spectrogram_preview/, "癫痫样事件初筛时频证据图"],
+    [/epilepsy_ml_spectrogram/, "癫痫样事件初筛时频数据"],
+    [/epilepsy.*epoch|epoch_predictions|epoch_scores/, "癫痫样事件 epoch 预测表"],
+    [/epilepsy.*event|candidate_events|reviewed_events|final_review_events/, "癫痫样候选事件表"],
+    [/manual_corrections|review_actions|event_review/, "人工矫正记录"],
+    [/review_revision|review_session/, "复核版本记录"],
+    [/model_manifest|epilepsy_ml_model_manifest/, "模型记录"],
     [/tfr_power_long|ersp|itc|time_frequency/, "时频功率明细表"],
     [/pac_dynamic_curve|pac_curve|cfc/, "PAC 动态曲线"],
     [/parameters|parameter_schema|threshold_validation/, "参数记录"],
@@ -2973,6 +4194,38 @@ function artifactDetailItems(artifacts = []) {
   return Array.from(grouped.values());
 }
 
+function artifactImageItems(artifacts = []) {
+  return (artifacts || [])
+    .filter((artifact) => {
+      const mime = String(artifact.mime_type || artifact.mimeType || "").toLowerCase();
+      const path = String(artifact.path || artifact.object_key || artifact.filename || artifact.label || "").toLowerCase();
+      return mime.startsWith("image/") || /\.(svg|png|jpg|jpeg|webp)$/.test(path);
+    })
+    .map((artifact) => ({
+      label: readableArtifactLabel(artifact),
+      href: artifactDownloadUrl(artifact),
+      mime: artifact.mime_type || artifact.mimeType || "image",
+    }))
+    .filter((item) => item.href);
+}
+
+function renderResultImagePreview(artifacts = []) {
+  const images = artifactImageItems(artifacts);
+  if (!images.length) return "";
+  return `
+    <div class="result-image-preview-grid" data-testid="result-image-preview-grid">
+      ${images.map((item) => `
+        <figure class="result-image-preview-card">
+          <a href="${escapeHtml(item.href)}" target="_blank" rel="noreferrer">
+            <img src="${escapeHtml(item.href)}" alt="${escapeHtml(item.label)}" loading="lazy" />
+          </a>
+          <figcaption><strong>${escapeHtml(item.label)}</strong><span>${escapeHtml(item.mime)}</span></figcaption>
+        </figure>
+      `).join("")}
+    </div>
+  `;
+}
+
 function renderArtifactDetailLinks(artifacts = []) {
   const items = artifactDetailItems(artifacts);
   if (!items.length) return "<span>结果文件生成中或暂无可下载文件。</span>";
@@ -3005,6 +4258,7 @@ function renderRealResultReview() {
   const modules = Object.entries(state.real.tasks || {}).filter(([, task]) => task?.id);
   if (!modules.length) {
     target.innerHTML = "<p>尚未生成分析结果。请先完成数据准备，再开始 PSD 或 ERP 分析。</p>";
+    renderEpilepsyResultReviewV3Panel();
     return;
   }
   const resultItems = modules.map(([moduleName, task]) => {
@@ -3015,6 +4269,7 @@ function renderRealResultReview() {
         <strong>${escapeHtml(moduleDisplayName(moduleName))} - ${escapeHtml(taskStatusLabelReadable(task))}</strong>
         <span>${escapeHtml(artifactSummaryLabel(artifacts))}</span>
         ${renderEvidenceBadges(moduleName, task, artifacts)}
+        ${renderResultImagePreview(artifacts)}
         <details class="technical-details artifact-details">
           <summary>查看结果文件明细</summary>
           <div class="artifact-link-grid">${links}</div>
@@ -3036,6 +4291,7 @@ function renderRealResultReview() {
     : "";
   target.innerHTML = `${resultItems}${reportAction}`;
   if (window.lucide) window.lucide.createIcons();
+  renderEpilepsyResultReviewV3Panel();
 }
 
 function addReportDownload(report) {
@@ -3063,6 +4319,25 @@ function renderRealDelivery() {
     return;
   }
   const task = latestAnalysisTask();
+  if (isCustomerTrialP0Mode()) {
+    target.innerHTML = `
+      <article class="result-item result-empty-state" data-report-state="empty" data-testid="customer-empty-reports">
+        <strong>还没有可下载报告</strong>
+        <span>${task?.id
+          ? "已有完成的分析任务，可以直接生成交付报告。"
+          : "请先完成数据准备，并在分析任务中运行至少一种方法。报告会在分析结果发布后生成。"}
+        </span>
+        <div class="real-actions compact-actions">
+          ${task?.id
+            ? `<button class="primary-btn" type="button" data-real-action="create-report"><i data-lucide="file-output"></i><span>生成交付报告</span></button>
+               <button class="ghost-btn" type="button" data-view-jump="statistics"><i data-lucide="chart-no-axes-combined"></i><span>查看结果</span></button>`
+            : `<button class="primary-btn" type="button" data-view-jump="analysis"><i data-lucide="sliders-horizontal"></i><span>去数据准备</span></button>`}
+        </div>
+      </article>
+    `;
+    if (window.lucide) window.lucide.createIcons();
+    return;
+  }
   target.innerHTML = `
     <article class="result-item" data-report-state="empty">
       <strong>\u6682\u65e0\u53ef\u4e0b\u8f7d\u62a5\u544a</strong>
@@ -3137,7 +4412,9 @@ async function handleRealAction(action) {
       if (!plan) throw new Error("请先确认或载入数据准备记录，再下载处理记录。");
       downloadJsonPayload(plan, `${plan.id || "data_preparation_plan"}.json`);
       result = plan;
-    } else if (action === "create-report") result = await createRealReport();
+    } else if (action === "open-epilepsy-workbench") result = await openEpilepsyWorkbenchFromPlan();
+    else if (action === "run-epilepsy-ml") result = await runRealTask("epilepsy_ml", "epilepsy_ml_xgboost");
+    else if (action === "create-report") result = await createRealReport();
     else if (action === "run-psd") result = await runRealTask("psd", "resting_psd");
     else if (action === "run-erp") result = await runRealTask("erp", "erp_p300");
     else if (action === "run-tfr") result = await runRealTask("tfr", "tfr_ersp_itc");
@@ -3153,6 +4430,12 @@ async function handleRealAction(action) {
     updateRealActionGate();
     return result;
   } catch (error) {
+    if (action === "run-epilepsy-ml") {
+      if (["localhost", "127.0.0.1"].includes(window.location.hostname)) {
+        window.__QLANALYSER_LAST_REAL_ACTION__ = { action, status: "failed", error: String(error.message || error) };
+      }
+      setInlineEpilepsyScreeningProgress("failed", 100, `癫痫样事件初筛失败：${error.message || error}`);
+    }
     const message = `${actionNames[action] || action}\u672a\u5b8c\u6210\uff1a${error.message || error}`;
     recordUiAction(`real:${action}`, "blocked", message);
     showToast(message);
@@ -3268,21 +4551,36 @@ async function handleIaAction(action) {
   }
 
   if (action === "delete-project") {
+    if (!project?.id) {
+      recordUiAction(`ia:${action}`, "blocked", noProjectMessage);
+      showToast(noProjectMessage);
+      return;
+    }
     if (project?.id && isTeachingDemoProject(project)) {
       const message = teachingProtectedMessage();
       recordUiAction(`ia:${action}`, "blocked", message, { project_id: project.id, persistence: "protected_teaching_dataset" });
       showToast(message);
       return;
     }
-    if (project?.id && isArchivedProject(project)) {
-      const message = "归档项目为只读，不能直接删除。";
-      recordUiAction(`ia:${action}`, "blocked", message, { project_id: project.id, status: project.status, persistence: "not_mutated" });
-      showToast(message);
+    const confirmed = window.confirm(`删除项目「${projectDisplayName(project) || project.id}」？\n\n这会从普通项目列表移除该项目记录；系统保留审计记录，不会删除内置示例数据。`);
+    if (!confirmed) {
+      const message = "已取消删除项目。";
+      recordUiAction(`ia:${action}`, "blocked", message, { project_id: project.id, persistence: "not_mutated" });
       return;
     }
-    const message = "\u9879\u76ee\u5220\u9664\u662f\u9ad8\u98ce\u9669\u64cd\u4f5c\uff0c\u9700\u8981\u786e\u8ba4\u5bf9\u8bdd\u6846\u4e0e\u5ba1\u8ba1\u8bb0\u5f55\uff0c\u5f53\u524d\u672a\u5220\u9664\u9879\u76ee\u3002";
-    recordUiAction(`ia:${action}`, "blocked", project?.id ? message : noProjectMessage, { project_id: project?.id || null, persistence: "not_mutated" });
-    showToast(project?.id ? message : noProjectMessage);
+    const deleted = await apiJson(`/projects/${encodeURIComponent(project.id)}`, { method: "DELETE" });
+    state.real.project = null;
+    state.real.eegFile = null;
+    state.real.plan = null;
+    state.real.epochSet = null;
+    state.workspace.selectedProjectId = null;
+    state.workspace.selectedFileId = null;
+    state.workspace.selectedPlanId = null;
+    clearEegPreviewState();
+    await refreshProjectWorkspace();
+    const message = `项目已删除：${deleted.name || projectDisplayName(project) || project.id}。`;
+    recordUiAction(`ia:${action}`, "pass", message, { project_id: deleted.id || project.id, status: deleted.status || "deleted", persistence: "backend_soft_delete" });
+    showToast(message);
     return;
   }
 
@@ -3290,6 +4588,12 @@ async function handleIaAction(action) {
     if (!file?.id) {
       recordUiAction(`ia:${action}`, "blocked", noFileMessage);
       showToast(noFileMessage);
+      return;
+    }
+    if (isTeachingDemoFile(file) || isTeachingDemoProject(project)) {
+      const message = teachingProtectedMessage();
+      recordUiAction(`ia:${action}`, "blocked", message, { file_id: file.id, persistence: "protected_teaching_dataset" });
+      showToast(message);
       return;
     }
     const baseName = eegFileDisplayName(file) || file.id;
@@ -3321,6 +4625,8 @@ async function handleIaAction(action) {
     }
     const payload = currentWaveformPayload();
     const firstChannel =
+      eegState.hoverChannelName ||
+      payload?.channels?.[0]?.name ||
       payload?.channels?.[0] ||
       eegState.data?.channels?.[0] ||
       file.channel_names?.[0] ||
@@ -3461,6 +4767,1345 @@ async function handleIaAction(action) {
   showToast(message);
 }
 
+function parseCsvText(text) {
+  const lines = String(text || "").trim().split(/\r?\n/).filter(Boolean);
+  if (!lines.length) return [];
+  const parseLine = (line) => {
+    const cells = [];
+    let current = "";
+    let quoted = false;
+    for (let i = 0; i < line.length; i += 1) {
+      const char = line[i];
+      if (char === '"' && line[i + 1] === '"') {
+        current += '"';
+        i += 1;
+      } else if (char === '"') {
+        quoted = !quoted;
+      } else if (char === "," && !quoted) {
+        cells.push(current);
+        current = "";
+      } else {
+        current += char;
+      }
+    }
+    cells.push(current);
+    return cells;
+  };
+  const headers = parseLine(lines[0]).map((item) => item.trim());
+  return lines.slice(1).map((line) => {
+    const values = parseLine(line);
+    return Object.fromEntries(headers.map((header, index) => [header, values[index] ?? ""]));
+  });
+}
+
+function artifactByLabel(artifacts, labels = []) {
+  const wanted = labels.map((item) => String(item).toLowerCase());
+  return (artifacts || []).find((artifact) => {
+    const label = String(artifact?.label || artifact?.artifact_label || artifact?.name || "").toLowerCase();
+    const path = String(artifact?.path || artifact?.relative_path || artifact?.filename || "").toLowerCase();
+    return wanted.some((item) => label === item || label.includes(item) || path.includes(item));
+  }) || null;
+}
+
+function artifactSearchText(artifact = {}) {
+  return [
+    artifact?.label,
+    artifact?.artifact_label,
+    artifact?.name,
+    artifact?.path,
+    artifact?.relative_path,
+    artifact?.object_key,
+    artifact?.filename,
+  ].map((item) => String(item || "").toLowerCase()).join(" ");
+}
+
+function artifactBelongsToTask(artifact, taskId) {
+  const text = artifactSearchText(artifact);
+  const normalizedTaskId = String(taskId || "").toLowerCase();
+  return Boolean(normalizedTaskId && text.includes(`/${normalizedTaskId}/`)) || Boolean(normalizedTaskId && text.includes(`\\${normalizedTaskId}\\`));
+}
+
+function findInlineEpilepsyTaskArtifact(artifacts, taskId, candidates = []) {
+  const scopedArtifacts = (artifacts || []).filter((artifact) => {
+    const text = artifactSearchText(artifact);
+    if (text.includes("/data_preparation/") || text.includes("\\data_preparation\\")) return false;
+    return artifactBelongsToTask(artifact, taskId);
+  });
+  const rankedCandidates = candidates.map((candidate, index) => ({
+    index,
+    label: String(candidate.label || "").toLowerCase(),
+    path: String(candidate.path || "").toLowerCase(),
+  }));
+  const exactLabelMatch = scopedArtifacts.find((artifact) => {
+    const label = String(artifact?.label || artifact?.artifact_label || artifact?.name || "").toLowerCase();
+    return rankedCandidates.some((candidate) => candidate.label && label === candidate.label);
+  });
+  if (exactLabelMatch) return exactLabelMatch;
+  return scopedArtifacts.find((artifact) => {
+    const text = artifactSearchText(artifact);
+    return rankedCandidates.some((candidate) => candidate.path && text.includes(candidate.path));
+  }) || null;
+}
+
+async function fetchArtifactText(artifact) {
+  if (!artifact?.id) return "";
+  const response = await fetch(`${state.apiBase}/artifacts/${encodeURIComponent(artifact.id)}/download`, {
+    method: "GET",
+    headers: withAuthHeaders({ Accept: "text/plain,application/json,text/csv,*/*" }),
+    cache: "no-store",
+  });
+  if (!response.ok) throw new Error(`Artifact download failed: ${response.status}`);
+  return response.text();
+}
+
+async function loadInlineEpilepsyResultData(task, artifacts) {
+  const epochArtifact = findInlineEpilepsyTaskArtifact(artifacts, task?.id, [
+    { label: "epilepsy_epoch_scores" },
+    { label: "epilepsy_ml_epoch_predictions" },
+    { path: "tables/epilepsy_ml_epoch_predictions.csv" },
+    { path: "tables/epilepsy_epoch_scores.csv" },
+  ]);
+  const eventArtifact = findInlineEpilepsyTaskArtifact(artifacts, task?.id, [
+    { label: "epilepsy_events" },
+    { label: "epilepsy_ml_events" },
+    { path: "tables/epilepsy_ml_events.csv" },
+    { path: "tables/epilepsy_events.csv" },
+  ]);
+  const spectrogramArtifact = findInlineEpilepsyTaskArtifact(artifacts, task?.id, [
+    { label: "epilepsy_ml_spectrogram" },
+    { path: "data/epilepsy_ml_spectrogram.json" },
+  ]);
+  if (!task?.id || !epochArtifact || !eventArtifact) {
+    state.epilepsyInline.resultTaskId = task?.id || "";
+    state.epilepsyInline.epochRows = [];
+    state.epilepsyInline.eventRows = [];
+    state.epilepsyInline.resultLoadStatus = "missing_artifacts";
+    state.epilepsyInline.resultLoadError = "";
+    state.epilepsyInline.spectrogramPayload = null;
+    state.epilepsyInline.spectrogramLoadStatus = spectrogramArtifact ? "idle" : "missing_artifact";
+    state.epilepsyInline.spectrogramLoadError = "";
+    return;
+  }
+  state.epilepsyInline.resultLoadStatus = "loading";
+  state.epilepsyInline.resultLoadError = "";
+  state.epilepsyInline.spectrogramLoadStatus = spectrogramArtifact ? "loading" : "missing_artifact";
+  state.epilepsyInline.spectrogramLoadError = "";
+  try {
+    const [epochText, eventText, spectrogramText] = await Promise.all([
+      fetchArtifactText(epochArtifact),
+      fetchArtifactText(eventArtifact),
+      spectrogramArtifact ? fetchArtifactText(spectrogramArtifact) : Promise.resolve(""),
+    ]);
+    state.epilepsyInline.resultTaskId = task.id;
+    state.epilepsyInline.epochRows = parseCsvText(epochText);
+    state.epilepsyInline.eventRows = parseCsvText(eventText);
+    if (spectrogramText) {
+      state.epilepsyInline.spectrogramPayload = JSON.parse(spectrogramText);
+      state.epilepsyInline.spectrogramLoadStatus = "ready";
+    } else {
+      state.epilepsyInline.spectrogramPayload = null;
+      state.epilepsyInline.spectrogramLoadStatus = "missing_artifact";
+    }
+    state.epilepsyInline.resultLoadStatus = "ready";
+  } catch (error) {
+    state.epilepsyInline.resultTaskId = task.id;
+    state.epilepsyInline.epochRows = [];
+    state.epilepsyInline.eventRows = [];
+    state.epilepsyInline.resultLoadStatus = "failed";
+    state.epilepsyInline.resultLoadError = error.message || String(error);
+    state.epilepsyInline.spectrogramPayload = null;
+    state.epilepsyInline.spectrogramLoadStatus = "failed";
+    state.epilepsyInline.spectrogramLoadError = error.message || String(error);
+  }
+}
+
+function inlineEpilepsyTask() {
+  return state.real.tasks?.epilepsy_ml || null;
+}
+
+function inlineEpilepsyArtifacts() {
+  return state.real.artifacts?.epilepsy_ml || [];
+}
+
+function inlineEpilepsyCandidateEvents() {
+  return (state.epilepsyInline.eventRows || []).map((row, index) => {
+    const start = Number(row.start_sec ?? row.start ?? row.onset_sec ?? 0);
+    const end = Number(row.end_sec ?? row.end ?? (start + Number(row.duration_sec || 0)));
+    const label = row.event_id || row.id || `evt-${index + 1}`;
+    return {
+      id: String(label),
+      label: `候选事件 ${index + 1}`,
+      start,
+      end: Number.isFinite(end) && end > start ? end : start,
+      startEpoch: row.start_epoch ?? row.start_epoch_index ?? "",
+      endEpoch: row.end_epoch ?? row.end_epoch_index ?? "",
+      source: row,
+    };
+  });
+}
+
+function inlineEpilepsySelectedEvent(events = inlineEpilepsyCandidateEvents()) {
+  return events.find((event) => event.id === state.epilepsyInline.selectedEventId) || events[0] || null;
+}
+
+function inlineEpilepsyReaderState() {
+  if (!state.epilepsyInline.reader) state.epilepsyInline.reader = {};
+  const reader = state.epilepsyInline.reader;
+  reader.startSec = Math.max(0, Number(reader.startSec || 0));
+  reader.durationSec = Math.max(
+    EDF_BROWSER_INTERACTION_CONSTANTS.minWindowSec,
+    Math.min(EDF_BROWSER_INTERACTION_CONSTANTS.maxWindowSec, Number(reader.durationSec || state.epilepsyInline.timeScaleSec || 30)),
+  );
+  reader.sensitivityUvPerRow = Math.max(
+    EDF_BROWSER_INTERACTION_CONSTANTS.minSensitivityUvPerRow,
+    Math.min(EDF_BROWSER_INTERACTION_CONSTANTS.maxSensitivityUvPerRow, Number(reader.sensitivityUvPerRow || 50)),
+  );
+  reader.visibleChannelCount = Math.max(1, Math.min(64, Number(reader.visibleChannelCount || 8)));
+  reader.overlayVisibility = {
+    candidates: reader.overlayVisibility?.candidates !== false,
+    stageCode: reader.overlayVisibility?.stageCode !== false,
+    reviewEdits: reader.overlayVisibility?.reviewEdits !== false,
+  };
+  return reader;
+}
+
+function inlineEpilepsyFileDuration(file = currentWorkspaceFile() || state.real.eegFile || {}) {
+  const payload = state.epilepsyInline.waveformPayload || {};
+  return Number(file?.duration_sec || file?.metadata_json?.duration_sec || file?.metadata_json?.duration || payload.file_duration_sec || 60) || 60;
+}
+
+function clampInlineEpilepsyReader(file = currentWorkspaceFile() || state.real.eegFile || {}) {
+  const reader = inlineEpilepsyReaderState();
+  const durationTotal = Math.max(EDF_BROWSER_INTERACTION_CONSTANTS.minWindowSec, inlineEpilepsyFileDuration(file));
+  reader.durationSec = Math.max(
+    EDF_BROWSER_INTERACTION_CONSTANTS.minWindowSec,
+    Math.min(EDF_BROWSER_INTERACTION_CONSTANTS.maxWindowSec, durationTotal, Number(reader.durationSec || 30)),
+  );
+  reader.startSec = Math.max(0, Math.min(Math.max(0, durationTotal - reader.durationSec), Number(reader.startSec || 0)));
+  state.epilepsyInline.timeScaleSec = reader.durationSec;
+  return { reader, durationTotal };
+}
+
+function setInlineEpilepsyViewport({ file = currentWorkspaceFile() || state.real.eegFile || {}, startSec, durationSec, anchorRatio = 0.5 } = {}) {
+  const reader = inlineEpilepsyReaderState();
+  const previousStart = Number(reader.startSec || 0);
+  const previousDuration = Number(reader.durationSec || 30);
+  const durationTotal = Math.max(EDF_BROWSER_INTERACTION_CONSTANTS.minWindowSec, inlineEpilepsyFileDuration(file));
+  const nextDuration = Math.max(
+    EDF_BROWSER_INTERACTION_CONSTANTS.minWindowSec,
+    Math.min(EDF_BROWSER_INTERACTION_CONSTANTS.maxWindowSec, durationTotal, Number(durationSec ?? previousDuration)),
+  );
+  const anchor = Math.max(0, Math.min(1, Number(anchorRatio)));
+  const anchoredTime = previousStart + previousDuration * anchor;
+  const proposedStart = Number.isFinite(Number(startSec))
+    ? Number(startSec)
+    : anchoredTime - nextDuration * anchor;
+  reader.durationSec = nextDuration;
+  reader.startSec = Math.max(0, Math.min(Math.max(0, durationTotal - nextDuration), proposedStart));
+  state.epilepsyInline.timeScaleSec = reader.durationSec;
+  return { start_sec: reader.startSec, duration_sec: reader.durationSec, duration_total_sec: durationTotal };
+}
+
+function panInlineEpilepsyViewport(ratio, file = currentWorkspaceFile() || state.real.eegFile || {}) {
+  const reader = inlineEpilepsyReaderState();
+  return setInlineEpilepsyViewport({ file, startSec: reader.startSec + reader.durationSec * Number(ratio || 0) });
+}
+
+function zoomInlineEpilepsyViewport(factor, anchorRatio = 0.5, file = currentWorkspaceFile() || state.real.eegFile || {}) {
+  const reader = inlineEpilepsyReaderState();
+  return setInlineEpilepsyViewport({ file, durationSec: reader.durationSec * Number(factor || 1), anchorRatio });
+}
+
+function centerInlineEpilepsyEvent(event, file = currentWorkspaceFile() || state.real.eegFile || {}) {
+  if (!event) return inlineEpilepsyWaveformWindow(file);
+  const reader = inlineEpilepsyReaderState();
+  const center = (Number(event.start || 0) + Number(event.end || event.start || 0)) / 2;
+  return setInlineEpilepsyViewport({ file, startSec: center - reader.durationSec / 2 });
+}
+
+function selectInlineEpilepsyEvent(eventId, { center = false, file = currentWorkspaceFile() || state.real.eegFile || {} } = {}) {
+  const events = inlineEpilepsyCandidateEvents();
+  const event = events.find((item) => item.id === eventId) || null;
+  if (!event) return null;
+  state.epilepsyInline.selectedEventId = event.id;
+  if (center) centerInlineEpilepsyEvent(event, file);
+  return event;
+}
+
+function selectInlineEpilepsyRelativeCandidate(delta, { file = currentWorkspaceFile() || state.real.eegFile || {} } = {}) {
+  const events = inlineEpilepsyCandidateEvents();
+  if (!events.length) return null;
+  const currentIndex = Math.max(0, events.findIndex((event) => event.id === state.epilepsyInline.selectedEventId));
+  const nextIndex = Math.max(0, Math.min(events.length - 1, currentIndex + Number(delta || 0)));
+  return selectInlineEpilepsyEvent(events[nextIndex].id, { center: true, file });
+}
+
+function inlineEpilepsyLatestCorrection(eventId) {
+  return [...(state.epilepsyInline.draftCommands || [])].reverse().find((item) => item.eventId === eventId) || null;
+}
+
+function inlineEpilepsyEventForEpoch(epochIndex, events = inlineEpilepsyCandidateEvents()) {
+  const idx = Number(epochIndex);
+  if (!Number.isFinite(idx)) return null;
+  return events.find((event) => idx >= Number(event.startEpoch || 0) && idx <= Number(event.endEpoch || event.startEpoch || 0)) || null;
+}
+
+function inlineEpilepsySummaryCounts(events) {
+  const epochs = state.epilepsyInline.epochRows || [];
+  const seizureEpochs = epochs.filter((row) => Number(row.Stage_Code ?? row.stage_code ?? row.prediction ?? 0) === 1).length;
+  return { epochCount: epochs.length, eventCount: events.length, seizureEpochs };
+}
+
+function inlineReviewStatusFromLabel(label) {
+  const value = String(label || "").toLowerCase();
+  if (value.includes("伪迹") || value.includes("artifact")) return "rejected";
+  if (value.includes("排除") || value.includes("exclude") || value.includes("reject")) return "rejected";
+  if (value.includes("保留") || value.includes("keep") || value.includes("candidate")) return "confirmed";
+  if (value.includes("复核") || value.includes("review")) return "needs_review";
+  if (value.includes("normal")) return "rejected";
+  if (value.includes("needs")) return "needs_review";
+  if (value.includes("seizure")) return "confirmed";
+  return "unreviewed";
+}
+
+function inlineEpilepsyDraftReviewPayload() {
+  const epochOverrides = {};
+  const eventReviews = {};
+  const actions = [];
+  const events = inlineEpilepsyCandidateEvents();
+  (state.epilepsyInline.draftCommands || []).forEach((command, index) => {
+    const event = events.find((item) => item.id === command.eventId) || {};
+    const status = inlineReviewStatusFromLabel(command.label);
+    if ((status === "confirmed" || status === "rejected") && command.actionType !== "adjust_event_interval") {
+      const stageCode = status === "confirmed" ? 1 : 0;
+      const startEpoch = Number(event.startEpoch ?? 0);
+      const endEpoch = Number(event.endEpoch ?? startEpoch);
+      for (let epoch = startEpoch; epoch <= endEpoch; epoch += 1) epochOverrides[String(epoch)] = stageCode;
+    }
+    eventReviews[command.eventId] = {
+      event_id: command.eventId,
+      status,
+      note: `Manual review: ${command.displayLabel || command.label}`,
+      reviewer: currentAccountId(),
+      reviewed_at: command.at || new Date().toISOString(),
+    };
+    actions.push({
+      type: command.actionType || "event_review",
+      target_range: {
+        start: Number(event.startEpoch ?? 0),
+        end: Number(event.endEpoch ?? event.startEpoch ?? 0),
+      },
+      before: {
+        source_event_id: command.eventId,
+        start_sec: Number(event.start || 0),
+        end_sec: Number(event.end || event.start || 0),
+      },
+      after: {
+        label: command.label,
+        display_label: command.displayLabel || command.label,
+        status,
+        adjusted_start_sec: command.adjustedStartSec,
+        adjusted_end_sec: command.adjustedEndSec,
+      },
+      note: `Inline epilepsy workbench correction #${index + 1}`,
+      source: "main-inline-epilepsy-workbench",
+      created_at: command.at || new Date().toISOString(),
+    });
+  });
+  return { epoch_overrides: epochOverrides, event_reviews: eventReviews, actions };
+}
+
+async function ensureInlineEpilepsyReviewSession() {
+  const existing = state.epilepsyInline.reviewSession;
+  if (existing?.id) return existing;
+  const task = inlineEpilepsyTask();
+  const file = currentWorkspaceFile() || state.real.eegFile || {};
+  const plan = state.real.plan || {};
+  if (!task?.id) throw new Error("请先运行癫痫样事件初筛，再保存人工矫正。");
+  const session = await apiJson(`/tasks/${encodeURIComponent(task.id)}/epilepsy-review-sessions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      input_file_id: file.id || task.input_file_id || "",
+      workflow_id: task.workflow_id || "epilepsy_ml_xgboost",
+      epoch_length_sec: 5,
+      current_epoch: 0,
+      selected_range: { start: 0, end: 0 },
+      ui_state: {
+        source: "main-inline-epilepsy-workbench",
+        time_scale_sec: Number(state.epilepsyInline.timeScaleSec || 30),
+        selected_event_id: state.epilepsyInline.selectedEventId || "",
+      },
+      data_preparation_plan_id: plan.id || task.parameters_json?.data_preparation_plan_id || null,
+      data_preparation_revision: Number(plan.revision || task.parameters_json?.data_preparation_revision || 0) || null,
+      data_preparation_contract_version: dataPreparationContractVersion(plan) || task.parameters_json?.data_preparation_contract_version || DATA_PREPARATION_CONTRACT_VERSION,
+    }),
+  });
+  state.epilepsyInline.reviewSession = session;
+  return session;
+}
+
+async function saveInlineEpilepsyReviewDraft() {
+  if (!state.epilepsyInline.draftCommands.length) throw new Error("暂无人工矫正草稿可保存。");
+  state.epilepsyInline.reviewSaveStatus = "saving";
+  state.epilepsyInline.reviewSaveError = "";
+  renderInlineEpilepsyWorkbench();
+  try {
+    const session = await ensureInlineEpilepsyReviewSession();
+    const patch = inlineEpilepsyDraftReviewPayload();
+    const saved = await apiJson(`/epilepsy-review-sessions/${encodeURIComponent(session.id)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        status: "reviewing",
+        ...patch,
+        ui_state: {
+          source: "main-inline-epilepsy-workbench",
+          time_scale_sec: Number(state.epilepsyInline.timeScaleSec || 30),
+          selected_event_id: state.epilepsyInline.selectedEventId || "",
+          draft_count: state.epilepsyInline.draftCommands.length,
+        },
+      }),
+    });
+    state.epilepsyInline.reviewSession = saved;
+    state.epilepsyInline.reviewSaveStatus = "saved";
+    state.epilepsyInline.reviewSaveError = "";
+    state.epilepsyInline.draftSaved = true;
+    state.epilepsyInline.published = false;
+    showToast("人工矫正草稿已保存到后端复核会话。");
+  } catch (error) {
+    state.epilepsyInline.reviewSaveStatus = "failed";
+    state.epilepsyInline.reviewSaveError = error.message || String(error);
+    state.epilepsyInline.draftSaved = false;
+    showToast(`保存复核草稿失败：${state.epilepsyInline.reviewSaveError}`);
+  } finally {
+    renderInlineEpilepsyWorkbench();
+  }
+}
+
+async function exportInlineEpilepsyReviewResults() {
+  if (!state.epilepsyInline.draftSaved || !state.epilepsyInline.reviewSession?.id) throw new Error("请先保存人工矫正草稿。");
+  state.epilepsyInline.exportStatus = "exporting";
+  state.epilepsyInline.exportError = "";
+  renderInlineEpilepsyWorkbench();
+  try {
+    const exported = await apiJson(`/epilepsy-review-sessions/${encodeURIComponent(state.epilepsyInline.reviewSession.id)}/exports`, { method: "POST" });
+    state.epilepsyInline.exportResult = exported;
+    state.epilepsyInline.exportStatus = "exported";
+    state.epilepsyInline.exportError = "";
+    state.epilepsyInline.published = true;
+    const artifacts = await fetchTaskArtifacts(exported.task_id || inlineEpilepsyTask()?.id).catch(() => []);
+    if (artifacts?.length) state.real.artifacts.epilepsy_ml = artifacts;
+    renderRealResultReview();
+    renderRealDelivery();
+    publishE2EState();
+    showToast("人工矫正结果已注册为复核产物，可进入结果查看。");
+  } catch (error) {
+    state.epilepsyInline.exportStatus = "failed";
+    state.epilepsyInline.exportError = error.message || String(error);
+    state.epilepsyInline.published = false;
+    showToast(`发布复核结果失败：${state.epilepsyInline.exportError}`);
+  } finally {
+    renderInlineEpilepsyWorkbench();
+    publishE2EState();
+  }
+}
+
+function normalizeInlineWaveformPayload(payload = {}) {
+  const channels = Array.isArray(payload.channels) ? payload.channels : [];
+  const data_uv = (Array.isArray(payload.data_uv) ? payload.data_uv : []).map((row) => Array.isArray(row) ? row.map((value) => Number(value) || 0) : []);
+  let times = (Array.isArray(payload.times_sec) ? payload.times_sec : []).map(Number).filter(Number.isFinite);
+  if (!times.length && data_uv[0]?.length) {
+    const start = Number(payload.start_sec || 0);
+    const duration = Number(payload.duration_sec || 0) || Math.max(1, data_uv[0].length / Number(payload.display_sample_rate_hz || 200));
+    const step = duration / Math.max(1, data_uv[0].length - 1);
+    times = Array.from({ length: data_uv[0].length }, (_, index) => start + index * step);
+  }
+  return {
+    ...payload,
+    channels,
+    data_uv,
+    times_sec: times,
+    start_sec: Number(payload.start_sec || (times[0] ?? 0)),
+    duration_sec: Number(payload.duration_sec || Math.max(0, (times.at(-1) ?? 0) - (times[0] ?? 0))),
+    file_duration_sec: Number(payload.file_duration_sec || payload.duration_total_sec || 0),
+    display_sample_rate_hz: Number(payload.display_sample_rate_hz || payload.sfreq_display || 200),
+  };
+}
+
+function inlineEpilepsyWaveformWindow(file) {
+  const { reader, durationTotal } = clampInlineEpilepsyReader(file);
+  return { start_sec: reader.startSec, duration_sec: reader.durationSec, duration_total_sec: durationTotal };
+}
+
+function inlineEpilepsyWaveformRequestKey(file) {
+  if (!file?.id) return "";
+  const win = inlineEpilepsyWaveformWindow(file);
+  const reader = inlineEpilepsyReaderState();
+  return `${file.id}|${win.start_sec.toFixed(3)}|${win.duration_sec.toFixed(3)}|${reader.visibleChannelCount}|minmax`;
+}
+
+function inlineEpilepsyWaveformHasRenderablePayload() {
+  return Boolean(state.epilepsyInline.waveformPayload?.data_uv?.length);
+}
+
+function inlineEpilepsyDisplayedReaderWindow(file = currentWorkspaceFile() || state.real.eegFile || {}) {
+  const { reader, durationTotal } = clampInlineEpilepsyReader(file);
+  const payload = state.epilepsyInline.waveformPayload || {};
+  const payloadReady = inlineEpilepsyWaveformHasRenderablePayload();
+  const payloadStart = Number(payload.start_sec);
+  const payloadDuration = Number(payload.duration_sec);
+  const displayStart = payloadReady && Number.isFinite(payloadStart) ? payloadStart : reader.startSec;
+  const displayDuration = payloadReady && Number.isFinite(payloadDuration) && payloadDuration > 0 ? payloadDuration : reader.durationSec;
+  return {
+    displayStartSec: Math.max(0, Math.min(Math.max(0, durationTotal - displayDuration), displayStart)),
+    displayDurationSec: Math.max(EDF_BROWSER_INTERACTION_CONSTANTS.minWindowSec, Math.min(durationTotal, displayDuration)),
+    durationTotal,
+  };
+}
+
+function inlineEpilepsyWaveformCache() {
+  if (!(state.epilepsyInline.waveformCache instanceof Map)) state.epilepsyInline.waveformCache = new Map();
+  return state.epilepsyInline.waveformCache;
+}
+
+function rememberInlineEpilepsyWaveformPayload(requestKey, payload) {
+  const cache = inlineEpilepsyWaveformCache();
+  cache.delete(requestKey);
+  cache.set(requestKey, payload);
+  while (cache.size > INLINE_EPILEPSY_WAVEFORM_CACHE_LIMIT) {
+    const oldest = cache.keys().next().value;
+    cache.delete(oldest);
+  }
+}
+
+function syncInlineEpilepsyWaveformDom() {
+  const shell = qs(".inline-wave-canvas");
+  const status = qs('[data-testid="inline-epilepsy-waveform-status"]');
+  const canvas = qs('[data-testid="inline-epilepsy-waveform-canvas"]');
+  const payload = state.epilepsyInline.waveformPayload;
+  const ready = inlineEpilepsyWaveformHasRenderablePayload();
+  const fetchStatus = state.epilepsyInline.waveformFetchStatus || state.epilepsyInline.waveformStatus || "idle";
+  if (shell) {
+    shell.classList.toggle("ready", ready);
+    shell.classList.toggle("blocked", !ready);
+    shell.dataset.waveformStatus = state.epilepsyInline.waveformStatus || "idle";
+    shell.dataset.waveformFetchStatus = fetchStatus;
+    if (ready) shell.querySelector(".inline-wave-message")?.remove();
+  }
+  if (status) {
+    status.classList.toggle("ready", ready);
+    status.classList.toggle("blocked", !ready);
+    status.textContent = ready
+      ? `已加载波形 · ${(payload.channels || []).slice(0, 8).length} 通道`
+      : "等待波形窗口";
+  }
+  if (canvas) {
+    canvas.dataset.waveformStatus = state.epilepsyInline.waveformStatus || "idle";
+    canvas.dataset.waveformFetchStatus = fetchStatus;
+    canvas.dataset.hasWaveform = ready ? "true" : "false";
+  }
+}
+
+function ensureInlineEpilepsyWaveform(file) {
+  if (!file?.id) {
+    state.epilepsyInline.waveformStatus = "missing_file";
+    state.epilepsyInline.waveformFetchStatus = "idle";
+    state.epilepsyInline.waveformError = "请先选择 EEG 数据。";
+    state.epilepsyInline.waveformPayload = null;
+    state.epilepsyInline.waveformRequestKey = "";
+    state.epilepsyInline.waveformPayloadKey = "";
+    state.epilepsyInline.waveformActiveRequestKey = "";
+    if (state.epilepsyInline.waveformAbortController) state.epilepsyInline.waveformAbortController.abort();
+    if (state.epilepsyInline.waveformDebounceTimer) window.clearTimeout(state.epilepsyInline.waveformDebounceTimer);
+    return;
+  }
+  const reader = inlineEpilepsyReaderState();
+  const requestKey = inlineEpilepsyWaveformRequestKey(file);
+  if (!requestKey) return;
+  if (state.epilepsyInline.waveformPayloadKey === requestKey && inlineEpilepsyWaveformHasRenderablePayload()) {
+    state.epilepsyInline.waveformRequestKey = requestKey;
+    state.epilepsyInline.waveformStatus = "ready";
+    state.epilepsyInline.waveformFetchStatus = "ready";
+    return;
+  }
+  const cached = inlineEpilepsyWaveformCache().get(requestKey);
+  if (cached?.data_uv?.length) {
+    state.epilepsyInline.waveformRequestKey = requestKey;
+    state.epilepsyInline.waveformPayloadKey = requestKey;
+    state.epilepsyInline.waveformPayload = cached;
+    state.epilepsyInline.waveformStatus = "ready";
+    state.epilepsyInline.waveformFetchStatus = "ready";
+    state.epilepsyInline.waveformError = "";
+    syncInlineEpilepsyWaveformDom();
+    window.requestAnimationFrame(() => drawInlineEpilepsyWaveform());
+    return;
+  }
+  if (state.epilepsyInline.waveformActiveRequestKey === requestKey && state.epilepsyInline.waveformFetchStatus === "loading") return;
+  const win = inlineEpilepsyWaveformWindow(file);
+  state.epilepsyInline.waveformRequestKey = requestKey;
+  state.epilepsyInline.waveformStatus = inlineEpilepsyWaveformHasRenderablePayload() ? "ready" : "loading";
+  state.epilepsyInline.waveformFetchStatus = "loading";
+  state.epilepsyInline.waveformError = "";
+  if (state.epilepsyInline.waveformDebounceTimer) window.clearTimeout(state.epilepsyInline.waveformDebounceTimer);
+  const query = new URLSearchParams({
+    start_sec: String(Number(win.start_sec.toFixed(3))),
+    duration_sec: String(Number(win.duration_sec.toFixed(3))),
+    channel_limit: String(reader.visibleChannelCount),
+    display_sfreq: "200",
+    mode: "minmax",
+    width_px: "1440",
+  });
+  state.epilepsyInline.waveformDebounceTimer = window.setTimeout(() => {
+    if (state.epilepsyInline.waveformRequestKey !== requestKey) return;
+    if (state.epilepsyInline.waveformAbortController) state.epilepsyInline.waveformAbortController.abort();
+    const controller = new AbortController();
+    state.epilepsyInline.waveformAbortController = controller;
+    state.epilepsyInline.waveformActiveRequestKey = requestKey;
+    apiJson(`/eeg/files/${encodeURIComponent(file.id)}/waveform/chunk?${query.toString()}`, { signal: controller.signal })
+      .then((payload) => {
+        if (state.epilepsyInline.waveformRequestKey !== requestKey) return;
+        const normalized = normalizeInlineWaveformPayload(payload);
+        state.epilepsyInline.waveformPayload = normalized;
+        state.epilepsyInline.waveformPayloadKey = requestKey;
+        state.epilepsyInline.waveformStatus = "ready";
+        state.epilepsyInline.waveformFetchStatus = "ready";
+        state.epilepsyInline.waveformError = "";
+        rememberInlineEpilepsyWaveformPayload(requestKey, normalized);
+        renderInlineEpilepsyWorkbench();
+        syncInlineEpilepsyWaveformDom();
+        window.requestAnimationFrame(() => drawInlineEpilepsyWaveform());
+      })
+      .catch((error) => {
+        if (error?.name === "AbortError" || state.epilepsyInline.waveformRequestKey !== requestKey) return;
+        state.epilepsyInline.waveformFetchStatus = "failed";
+        if (!inlineEpilepsyWaveformHasRenderablePayload()) {
+          state.epilepsyInline.waveformPayload = null;
+          state.epilepsyInline.waveformPayloadKey = "";
+          state.epilepsyInline.waveformStatus = "failed";
+        }
+        state.epilepsyInline.waveformError = error.message || String(error);
+        syncInlineEpilepsyWaveformDom();
+      })
+      .finally(() => {
+        if (state.epilepsyInline.waveformActiveRequestKey === requestKey) state.epilepsyInline.waveformActiveRequestKey = "";
+        if (state.epilepsyInline.waveformAbortController === controller) state.epilepsyInline.waveformAbortController = null;
+      });
+  }, INLINE_EPILEPSY_WAVEFORM_FETCH_DEBOUNCE_MS);
+}
+
+function drawInlineEpilepsyWaveform() {
+  const canvas = qs('[data-testid="inline-epilepsy-waveform-canvas"]');
+  const payload = state.epilepsyInline.waveformPayload;
+  if (!canvas?.getContext || !payload?.data_uv?.length) return;
+  const ctx = canvas.getContext("2d");
+  const rect = canvas.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  const width = Math.max(720, Math.floor(rect.width || 900));
+  const height = Math.max(280, Math.floor(rect.height || 360));
+  canvas.width = Math.floor(width * dpr);
+  canvas.height = Math.floor(height * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, width, height);
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, width, height);
+  const left = 72;
+  const right = 18;
+  const top = 26;
+  const bottom = 32;
+  const plotW = width - left - right;
+  const plotH = height - top - bottom;
+  const times = payload.times_sec || [];
+  const start = Number(payload.start_sec || times[0] || 0);
+  const end = start + Number(payload.duration_sec || Math.max(1, (times.at(-1) || start + 1) - start));
+  const reader = inlineEpilepsyReaderState();
+  canvas.dataset.stageOverlay = reader.overlayVisibility.stageCode ? "visible" : "hidden";
+  const channels = payload.channels || [];
+  const rows = payload.data_uv || [];
+  const visible = Math.min(reader.visibleChannelCount, channels.length || rows.length, rows.length);
+  const rowH = plotH / Math.max(1, visible);
+  ctx.strokeStyle = "rgba(42,79,120,.12)";
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= 6; i += 1) {
+    const x = left + (plotW * i / 6);
+    ctx.beginPath();
+    ctx.moveTo(x, top);
+    ctx.lineTo(x, top + plotH);
+    ctx.stroke();
+    ctx.fillStyle = "#789";
+    ctx.font = "11px Segoe UI";
+    ctx.fillText(`${(start + (end - start) * i / 6).toFixed(1)}s`, x - 10, height - 10);
+  }
+  for (let c = 0; c < visible; c += 1) {
+    const y0 = top + rowH * (c + 0.5);
+    ctx.strokeStyle = "rgba(148,163,184,.22)";
+    ctx.beginPath();
+    ctx.moveTo(left, y0);
+    ctx.lineTo(left + plotW, y0);
+    ctx.stroke();
+    ctx.fillStyle = "#4b5c6b";
+    ctx.font = "12px Segoe UI";
+    ctx.fillText(channels[c] || `Ch${c + 1}`, 12, y0 + 4);
+    const row = rows[c] || [];
+    if (!row.length) continue;
+    const scale = (rowH * 0.42) / Math.max(1, Number(reader.sensitivityUvPerRow || 50));
+    ctx.strokeStyle = ["#155c9c", "#157a77", "#7c3aed", "#c2410c", "#0f766e", "#9333ea", "#b45309", "#0369a1"][c % 8];
+    ctx.lineWidth = 1.12;
+    ctx.beginPath();
+    for (let i = 0; i < row.length; i += 1) {
+      const t = Number(times[i]);
+      if (!Number.isFinite(t)) continue;
+      const x = left + ((t - start) / Math.max(0.001, end - start)) * plotW;
+      const y = y0 - Number(row[i] || 0) * scale;
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }
+  if (reader.overlayVisibility.stageCode && (state.epilepsyInline.epochRows || []).length) {
+    const epochRows = state.epilepsyInline.epochRows || [];
+    const bandY = top + 2;
+    const bandH = 10;
+    epochRows.forEach((row, index) => {
+      const code = Number(row.Stage_Code ?? row.stage_code ?? row.prediction ?? 0);
+      const rowStart = Number(row.start_sec ?? row.start ?? (index * 5));
+      const rowEnd = Number(row.end_sec ?? row.end ?? (rowStart + Number(row.duration_sec || 5)));
+      if (!Number.isFinite(rowStart) || !Number.isFinite(rowEnd) || rowEnd <= start || rowStart >= end) return;
+      const x1 = left + ((Math.max(start, rowStart) - start) / Math.max(0.001, end - start)) * plotW;
+      const x2 = left + ((Math.min(end, rowEnd) - start) / Math.max(0.001, end - start)) * plotW;
+      ctx.fillStyle = code === 1 ? "rgba(220, 38, 38, .22)" : "rgba(148, 163, 184, .16)";
+      ctx.fillRect(x1, bandY, Math.max(1, x2 - x1), bandH);
+      if (code === 1) {
+        ctx.strokeStyle = "rgba(185, 28, 28, .72)";
+        ctx.strokeRect(x1, bandY, Math.max(1, x2 - x1), bandH);
+      }
+    });
+    ctx.fillStyle = "#475569";
+    ctx.font = "10px Segoe UI";
+    ctx.fillText("Stage_Code", left + 4, bandY + bandH + 12);
+  }
+  const selectedEvent = inlineEpilepsySelectedEvent();
+  if (reader.overlayVisibility.candidates && selectedEvent) {
+    const x1 = left + ((selectedEvent.start - start) / Math.max(0.001, end - start)) * plotW;
+    const x2 = left + ((selectedEvent.end - start) / Math.max(0.001, end - start)) * plotW;
+    const x = Math.max(left, Math.min(left + plotW, x1));
+    const w = Math.max(1, Math.min(left + plotW, x2) - x);
+    ctx.fillStyle = "rgba(245, 158, 11, .14)";
+    ctx.fillRect(x, top, w, plotH);
+    ctx.strokeStyle = "rgba(180, 83, 9, .72)";
+    ctx.strokeRect(x, top, w, plotH);
+    ctx.fillStyle = "#92400e";
+    ctx.font = "700 12px Segoe UI";
+    ctx.fillText("候选事件", x + 6, top + 16);
+  }
+  ctx.fillStyle = "#64748b";
+  ctx.font = "11px Segoe UI";
+  ctx.fillText(`${payload.downsample || "display"} · ${Number(payload.display_sample_rate_hz || 0).toFixed(0)} Hz display · preview only`, left, 15);
+}
+
+function inlineSpectrogramColor(value) {
+  const v = Math.max(0, Math.min(1, Number(value) || 0));
+  const stops = [
+    [0.00, [12, 35, 64]],
+    [0.25, [37, 99, 143]],
+    [0.50, [102, 171, 170]],
+    [0.75, [244, 181, 94]],
+    [1.00, [179, 58, 48]],
+  ];
+  for (let i = 1; i < stops.length; i += 1) {
+    const [p1, c1] = stops[i];
+    const [p0, c0] = stops[i - 1];
+    if (v <= p1) {
+      const k = (v - p0) / Math.max(0.0001, p1 - p0);
+      const rgb = c0.map((part, index) => Math.round(part + (c1[index] - part) * k));
+      return `rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`;
+    }
+  }
+  return "rgb(179, 58, 48)";
+}
+
+function inlineComputeSpectrogramPreview(payload) {
+  const rows = payload?.data_uv || [];
+  if (!rows.length) return null;
+  const sfreq = Math.max(1, Number(payload.display_sample_rate_hz || 200));
+  const source = rows[0] || [];
+  const values = source.map(Number).filter(Number.isFinite);
+  if (values.length < 64) return null;
+  const windowSize = Math.max(64, Math.min(256, Math.floor(sfreq * 1.0)));
+  const hop = Math.max(16, Math.floor(windowSize / 4));
+  const bins = [0.5, 2, 4, 8, 12, 20, 30, 50].filter((freq) => freq < sfreq / 2);
+  const times = [];
+  const matrix = bins.map(() => []);
+  for (let start = 0; start + windowSize <= values.length; start += hop) {
+    const center = Number(payload.start_sec || 0) + (start + windowSize / 2) / sfreq;
+    times.push(center);
+    for (let b = 0; b < bins.length; b += 1) {
+      const freq = bins[b];
+      let re = 0;
+      let im = 0;
+      for (let n = 0; n < windowSize; n += 1) {
+        const hann = 0.5 - 0.5 * Math.cos((2 * Math.PI * n) / Math.max(1, windowSize - 1));
+        const angle = (2 * Math.PI * freq * n) / sfreq;
+        const sample = values[start + n] * hann;
+        re += sample * Math.cos(angle);
+        im -= sample * Math.sin(angle);
+      }
+      const power = 10 * Math.log10((re * re + im * im) / windowSize + 1e-9);
+      matrix[b].push(power);
+    }
+  }
+  const flat = matrix.flat().filter(Number.isFinite).sort((a, b) => a - b);
+  if (!flat.length || !times.length) return null;
+  const percentile = (p) => flat[Math.max(0, Math.min(flat.length - 1, Math.floor((flat.length - 1) * p)))];
+  const vmin = percentile(0.10);
+  const vmax = percentile(0.99);
+  return { frequencies: bins, times, matrix, vmin, vmax, channel: payload.channels?.[0] || "Ch1" };
+}
+
+function drawInlineEpilepsySpectrogram() {
+  const canvas = qs("[data-testid=\"inline-epilepsy-spectrogram-canvas\"]");
+  const payload = state.epilepsyInline.waveformPayload;
+  const spectrogramPayload = state.epilepsyInline.spectrogramPayload;
+  if (!canvas?.getContext) return;
+  const ctx = canvas.getContext("2d");
+  const rect = canvas.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  const width = Math.max(720, Math.floor(rect.width || 900));
+  const height = Math.max(220, Math.floor(rect.height || 260));
+  canvas.width = Math.floor(width * dpr);
+  canvas.height = Math.floor(height * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, width, height);
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, width, height);
+  const reader = inlineEpilepsyReaderState();
+  const windowStart = Number(reader.startSec || payload?.start_sec || 0);
+  const windowEnd = windowStart + Number(reader.durationSec || payload?.duration_sec || 30);
+  const allTimes = (spectrogramPayload?.times_sec || []).map(Number);
+  const allFreqs = (spectrogramPayload?.frequencies_hz || []).map(Number);
+  const allPower = spectrogramPayload?.power_db || [];
+  const selectedColumns = allTimes
+    .map((time, index) => ({ time, index }))
+    .filter((item) => Number.isFinite(item.time) && item.time >= windowStart && item.time <= windowEnd);
+  const fallbackColumns = allTimes.map((time, index) => ({ time, index })).slice(0, 1);
+  const columns = selectedColumns.length ? selectedColumns : fallbackColumns;
+  const spec = spectrogramPayload && allFreqs.length && columns.length && allPower.length ? {
+    frequencies: allFreqs,
+    times: columns.map((item) => item.time),
+    matrix: allPower.map((row) => columns.map((item) => Number(row?.[item.index]))),
+    vmin: Number(spectrogramPayload.vmin),
+    vmax: Number(spectrogramPayload.vmax),
+    channel: spectrogramPayload.channel || payload?.channels?.[0] || "Ch1",
+    source: spectrogramPayload.source_compatibility || "epilepsy_ml_spectrogram",
+    parameters: spectrogramPayload.parameters || {},
+  } : null;
+  canvas.dataset.spectrogramStatus = spec ? "ready" : (state.epilepsyInline.spectrogramLoadStatus || "waiting");
+  canvas.dataset.source = spec ? "epilepsy_ml_spectrogram_artifact_pc_stft" : "waiting_epilepsy_ml_spectrogram";
+  if (!spec) {
+    ctx.fillStyle = "#64748b";
+    ctx.font = "13px Segoe UI";
+    ctx.fillText("\u8fd0\u884c\u521d\u7b5b\u540e\u663e\u793a PC \u53c2\u6570\u540c\u6e90 STFT \u65f6\u9891\u56fe\u3002", 28, 42);
+    ctx.fillText("\u7b49\u5f85\u4ea7\u7269\uff1adata/epilepsy_ml_spectrogram.json", 28, 64);
+    return;
+  }
+  const left = 58;
+  const right = 16;
+  const top = 20;
+  const bottom = 34;
+  const plotW = width - left - right;
+  const plotH = height - top - bottom;
+  const cols = spec.times.length;
+  const rows = spec.frequencies.length;
+  const cellW = plotW / Math.max(1, cols);
+  const cellH = plotH / Math.max(1, rows);
+  for (let r = 0; r < rows; r += 1) {
+    const freqIndex = rows - 1 - r;
+    for (let c = 0; c < cols; c += 1) {
+      const value = spec.matrix[freqIndex]?.[c];
+      const norm = (Number(value) - spec.vmin) / Math.max(0.0001, spec.vmax - spec.vmin);
+      ctx.fillStyle = inlineSpectrogramColor(norm);
+      ctx.fillRect(left + c * cellW, top + r * cellH, Math.ceil(cellW) + 0.5, Math.ceil(cellH) + 0.5);
+    }
+  }
+  ctx.strokeStyle = "rgba(42,79,120,.18)";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(left, top, plotW, plotH);
+  ctx.fillStyle = "#475569";
+  ctx.font = "11px Segoe UI";
+  const labelFreqs = [50, 30, 20, 12, 8, 4, 0.5].filter((freq) => freq <= spec.frequencies.at(-1));
+  labelFreqs.forEach((freq) => {
+    const idx = spec.frequencies.reduce((best, current, index) => Math.abs(current - freq) < Math.abs(spec.frequencies[best] - freq) ? index : best, 0);
+    const y = top + plotH - (idx / Math.max(1, rows - 1)) * plotH;
+    ctx.fillText(String(freq) + "Hz", 8, y + 4);
+    ctx.strokeStyle = "rgba(255,255,255,.28)";
+    ctx.beginPath();
+    ctx.moveTo(left, y);
+    ctx.lineTo(left + plotW, y);
+    ctx.stroke();
+  });
+  const start = windowStart;
+  const end = windowEnd;
+  for (let i = 0; i <= 4; i += 1) {
+    const x = left + (plotW * i / 4);
+    ctx.fillStyle = "#64748b";
+    ctx.fillText((start + (end - start) * i / 4).toFixed(1) + "s", x - 10, height - 10);
+  }
+  const selectedEvent = inlineEpilepsySelectedEvent();
+  if (selectedEvent) {
+    const x1 = left + ((selectedEvent.start - start) / Math.max(0.001, end - start)) * plotW;
+    const x2 = left + ((selectedEvent.end - start) / Math.max(0.001, end - start)) * plotW;
+    const x = Math.max(left, Math.min(left + plotW, x1));
+    const w = Math.max(1, Math.min(left + plotW, x2) - x);
+    ctx.fillStyle = "rgba(255, 255, 255, .20)";
+    ctx.fillRect(x, top, w, plotH);
+    ctx.strokeStyle = "rgba(251, 191, 36, .92)";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x, top, w, plotH);
+  }
+  ctx.fillStyle = "#334155";
+  ctx.font = "12px Segoe UI";
+  const win = Number(spec.parameters?.window_sec || 4).toFixed(0);
+  const overlap = Math.round(Number(spec.parameters?.overlap_ratio || 0.9) * 100);
+  ctx.fillText("PC STFT artifact · " + spec.channel + " · " + win + "s window · " + overlap + "% overlap · 0.5-50Hz · 10/99 percentile", left, 14);
+}
+
+function renderInlineEpilepsyWorkbench() {
+  const file = currentWorkspaceFile() || state.real.eegFile || {};
+  const plan = state.real.plan || {};
+  const task = inlineEpilepsyTask();
+  const artifacts = inlineEpilepsyArtifacts();
+  const status = String(task?.status || "not_started").toLowerCase();
+  const running = status === "running" || status === "queued" || String(task?.id || "").startsWith("pending_");
+  const completed = status === "completed";
+  const planReady = hasConfirmedPlan();
+  const resultReady = completed && state.epilepsyInline.resultLoadStatus === "ready";
+  const events = resultReady ? inlineEpilepsyCandidateEvents() : [];
+  const selectedEvent = inlineEpilepsySelectedEvent(events);
+  const selectedEventId = selectedEvent?.id || "";
+  const { reader, durationTotal } = clampInlineEpilepsyReader(file);
+  ensureInlineEpilepsyWaveform(file);
+  const waveformStatus = state.epilepsyInline.waveformStatus || "idle";
+  const waveformFetchStatus = state.epilepsyInline.waveformFetchStatus || waveformStatus;
+  const waveformReady = inlineEpilepsyWaveformHasRenderablePayload();
+  const wavePayload = state.epilepsyInline.waveformPayload;
+  const displayedWindow = inlineEpilepsyDisplayedReaderWindow(file);
+  const displayStartSec = displayedWindow.displayStartSec;
+  const displayDurationSec = displayedWindow.displayDurationSec;
+  const displayEndSec = Math.min(durationTotal, displayStartSec + displayDurationSec);
+  const waveWindowText = waveformReady
+    ? `${displayStartSec.toFixed(1)}-${displayEndSec.toFixed(1)}s`
+    : "等待波形";
+  const syncScale = String(state.epilepsyInline.timeScaleSec || 30);
+  if (selectedEventId && !state.epilepsyInline.selectedEventId) state.epilepsyInline.selectedEventId = selectedEventId;
+  const correction = selectedEventId ? inlineEpilepsyLatestCorrection(selectedEventId) : null;
+  const draftCount = state.epilepsyInline.draftCommands.length;
+  const canCorrect = resultReady && Boolean(selectedEvent);
+  const savingReview = state.epilepsyInline.reviewSaveStatus === "saving";
+  const exportingReview = state.epilepsyInline.exportStatus === "exporting";
+  const canSave = draftCount > 0 && !state.epilepsyInline.draftSaved && !savingReview;
+  const canPublish = state.epilepsyInline.draftSaved && Boolean(state.epilepsyInline.reviewSession?.id) && !exportingReview && state.epilepsyInline.exportStatus !== "exported";
+  const correctionDisabledReason = resultReady ? "请选择一个候选事件后再进行人工矫正。" : "请先完成癫痫样事件初筛并载入候选事件。";
+  const saveDisabledReason = savingReview ? "正在保存复核草稿。" : draftCount ? "当前草稿已保存或正在等待后端返回。" : "请先选择候选事件并添加人工矫正草稿。";
+  const publishDisabledReason = state.epilepsyInline.exportStatus === "exported" ? "复核结果已发布到结果查看。" : "请先保存后端复核会话，再发布到结果查看。";
+  const reviewSessionLabel = state.epilepsyInline.reviewSession?.id || "尚未保存到后端";
+  const exportLabel = state.epilepsyInline.exportStatus === "exported" ? "已注册复核产物" : state.epilepsyInline.exportStatus === "exporting" ? "正在注册产物" : "等待保存草稿";
+  const counts = inlineEpilepsySummaryCounts(events);
+  const teachingInline = Boolean(state.teaching.active && (isTeachingDemoProject(state.real.project) || isTeachingDemoFile(file)));
+  const deepLinkPreparing = state.deepLink.epilepsyBootstrapStatus === "running" || state.deepLink.epilepsyBootstrapInFlight;
+  const deepLinkFailed = state.deepLink.epilepsyBootstrapStatus === "failed";
+  const teachingBoundaryText = "\u6559\u5b66\u6a21\u5f0f\uff1a\u6b63\u5728\u4f7f\u7528\u5185\u7f6e\u5408\u6210\u766b\u75eb\u6837 EEG \u6570\u636e\uff0c\u53ef\u5b8c\u6574\u8bd5\u8dd1\u521d\u7b5b\u3001\u4eba\u5de5\u77eb\u6b63\u548c\u590d\u6838\u4ea7\u7269\u6ce8\u518c\uff1b\u4e0d\u4e0a\u4f20\u3001\u4e0d\u5220\u9664\u3001\u4e0d\u8986\u76d6\u4f60\u7684\u6b63\u5f0f\u6570\u636e\uff0c\u4e0d\u4f5c\u4e3a\u8bca\u65ad\u6216\u79d1\u5b66\u7ed3\u8bba\u3002";
+  const context = qs('[data-testid="inline-epilepsy-context-header"]');
+  if (context) {
+    context.innerHTML = `
+      <div class="inline-staging-title">
+        <div>
+          <p class="eyebrow">分析任务 / 主系统子页面</p>
+          <h2>癫痫样事件分析台</h2>
+          <p>继承已确认的数据准备方案，进入后先查看已加载波形；再运行候选事件初筛，结合 Stage_Code、事件表、时频证据与人工矫正形成草稿；标准结果发布需等待后端产物注册。科研支持用途，不用于诊断、确诊、治疗或临床分诊。</p>
+        </div>
+        <div class="real-actions compact-actions">
+          <button class="ghost-btn" type="button" data-view-jump="workflow"><span>分析任务</span></button>
+          <button class="ghost-btn" type="button" data-view-jump="statistics"><span>结果查看</span></button>
+        </div>
+      </div>
+      <div class="inline-staging-context-grid">
+        <span><b>数据</b>${escapeHtml(file.original_filename || file.filename || file.id || "未选择")}</span>
+        <span><b>准备方案</b>${escapeHtml(plan.id ? `${plan.id} / r${plan.revision || "-"}` : "未确认")}</span>
+        <span><b>分析状态</b>${escapeHtml(completed ? "已完成初筛" : running ? "正在运行" : "等待开始")}</span>
+        <span><b>合同版本</b>${escapeHtml(dataPreparationContractVersion(plan))}</span>
+      </div>
+      ${teachingInline ? `<div class="segment-summary teaching-protected-note" data-testid="inline-epilepsy-teaching-boundary">${escapeHtml(teachingBoundaryText)}</div>` : ""}
+      ${deepLinkPreparing ? `<div class="segment-summary teaching-protected-note" data-testid="inline-epilepsy-deeplink-status">正在准备癫痫示例 EDF 数据...</div>` : ""}
+      ${deepLinkFailed ? `<div class="segment-summary danger-text" data-testid="inline-epilepsy-deeplink-status">示例 EDF 自动载入未完成：${escapeHtml(state.deepLink.epilepsyBootstrapError || "请重新载入示例数据")} <button class="ghost-btn mini" type="button" data-epilepsy-action="retry-deeplink-bootstrap" data-testid="inline-epilepsy-retry-bootstrap">重新载入示例 EDF</button></div>` : ""}
+    `;
+  }
+  const startPanel = qs('[data-testid="inline-epilepsy-screening-panel"]');
+  if (startPanel) {
+    const gateReason = planReady ? "准备方案已确认，可以运行后端初筛。" : "尚未确认数据准备方案：可以先查看波形，但不能运行初筛。";
+    const screeningStatus = state.epilepsyInline.screeningStatus || (running ? "running" : completed ? "completed" : "idle");
+    const screeningProgress = Math.max(0, Math.min(100, Number(state.epilepsyInline.screeningProgress || (running ? 35 : completed ? 100 : 0))));
+    const screeningMessage = state.epilepsyInline.screeningMessage || (running ? "\u540e\u7aef\u6b63\u5728\u8fdb\u884c\u766b\u75eb\u6837\u4e8b\u4ef6\u521d\u7b5b\u3002" : completed ? "\u766b\u75eb\u6837\u4e8b\u4ef6\u521d\u7b5b\u5b8c\u6210\uff0c\u53ef\u7ee7\u7eed\u4eba\u5de5\u77eb\u6b63\u3002" : "\u70b9\u51fb\u5f00\u59cb\u521d\u7b5b\u540e\uff0c\u4f1a\u5148\u63d0\u4ea4\u4efb\u52a1\uff0c\u518d\u8bfb\u53d6\u5019\u9009\u4e8b\u4ef6\u4e0e Stage_Code \u7ed3\u679c\u3002");
+    startPanel.innerHTML = `
+      <div class="inline-staging-callout inline-workbench-toolbar">
+        <div>
+          <p class="eyebrow">操作台工具栏</p>
+          <h2>${completed ? "算法结果已载入，继续人工矫正" : "先阅片，再按需初筛"}</h2>
+          <p data-testid="inline-epilepsy-gate-reason">${escapeHtml(gateReason)} 波形、Stage 条、时频证据与候选事件保持同一时间尺度。</p>
+        </div>
+        <div class="real-actions compact-actions">
+          <button class="primary-btn" type="button" data-testid="inline-epilepsy-start-screening" data-real-action="run-epilepsy-ml" title="${escapeHtml(gateReason)}" ${(!planReady || running) ? "disabled" : ""}><span>${running ? "运行中" : completed ? "重新初筛" : "开始初筛"}</span></button>
+          <button class="ghost-btn" type="button" data-view-jump="analysis"><span>确认数据准备</span></button>
+        </div>
+      </div>
+      <div class="inline-screening-progress" data-testid="inline-epilepsy-screening-progress" data-status="${escapeHtml(screeningStatus)}" aria-live="polite">
+        <div class="inline-progress-head"><strong>${escapeHtml(screeningMessage)}</strong><span>${screeningProgress.toFixed(0)}%</span></div>
+        <div class="inline-progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${screeningProgress.toFixed(0)}"><span style="width:${screeningProgress.toFixed(0)}%"></span></div>
+      </div>
+    `;
+  }
+  const summary = qs('[data-testid="inline-epilepsy-summary-panel"]');
+  if (summary) {
+    summary.innerHTML = `
+      <div class="panel-head compact"><h2>结果概览</h2><span class="badge ${resultReady ? "" : "warn"}">${resultReady ? "真实结果已载入" : state.epilepsyInline.resultLoadStatus}</span></div>
+      <div class="metric-grid compact-metrics">
+        <article class="metric"><span>候选事件</span><strong>${counts.eventCount}</strong><small>来自本次 events artifact</small></article>
+        <article class="metric"><span>Epoch</span><strong>${counts.epochCount}</strong><small>来自本次 epoch predictions</small></article>
+        <article class="metric"><span>Stage_Code=1</span><strong>${counts.seizureEpochs}</strong><small>模型候选命中</small></article>
+        <article class="metric"><span>人工矫正</span><strong>${draftCount}</strong><small>${state.epilepsyInline.draftSaved ? "已同步后端复核会话" : "本地草稿"}</small></article>
+      </div>
+      <div class="segment-summary">源结果来自本次初筛任务；人工矫正只写复核版本，不覆盖原始算法输出。</div>
+      ${state.epilepsyInline.resultLoadError ? `<p class="small-muted danger-text" data-testid="inline-epilepsy-result-load-error">结果读取错误：${escapeHtml(state.epilepsyInline.resultLoadError)}</p>` : ""}
+    `;
+  }
+  const epoch = qs('[data-testid="inline-epilepsy-epoch-panel"]');
+  if (epoch) {
+    const cells = resultReady
+      ? (state.epilepsyInline.epochRows || []).map((row, index) => {
+          const code = Number(row.Stage_Code ?? row.stage_code ?? 0);
+          const epochIndex = row.epoch_index ?? index;
+          const mappedEvent = inlineEpilepsyEventForEpoch(epochIndex, events);
+          const active = mappedEvent?.id && mappedEvent.id === selectedEventId ? " selected" : "";
+          return `<button type="button" class="${code === 1 ? "candidate" : ""}${active}" data-epilepsy-action="select-epoch" data-epoch-index="${escapeHtml(epochIndex)}" data-event-id="${escapeHtml(mappedEvent?.id || "")}" title="${mappedEvent ? "选择对应候选事件" : "该 epoch 暂无候选事件"}">${escapeHtml(String(code))}</button>`;
+        }).join("")
+      : `<em>运行初筛后显示每个 epoch 的 Stage_Code。</em>`;
+    epoch.innerHTML = `
+      <div class="panel-head compact"><h2>Stage_Code / Epoch 时间轴</h2><span class="badge">${resultReady ? "artifact bound" : "等待结果"}</span></div>
+      <div class="inline-epoch-strip" data-testid="inline-epilepsy-stage-strip" data-source-task="${escapeHtml(task?.id || "")}" data-sync-scale="${escapeHtml(syncScale)}" data-selected-event="${escapeHtml(selectedEventId)}">${cells}</div>
+    `;
+  }
+  const eventsPanel = qs('[data-testid="inline-epilepsy-events-panel"]');
+  if (eventsPanel) {
+    const rows = events.map((event) => {
+      const active = event.id === selectedEventId ? "selected" : "";
+      const eventTimeText = `${event.start.toFixed(1)}-${event.end.toFixed(1)}s`;
+      const eventEpochText = `epoch ${event.startEpoch}-${event.endEpoch}`;
+      const ariaLabel = `${event.label}, ${eventTimeText}, ${eventEpochText}`;
+      return `<button type="button" class="inline-event-row ${active}" data-epilepsy-action="select-event" data-event-id="${escapeHtml(event.id)}" aria-label="${escapeHtml(ariaLabel)}"><span><strong>${escapeHtml(event.label)}</strong><small> - ${escapeHtml(eventTimeText)} / ${escapeHtml(eventEpochText)}</small></span></button>`;
+    }).join("");
+    eventsPanel.innerHTML = `
+      <div class="panel-head compact"><h2>候选事件与人工矫正</h2><span class="badge warn">${events.length} 个候选</span></div>
+      <div class="segment-summary">选择候选事件后，可在人工矫正区标记为“保留候选 / 排除候选 / 需复核”；“需复核”只写复核状态，不写第三种 Stage_Code。</div>
+      <div class="inline-event-list">${rows || `<div class="empty-object-state"><strong>暂无候选事件</strong><span>请先运行初筛，或检查本次 artifacts。</span></div>`}</div>
+    `;
+  }
+  const waveform = qs('[data-testid="inline-epilepsy-waveform-panel"]');
+  if (waveform) {
+    const canPrevPage = reader.startSec > 0.001;
+    const canNextPage = reader.startSec + reader.durationSec < durationTotal - 0.001;
+    const canGainDown = reader.sensitivityUvPerRow > EDF_BROWSER_INTERACTION_CONSTANTS.minSensitivityUvPerRow + 0.001;
+    const canGainUp = reader.sensitivityUvPerRow < EDF_BROWSER_INTERACTION_CONSTANTS.maxSensitivityUvPerRow - 0.001;
+    const overviewEvents = events.map((event) => {
+      const left = Math.max(0, Math.min(100, (Number(event.start || 0) / Math.max(1, durationTotal)) * 100));
+      const width = Math.max(0.4, Math.min(100 - left, ((Number(event.end || event.start || 0) - Number(event.start || 0)) / Math.max(1, durationTotal)) * 100));
+      const active = event.id === selectedEventId ? " active" : "";
+      return `<span class="inline-overview-event${active}" style="left:${left.toFixed(3)}%;width:${width.toFixed(3)}%" data-event-id="${escapeHtml(event.id)}"></span>`;
+    }).join("");
+    const overviewReviews = (state.epilepsyInline.draftCommands || []).map((command) => {
+      const event = events.find((item) => item.id === command.eventId);
+      if (!event) return "";
+      const left = Math.max(0, Math.min(100, (Number(event.start || 0) / Math.max(1, durationTotal)) * 100));
+      return `<span class="inline-overview-review" style="left:${left.toFixed(3)}%" title="${escapeHtml(`${command.eventId}: ${command.label}`)}"></span>`;
+    }).join("");
+    const overviewLeft = Math.max(0, Math.min(100, (displayStartSec / Math.max(1, durationTotal)) * 100));
+    const overviewWidth = Math.max(1, Math.min(100 - overviewLeft, ((displayEndSec - displayStartSec) / Math.max(1, durationTotal)) * 100));
+    waveform.innerHTML = `
+      <div class="panel-head compact"><div><h2>原始波形阅片窗</h2><p>进入操作台先看波形；算法初筛结果只作为同步叠加层。</p></div><span class="badge ${waveformReady ? "" : "warn"}">${escapeHtml(waveWindowText)}</span></div>
+      <div class="inline-wave-toolbar">
+        <span class="inline-mode-pill ${waveformReady ? "ready" : "blocked"}" data-testid="inline-epilepsy-waveform-status">${waveformReady ? `已加载波形 · ${(wavePayload.channels || []).slice(0, 8).length} 通道` : "等待波形窗口"}</span>
+        <span class="inline-mode-pill">${escapeHtml(syncScale)}s 同步尺度</span>
+        <span class="inline-mode-pill ${resultReady ? "ready" : "blocked"}">${resultReady ? "Stage_Code 已绑定" : "尚未运行初筛"}</span>
+      </div>
+      <div class="inline-reader-toolbar" data-testid="inline-epilepsy-reader-toolbar">
+        <div class="inline-reader-group" aria-label="waveform browse controls">
+          <button type="button" data-epilepsy-action="reader-prev-page" data-testid="inline-epilepsy-prev-page" ${canPrevPage ? "" : "disabled"}>上一页</button>
+          <button type="button" data-epilepsy-action="reader-next-page" data-testid="inline-epilepsy-next-page" ${canNextPage ? "" : "disabled"}>下一页</button>
+          <button type="button" data-epilepsy-action="reader-center-event" data-testid="inline-epilepsy-center-candidate" ${selectedEvent ? "" : "disabled"}>居中候选</button>
+        </div>
+        <div class="inline-reader-group" aria-label="candidate navigation">
+          <button type="button" data-epilepsy-action="reader-prev-candidate" data-testid="inline-epilepsy-prev-candidate" ${events.length ? "" : "disabled"}>上一个候选</button>
+          <button type="button" data-epilepsy-action="reader-next-candidate" data-testid="inline-epilepsy-next-candidate" ${events.length ? "" : "disabled"}>下一个候选</button>
+        </div>
+        <div class="inline-reader-group" aria-label="display controls">
+          <button type="button" data-epilepsy-action="set-time-scale" data-scale-sec="5" class="${syncScale === "5" ? "active" : ""}" aria-pressed="${syncScale === "5" ? "true" : "false"}">5s</button>
+          <button type="button" data-epilepsy-action="set-time-scale" data-scale-sec="30" class="${syncScale === "30" ? "active" : ""}" aria-pressed="${syncScale === "30" ? "true" : "false"}">30s</button>
+          <button type="button" data-epilepsy-action="set-time-scale" data-scale-sec="300" class="${Number(syncScale) > 30 ? "active" : ""}" aria-pressed="${Number(syncScale) > 30 ? "true" : "false"}">300s</button>
+          <button type="button" data-epilepsy-action="reader-gain-down" data-testid="inline-epilepsy-gain-down" ${canGainDown ? "" : "disabled"}>- uV/row</button>
+          <span data-testid="inline-epilepsy-uv-row">${Number(reader.sensitivityUvPerRow).toFixed(0)} uV/row</span>
+          <button type="button" data-epilepsy-action="reader-gain-up" data-testid="inline-epilepsy-gain-up" ${canGainUp ? "" : "disabled"}>+ uV/row</button>
+        </div>
+        <div class="inline-reader-group inline-reader-toggles" aria-label="overlay controls">
+          <button type="button" data-epilepsy-action="reader-toggle-overlay" data-overlay="candidates" aria-pressed="${reader.overlayVisibility.candidates ? "true" : "false"}" data-testid="inline-epilepsy-toggle-candidates">候选</button>
+          <button type="button" data-epilepsy-action="reader-toggle-overlay" data-overlay="stageCode" aria-pressed="${reader.overlayVisibility.stageCode ? "true" : "false"}" data-testid="inline-epilepsy-toggle-stage">Stage_Code</button>
+          <button type="button" data-epilepsy-action="reader-toggle-overlay" data-overlay="reviewEdits" aria-pressed="${reader.overlayVisibility.reviewEdits ? "true" : "false"}" data-testid="inline-epilepsy-toggle-review">人工矫正</button>
+        </div>
+      </div>
+      <div class="inline-wave-canvas ${waveformReady ? "ready" : "blocked"}" data-source-task="${escapeHtml(task?.id || "")}" data-sync-scale="${escapeHtml(syncScale)}" data-selected-event="${escapeHtml(selectedEventId)}" data-waveform-status="${escapeHtml(waveformStatus)}" data-waveform-fetch-status="${escapeHtml(waveformFetchStatus)}" data-displayed-start-sec="${displayStartSec.toFixed(3)}" data-displayed-duration-sec="${displayDurationSec.toFixed(3)}">
+        <canvas data-testid="inline-epilepsy-waveform-canvas" data-sync-scale="${escapeHtml(syncScale)}" data-selected-event="${escapeHtml(selectedEventId)}" data-waveform-status="${escapeHtml(waveformStatus)}" data-waveform-fetch-status="${escapeHtml(waveformFetchStatus)}" aria-label="癫痫样事件分析台原始 EEG 波形"></canvas>
+      </div>
+    `;
+    const inlineCanvas = waveform.querySelector('[data-testid="inline-epilepsy-waveform-canvas"]');
+    if (inlineCanvas) {
+      inlineCanvas.tabIndex = 0;
+      inlineCanvas.dataset.readerStartSec = reader.startSec.toFixed(3);
+      inlineCanvas.dataset.readerDurationSec = reader.durationSec.toFixed(3);
+    }
+    waveform.insertAdjacentHTML("beforeend", `
+      <div class="inline-overview-strip" data-testid="inline-epilepsy-overview-strip" data-duration-sec="${durationTotal.toFixed(3)}" data-start-sec="${displayStartSec.toFixed(3)}" data-window-sec="${displayDurationSec.toFixed(3)}" role="slider" aria-label="全程概览与当前阅片窗口" aria-valuemin="0" aria-valuemax="${durationTotal.toFixed(1)}" aria-valuenow="${displayStartSec.toFixed(1)}">
+        ${reader.overlayVisibility.candidates ? overviewEvents : ""}
+        ${reader.overlayVisibility.reviewEdits ? overviewReviews : ""}
+        <span class="inline-overview-current-window" style="left:${overviewLeft.toFixed(3)}%;width:${overviewWidth.toFixed(3)}%"></span>
+      </div>
+      <p class="small-muted inline-reader-help">滚轮水平阅片，Ctrl/Cmd+滚轮缩放时间窗，方向键小步移动，PageUp/PageDown 翻页，+/- 调整 uV/row；浏览不会写入人工矫正草稿。</p>
+    `);
+  }
+  const spectrogram = qs('[data-testid="inline-epilepsy-spectrogram-panel"]');
+  if (spectrogram) {
+    spectrogram.innerHTML = `
+      <div class="panel-head compact"><div><h2>时频证据层</h2><p>基于当前同一波形窗口即时计算 STFT 预览，与波形同轴联动；它不是正式 TFR、PSD 或 Band Power 分析结果。</p></div><div class="inline-scale-control-group" data-testid="inline-epilepsy-sync-scale-readout"><span>跟随阅片窗</span><strong>${escapeHtml(syncScale)}s</strong></div></div>
+      <div class="inline-spectrogram-shell" data-sync-scale="${escapeHtml(syncScale)}" data-selected-event="${escapeHtml(selectedEventId)}" data-source-task="${escapeHtml(task?.id || "")}">
+        <canvas data-testid="inline-epilepsy-spectrogram-canvas" data-sync-scale="${escapeHtml(syncScale)}" data-selected-event="${escapeHtml(selectedEventId)}" data-source-task="${escapeHtml(task?.id || "")}" data-spectrogram-status="${waveformReady ? "ready" : "waiting"}" aria-label="癫痫样事件分析台 STFT 预览"></canvas>
+        <div class="inline-spectrogram-event"><span>${waveformReady ? escapeHtml(waveWindowText) : "等待波形窗口"}</span><strong>${selectedEvent ? "候选事件同步高亮" : "运行后同步候选事件"}</strong></div>
+      </div>
+      <p class="small-muted" data-testid="inline-epilepsy-spectrogram-source-copy">当前图只由同一波形窗口的 waveform chunk 即时派生 STFT 预览，用于同步阅片参考；它不是正式 TFR、PSD 或 Band Power 分析结果，也不会写入结果产物。</p>
+    `;
+  }
+  const source = qs('[data-testid="inline-epilepsy-source-panel"]');
+  if (source) {
+    source.innerHTML = `<div class="panel-head compact"><h2>源结果与合同</h2></div><div class="empty-object-state"><strong>${resultReady ? "源结果只读保留" : "等待源结果"}</strong><span>Stage_Code、候选事件、阈值和模型产物来自本次 task；人工矫正另存为草稿，不覆盖原始 ML 输出。</span></div>`;
+  }
+  const review = qs('[data-testid="inline-epilepsy-review-panel"]');
+  if (review) {
+    review.innerHTML = `
+      <div class="panel-head compact"><h2>人工矫正与草稿</h2></div>
+      <label class="real-field"><span>当前任务</span><input value="${escapeHtml(task?.id || "未运行")}" readonly /></label>
+      <label class="real-field"><span>复核会话</span><input value="${escapeHtml(reviewSessionLabel)}" readonly /></label>
+      <div class="inline-review-status"><strong>${selectedEvent ? escapeHtml(selectedEvent.label) : "请选择候选事件"}</strong><span>${correction ? escapeHtml(correction.displayLabel || correction.label) : "人工矫正只写入复核草稿：保留候选会保留该候选，排除候选会把对应 epoch 改为 0，需复核只写复核状态。"}</span></div>
+      <div class="inline-correction-actions">
+        <button class="ghost-btn danger-soft" type="button" data-epilepsy-action="set-correction" data-correction="Seizure" data-correction-label="保留候选" data-event-id="${escapeHtml(selectedEventId)}" title="${escapeHtml(canCorrect ? "把当前候选保留在复核版本中。" : correctionDisabledReason)}" data-disabled-reason="${escapeHtml(canCorrect ? "" : correctionDisabledReason)}" ${canCorrect ? "" : "disabled"}>保留候选</button>
+        <button class="primary-btn" type="button" data-epilepsy-action="set-correction" data-correction="Normal" data-correction-label="排除候选" data-event-id="${escapeHtml(selectedEventId)}" title="${escapeHtml(canCorrect ? "把当前候选排除，并把对应 epoch 写为 0。" : correctionDisabledReason)}" data-disabled-reason="${escapeHtml(canCorrect ? "" : correctionDisabledReason)}" ${canCorrect ? "" : "disabled"}>排除候选</button>
+        <button class="ghost-btn" type="button" data-epilepsy-action="set-correction" data-correction="Artifact" data-correction-label="标为伪迹" data-event-id="${escapeHtml(selectedEventId)}" title="${escapeHtml(canCorrect ? "把当前候选标为伪迹，复核导出中保留审计原因。" : correctionDisabledReason)}" data-disabled-reason="${escapeHtml(canCorrect ? "" : correctionDisabledReason)}" ${canCorrect ? "" : "disabled"}>标为伪迹</button>
+        <button class="ghost-btn" type="button" data-epilepsy-action="set-correction" data-correction="Needs review" data-correction-label="需复核" data-event-id="${escapeHtml(selectedEventId)}" title="${escapeHtml(canCorrect ? "把当前候选标记为需要后续复核。" : correctionDisabledReason)}" data-disabled-reason="${escapeHtml(canCorrect ? "" : correctionDisabledReason)}" ${canCorrect ? "" : "disabled"}>需复核</button>
+      </div>
+      <div class="inline-correction-actions">
+        <button class="ghost-btn" type="button" data-epilepsy-action="adjust-interval" data-adjust-edge="start" data-adjust-delta-sec="-1" data-event-id="${escapeHtml(selectedEventId)}" title="${escapeHtml(canCorrect ? "把候选起点向前微调 1 秒。" : correctionDisabledReason)}" data-disabled-reason="${escapeHtml(canCorrect ? "" : correctionDisabledReason)}" ${canCorrect ? "" : "disabled"}>起点 -1s</button>
+        <button class="ghost-btn" type="button" data-epilepsy-action="adjust-interval" data-adjust-edge="start" data-adjust-delta-sec="1" data-event-id="${escapeHtml(selectedEventId)}" title="${escapeHtml(canCorrect ? "把候选起点向后微调 1 秒。" : correctionDisabledReason)}" data-disabled-reason="${escapeHtml(canCorrect ? "" : correctionDisabledReason)}" ${canCorrect ? "" : "disabled"}>起点 +1s</button>
+        <button class="ghost-btn" type="button" data-epilepsy-action="adjust-interval" data-adjust-edge="end" data-adjust-delta-sec="-1" data-event-id="${escapeHtml(selectedEventId)}" title="${escapeHtml(canCorrect ? "把候选终点向前微调 1 秒。" : correctionDisabledReason)}" data-disabled-reason="${escapeHtml(canCorrect ? "" : correctionDisabledReason)}" ${canCorrect ? "" : "disabled"}>终点 -1s</button>
+        <button class="ghost-btn" type="button" data-epilepsy-action="adjust-interval" data-adjust-edge="end" data-adjust-delta-sec="1" data-event-id="${escapeHtml(selectedEventId)}" title="${escapeHtml(canCorrect ? "把候选终点向后微调 1 秒。" : correctionDisabledReason)}" data-disabled-reason="${escapeHtml(canCorrect ? "" : correctionDisabledReason)}" ${canCorrect ? "" : "disabled"}>终点 +1s</button>
+      </div>
+      <div class="real-actions compact-actions">
+        <button class="ghost-btn" type="button" data-epilepsy-action="undo" title="${draftCount ? "撤销最近一条人工矫正。" : "暂无可撤销的人工矫正。"}" data-disabled-reason="${draftCount ? "" : "暂无可撤销的人工矫正。"}" ${draftCount ? "" : "disabled"}>撤销</button>
+        <button class="ghost-btn" type="button" data-epilepsy-action="redo" title="${state.epilepsyInline.redoCommands.length ? "重做最近撤销的人工矫正。" : "暂无可重做的人工矫正。"}" data-disabled-reason="${state.epilepsyInline.redoCommands.length ? "" : "暂无可重做的人工矫正。"}" ${state.epilepsyInline.redoCommands.length ? "" : "disabled"}>重做</button>
+        <button class="ghost-btn danger-soft" type="button" data-epilepsy-action="reset" title="${draftCount ? "清空当前本地复核草稿。" : "暂无可清空的人工矫正草稿。"}" data-disabled-reason="${draftCount ? "" : "暂无可清空的人工矫正草稿。"}" ${draftCount ? "" : "disabled"}>清空</button>
+        <button class="ghost-btn" type="button" data-epilepsy-action="save-draft" title="${escapeHtml(canSave ? "保存人工矫正草稿到后端复核会话。" : saveDisabledReason)}" data-disabled-reason="${escapeHtml(canSave ? "" : saveDisabledReason)}" ${canSave ? "" : "disabled"}>${savingReview ? "正在保存" : state.epilepsyInline.draftSaved ? "已保存到后端" : "保存复核草稿"}</button>
+        <button class="primary-btn" type="button" data-epilepsy-action="publish-results" ${canPublish ? "" : "disabled"} title="${escapeHtml(canPublish ? "注册人工修订层产物并进入结果查看。" : publishDisabledReason)}" data-disabled-reason="${escapeHtml(canPublish ? "" : publishDisabledReason)}">${exportingReview ? "正在发布" : state.epilepsyInline.exportStatus === "exported" ? "已发布到结果查看" : "发布到结果查看"}</button>
+        ${state.epilepsyInline.exportStatus === "exported" ? `<button class="ghost-btn" type="button" data-testid="inline-epilepsy-view-results" data-view-jump="statistics">查看复核结果</button>` : ""}
+      </div>
+      <div class="inline-draft-ledger" data-testid="inline-epilepsy-draft-ledger"><b>复核草稿 ${draftCount} 条${state.epilepsyInline.draftSaved ? " / 已同步后端" : " / 本地待保存"}</b><span>${state.epilepsyInline.draftCommands.map((item) => `${item.eventId}: ${item.displayLabel || item.label}`).join(" / ") || "暂无人工矫正草稿。"}</span></div>
+      <p class="small-muted">保存会写入后端 epilepsy review session；发布会注册人工修订层 artifacts，不覆盖原始 ML 输出。状态：${escapeHtml(exportLabel)}。</p>
+      ${state.epilepsyInline.reviewSaveError ? `<p class="small-muted danger-text" data-testid="inline-epilepsy-review-save-error">保存错误：${escapeHtml(state.epilepsyInline.reviewSaveError)}</p>` : ""}
+      ${state.epilepsyInline.exportError ? `<p class="small-muted danger-text" data-testid="inline-epilepsy-export-error">发布错误：${escapeHtml(state.epilepsyInline.exportError)}</p>` : ""}
+      <p class="small-muted">科研支持用途，不用于诊断、确诊、治疗或临床分诊。</p>
+    `;
+  }
+  window.__QLANALYSER_E2E_STATE__ = isE2EAutomationContext() ? state : undefined;
+  window.requestAnimationFrame(() => {
+    drawInlineEpilepsyWaveform();
+    drawInlineEpilepsySpectrogram();
+  });
+}
+
+async function openEpilepsyWorkbenchFromPlan() {
+  setView("epilepsyWorkbenchInline");
+  renderInlineEpilepsyWorkbench();
+  if (state.teaching.active) {
+    await ensureTeachingSandboxReady({ preview: false, moduleName: "epilepsy_ml" }).catch(() => null);
+    renderInlineEpilepsyWorkbench();
+  }
+  return { id: "epilepsy_workbench_inline", plan_id: state.real.plan?.id || null, gated: !hasConfirmedPlan() };
+}
+
+async function seedWorkspaceForLocalE2E(seed = null) {
+  if (!["localhost", "127.0.0.1"].includes(window.location.hostname)) return null;
+  const payload = seed || await apiJson("/lab/demo/dataset");
+  const project = payload.project || payload.demo_project || null;
+  const file = payload.file || payload.eeg_file || null;
+  const plan = payload.data_preparation_plan || payload.plan || null;
+  if (project) {
+    state.real.project = project;
+    state.workspace.selectedProjectId = project.id || state.workspace.selectedProjectId;
+    if (!state.workspace.projects.some((item) => item.id === project.id)) state.workspace.projects.unshift(project);
+  }
+  if (file) {
+    state.real.eegFile = file;
+    state.workspace.selectedFileId = file.id || state.workspace.selectedFileId;
+    if (!state.workspace.files.some((item) => item.id === file.id)) state.workspace.files.unshift(file);
+  }
+  if (plan) {
+    state.real.plan = { ...plan, schema_version: dataPreparationContractVersion(plan) };
+    state.workspace.selectedPlanId = plan.id || state.workspace.selectedPlanId;
+    if (!state.workspace.plans.some((item) => item.id === plan.id)) state.workspace.plans.unshift(state.real.plan);
+  }
+  await refreshProjectWorkspace().catch(() => null);
+  updateRealActionGate();
+  renderInlineEpilepsyWorkbench();
+  window.__QLANALYSER_E2E_STATE__ = state;
+  return {
+    project_id: state.real.project?.id || null,
+    file_id: state.real.eegFile?.id || null,
+    plan_id: state.real.plan?.id || null,
+    plan_revision: state.real.plan?.revision || null,
+  };
+}
+
+if (["localhost", "127.0.0.1"].includes(window.location.hostname)) {
+  window.__qlanalyserE2ESeedWorkspace = seedWorkspaceForLocalE2E;
+  window.__QLANALYSER_E2E_STATE__ = state;
+}
+publishE2EState();
+
+function inlineEpilepsyReaderEventTarget(target) {
+  return target?.closest?.('[data-testid="inline-epilepsy-waveform-panel"], [data-testid="inline-epilepsy-waveform-canvas"], [data-testid="inline-epilepsy-overview-strip"]') || null;
+}
+
+function rerenderInlineEpilepsyReaderAfterInteraction() {
+  const requestKey = inlineEpilepsyWaveformRequestKey(currentWorkspaceFile() || state.real.eegFile || {});
+  const hasDisplayedTarget = Boolean(requestKey && state.epilepsyInline.waveformPayloadKey === requestKey && inlineEpilepsyWaveformHasRenderablePayload());
+  const hasCachedTarget = Boolean(requestKey && inlineEpilepsyWaveformCache().get(requestKey)?.data_uv?.length);
+  if (!hasDisplayedTarget && !hasCachedTarget && inlineEpilepsyWaveformHasRenderablePayload()) {
+    ensureInlineEpilepsyWaveform(currentWorkspaceFile() || state.real.eegFile || {});
+    return;
+  }
+  renderInlineEpilepsyWorkbench();
+  window.requestAnimationFrame(() => {
+    drawInlineEpilepsyWaveform();
+    drawInlineEpilepsySpectrogram();
+  });
+}
+
+function setInlineEpilepsyScreeningProgress(status = "idle", progress = 0, message = "") {
+  state.epilepsyInline.screeningStatus = status;
+  state.epilepsyInline.screeningProgress = Math.max(0, Math.min(100, Number(progress || 0)));
+  state.epilepsyInline.screeningMessage = message;
+  if (qs("#epilepsyWorkbenchInline")?.classList.contains("active")) {
+    renderInlineEpilepsyWorkbench();
+  }
+}
+
+async function handleInlineEpilepsyAction(action, button) {
+  const file = currentWorkspaceFile() || state.real.eegFile || {};
+  if (action === "select-event") {
+    selectInlineEpilepsyEvent(button.dataset.eventId || "", { center: true, file });
+  } else if (action === "select-epoch") {
+    const mappedEvent = button.dataset.eventId || inlineEpilepsyEventForEpoch(button.dataset.epochIndex)?.id || "";
+    if (mappedEvent) selectInlineEpilepsyEvent(mappedEvent, { center: true, file });
+  } else if (action === "set-time-scale") {
+    setInlineEpilepsyViewport({ file, durationSec: Number(button.dataset.scaleSec || 30), anchorRatio: 0.5 });
+  } else if (action === "reader-prev-page") {
+    panInlineEpilepsyViewport(-EDF_BROWSER_INTERACTION_CONSTANTS.pagePanRatio, file);
+  } else if (action === "reader-next-page") {
+    panInlineEpilepsyViewport(EDF_BROWSER_INTERACTION_CONSTANTS.pagePanRatio, file);
+  } else if (action === "reader-center-event") {
+    centerInlineEpilepsyEvent(inlineEpilepsySelectedEvent(), file);
+  } else if (action === "reader-prev-candidate") {
+    selectInlineEpilepsyRelativeCandidate(-1, { file });
+  } else if (action === "reader-next-candidate") {
+    selectInlineEpilepsyRelativeCandidate(1, { file });
+  } else if (action === "reader-gain-down") {
+    const reader = inlineEpilepsyReaderState();
+    reader.sensitivityUvPerRow = Math.max(EDF_BROWSER_INTERACTION_CONSTANTS.minSensitivityUvPerRow, reader.sensitivityUvPerRow / EDF_BROWSER_INTERACTION_CONSTANTS.gainStepRatio);
+  } else if (action === "reader-gain-up") {
+    const reader = inlineEpilepsyReaderState();
+    reader.sensitivityUvPerRow = Math.min(EDF_BROWSER_INTERACTION_CONSTANTS.maxSensitivityUvPerRow, reader.sensitivityUvPerRow * EDF_BROWSER_INTERACTION_CONSTANTS.gainStepRatio);
+  } else if (action === "reader-toggle-overlay") {
+    const reader = inlineEpilepsyReaderState();
+    const overlay = button.dataset.overlay;
+    if (overlay && Object.prototype.hasOwnProperty.call(reader.overlayVisibility, overlay)) {
+      reader.overlayVisibility[overlay] = !reader.overlayVisibility[overlay];
+    }
+  } else if (action === "retry-deeplink-bootstrap") {
+    await bootstrapEpilepsyDeepLinkWorkbench("manual_retry");
+    return;
+  } else if (action === "set-correction") {
+    const eventId = button.dataset.eventId || state.epilepsyInline.selectedEventId;
+    const label = button.dataset.correction || "";
+    const displayLabel = button.dataset.correctionLabel || button.textContent?.trim() || label;
+    if (eventId && label) {
+      state.epilepsyInline.draftCommands.push({ eventId, label, displayLabel, at: new Date().toISOString() });
+      state.epilepsyInline.redoCommands = [];
+      state.epilepsyInline.draftSaved = false;
+      state.epilepsyInline.published = false;
+    }
+  } else if (action === "adjust-interval") {
+    const eventId = button.dataset.eventId || state.epilepsyInline.selectedEventId;
+    const event = inlineEpilepsyCandidateEvents().find((item) => item.id === eventId);
+    const edge = button.dataset.adjustEdge || "";
+    const delta = Number(button.dataset.adjustDeltaSec || 0);
+    if (event && edge && Number.isFinite(delta)) {
+      const originalStart = Number(event.start || 0);
+      const originalEnd = Number(event.end || originalStart);
+      let adjustedStart = originalStart;
+      let adjustedEnd = originalEnd;
+      if (edge === "start") adjustedStart = Math.max(0, Math.min(originalEnd - 0.1, originalStart + delta));
+      if (edge === "end") adjustedEnd = Math.max(adjustedStart + 0.1, originalEnd + delta);
+      const sign = delta > 0 ? "+" : "";
+      const displayLabel = `${edge === "start" ? "起点" : "终点"} ${sign}${delta}s`;
+      state.epilepsyInline.draftCommands.push({
+        eventId,
+        label: "Needs review",
+        displayLabel,
+        actionType: "adjust_event_interval",
+        adjustedStartSec: Number(adjustedStart.toFixed(3)),
+        adjustedEndSec: Number(adjustedEnd.toFixed(3)),
+        at: new Date().toISOString(),
+      });
+      state.epilepsyInline.redoCommands = [];
+      state.epilepsyInline.draftSaved = false;
+      state.epilepsyInline.published = false;
+    }
+  } else if (action === "undo") {
+    const item = state.epilepsyInline.draftCommands.pop();
+    if (item) state.epilepsyInline.redoCommands.push(item);
+    state.epilepsyInline.draftSaved = false;
+    state.epilepsyInline.published = false;
+  } else if (action === "redo") {
+    const item = state.epilepsyInline.redoCommands.pop();
+    if (item) state.epilepsyInline.draftCommands.push(item);
+    state.epilepsyInline.draftSaved = false;
+    state.epilepsyInline.published = false;
+  } else if (action === "reset") {
+    state.epilepsyInline.redoCommands = state.epilepsyInline.draftCommands.splice(0).reverse();
+    state.epilepsyInline.draftSaved = false;
+    state.epilepsyInline.published = false;
+  } else if (action === "save-draft") {
+    await saveInlineEpilepsyReviewDraft();
+    return;
+  } else if (action === "publish-results") {
+    await exportInlineEpilepsyReviewResults();
+    return;
+  }
+  renderInlineEpilepsyWorkbench();
+}
+
 async function fetchTaskArtifacts(taskId) {
   if (!taskId) return [];
   try {
@@ -3499,14 +6144,22 @@ function closeModal() {
 
 function getStoredCustomer() {
   try {
-    return JSON.parse(localStorage.getItem(CUSTOMER_KEY)) || demoCustomer;
+    const stored = JSON.parse(localStorage.getItem(CUSTOMER_KEY)) || demoCustomer;
+    // One-time migration: purge any plaintext password left from earlier versions.
+    if (stored.password !== undefined) {
+      delete stored.password;
+      try { localStorage.setItem(CUSTOMER_KEY, JSON.stringify(stored)); } catch(e) {}
+    }
+    return stored;
   } catch {
     return demoCustomer;
   }
 }
 
 function saveCustomer(profile) {
-  localStorage.setItem(CUSTOMER_KEY, JSON.stringify({ ...getStoredCustomer(), ...profile }));
+  const cleaned = { ...profile };
+  delete cleaned.password; // never persist password to localStorage
+  localStorage.setItem(CUSTOMER_KEY, JSON.stringify({ ...getStoredCustomer(), ...cleaned }));
 }
 
 function validateEmail(email) {
@@ -3595,6 +6248,19 @@ function enhanceControlLabels() {
     button.setAttribute("title", label);
     button.setAttribute("aria-label", label);
   });
+}
+
+function ensureRealEegFileInput() {
+  if (qs("#real-eeg-file")) return qs("#real-eeg-file");
+  const input = document.createElement("input");
+  input.id = "real-eeg-file";
+  input.className = "visually-hidden-file";
+  input.type = "file";
+  input.accept = ".edf,.bdf,.set,.vhdr,.cnt,.fif";
+  input.setAttribute("aria-hidden", "true");
+  document.body.appendChild(input);
+  recordUiAction("upload:input-self-heal", "pass", "EEG 文件上传控件已自动恢复。");
+  return input;
 }
 
 function applyRoleNavigationState(role = state.role || "customer") {
@@ -3738,6 +6404,9 @@ function setView(viewName) {
     upload: "storage",
     paradigms: "journey",
   };
+  const parentViews = {
+    epilepsyWorkbenchInline: "workflow",
+  };
   const customerHiddenViews = new Set(["journey"]);
   const requestedView = String(viewName || "dashboard");
   let targetView = aliases[requestedView] || requestedView;
@@ -3748,19 +6417,32 @@ function setView(viewName) {
     section.classList.toggle("active", section.id === targetView);
   });
   qsa("[data-view]").forEach((button) => {
-    button.classList.toggle("active", button.dataset.view === targetView);
+    const navView = parentViews[targetView] || targetView;
+    button.classList.toggle("active", button.dataset.view === navView);
   });
   const viewTitle = qs("#viewTitle");
   if (viewTitle) {
-    const activeButton = qsa(`[data-view="${targetView}"]`).find((button) => button.closest?.(".nav"));
-    viewTitle.textContent = activeButton?.textContent?.trim() || titles[targetView] || targetView;
+    const navView = parentViews[targetView] || targetView;
+    const activeButton = qsa(`[data-view="${navView}"]`).find((button) => button.closest?.(".nav"));
+    viewTitle.textContent = titles[targetView] || activeButton?.textContent?.trim() || targetView;
   }
   window.location.hash = `#${targetView}`;
   requestAnimationFrame(() => window.scrollTo({ top: 0, left: 0, behavior: "auto" }));
+  ensureRealEegFileInput();
   renderStorageManagement();
+  renderRealResultReview();
   renderRealDelivery();
   updateRealActionGate();
   applyCleanVisibleCopy();
+  publishE2EState();
+  if (targetView === "analysis") {
+    const file = currentWorkspaceFile();
+    if (file?.id && eegState.selectedFilePreviewId !== file.id && !eegState.autoPreviewInFlight) {
+      requestAutoQcPreviewForSelectedFile(file).catch((error) => {
+        recordUiAction("real:auto-qc-preview-on-view", "blocked", error?.message || String(error), { file_id: file.id });
+      });
+    }
+  }
 }
 
 function renderAdminCustomerProfile() {
@@ -3837,7 +6519,6 @@ async function loginCustomer(email, password, remember) {
       email: account.email || email,
       org: account.organization_name || "QLanalyser Online",
       phone: account.phone || "",
-      password,
       registeredAt: account.created_at || new Date().toISOString().slice(0, 10),
       token: session.token,
     });
@@ -4001,6 +6682,7 @@ function loginAs(role, profile = null) {
   qs("#loginScreen").hidden = true;
   qs("#appShell").hidden = false;
   applyRoleNavigationState(role);
+  ensureRealEegFileInput();
   if (role === "admin") {
     qs("#roleLabel").textContent = "运营账号";
     qs("#balanceSide").textContent = "管理后台";
@@ -4023,10 +6705,15 @@ function loginAs(role, profile = null) {
       accountMeta.textContent = `${maskEmail(customer.email || demoCustomer.email)} / ${isDemoCustomer ? "审核账号" : "客户账号"}`;
     }
     qs("#topEyebrow").textContent = "项目工作台";
-    setView("dashboard");
+    setView(isEpilepsyWorkbenchDeepLinkIntent() ? "epilepsyWorkbenchInline" : "dashboard");
     updateRealActionGate();
-    refreshProjectWorkspace().catch((error) => {
+    refreshProjectWorkspace().then(() => {
+      if (isEpilepsyWorkbenchDeepLinkIntent()) bootstrapEpilepsyDeepLinkWorkbench("login_restore").catch((error) => {
+        recordUiAction("epilepsy:deeplink-bootstrap", "blocked", error?.message || String(error));
+      });
+    }).catch((error) => {
       recordUiAction("workspace:refresh", "blocked", error.message || "项目工作台刷新失败");
+      if (isEpilepsyWorkbenchDeepLinkIntent()) bootstrapEpilepsyDeepLinkWorkbench("login_restore_after_refresh_error").catch(() => null);
     });
   }
   applyShellCopyFixesAscii(role, profile);
@@ -4733,6 +7420,7 @@ const PRODUCT_VIEW_TITLES = {
   storage: "数据管理",
   analysis: "数据准备",
   workflow: "分析任务",
+  epilepsyWorkbenchInline: "癫痫样事件分析台",
   statistics: "结果查看",
   publication: "报告交付",
   journey: "质量检查",
@@ -4941,9 +7629,12 @@ function renderStorageManagement() {
           || null;
         const selected = item.id === file?.id;
         const actionLabel = selected ? "当前数据" : "预览并准备";
+        const displayName = eegFileDisplayName(item) || "EEG 数据文件";
+        const originalName = String(item.original_filename || item.id || "").trim();
+        const secondaryName = originalName && originalName !== displayName ? originalName : "";
         return `
-          <button class="table-row storage-file-row${selected ? " selected" : ""}" type="button" data-file-select="${escapeHtml(item.id)}" data-jump-to-analysis="1" data-ia-action="select-prep-data" aria-current="${selected ? "true" : "false"}" title="${escapeHtml(eegFileDisplayName(item) || item.original_filename || item.id || "EEG 数据文件")}">
-            <span><strong>${escapeHtml(eegFileDisplayName(item) || "EEG 数据文件")}</strong><small>${escapeHtml(item.original_filename || item.id || "")}</small></span>
+          <button class="table-row storage-file-row${selected ? " selected" : ""}" type="button" data-file-select="${escapeHtml(item.id)}" data-jump-to-analysis="1" data-ia-action="select-prep-data" aria-current="${selected ? "true" : "false"}" title="${escapeHtml(displayName)}">
+            <span><strong>${escapeHtml(displayName)}</strong>${secondaryName ? `<small>${escapeHtml(secondaryName)}</small>` : ""}</span>
             <span>${escapeHtml(fileDetailLabel(item))}</span>
             <span><mark class="status-chip">${escapeHtml(rowPrep ? preparationRecordLabel(rowPrep, rowPrep) : fileStatusLabel(item))}</mark></span>
             <span class="row-action">${actionLabel}</span>
@@ -4987,6 +7678,66 @@ function renderStorageManagement() {
         </div>
       `;
     }
+  }
+  if (window.lucide) lucide.createIcons();
+  applyCustomerTrialStorageSurfaceCleanup();
+}
+
+function applyCustomerTrialStorageSurfaceCleanup() {
+  const customerSurface = isCustomerTrialP0Mode();
+  const teachingSurface = customerSurface && state.teaching.active;
+  const storage = qs("#storage");
+  if (storage) {
+    storage.classList.toggle("customer-storage-surface", customerSurface);
+    storage.classList.toggle("teaching-customer-storage-surface", teachingSurface);
+  }
+  if (!customerSurface) return;
+
+  const { project, file } = currentWorkspaceContext();
+  const hasProject = Boolean(project?.id);
+  const hasFile = Boolean(file?.id || state.real.eegFile?.id);
+  const hideInTeaching = [
+    "#storage .storage-toolbar-actions",
+    "#storage .storage-upload-authorization",
+    "#storage [data-file-trigger=\"real-eeg-file-storage\"]",
+    "#storage [data-file-trigger=\"real-eeg-file-storage-empty\"]",
+    "#storage [data-real-action=\"upload-eeg\"]",
+    "#storage [data-ia-action=\"rename-data\"]",
+    "#storage [data-ia-action=\"replace-data\"]",
+    "#storage [data-ia-action=\"delete-data\"]",
+    "#storage [data-ia-action=\"archive-data\"]",
+  ].join(", ");
+  setSurfaceHiddenForCustomer(hideInTeaching, teachingSurface);
+
+  const policyPanel = qs('[data-testid="storage-file-policy"]');
+  if (policyPanel) {
+    policyPanel.hidden = teachingSurface;
+    policyPanel.setAttribute("aria-hidden", teachingSurface ? "true" : "false");
+  }
+
+  const projectHint = qs("#storageProjectHint");
+  if (projectHint && teachingSurface) {
+    projectHint.textContent = hasFile
+      ? "\u793a\u4f8b\u6570\u636e\u5df2\u8f7d\u5165\uff0c\u53ef\u76f4\u63a5\u8fdb\u5165\u6570\u636e\u51c6\u5907\u3002"
+      : "\u793a\u4f8b\u9879\u76ee\u5df2\u6253\u5f00\uff0c\u6b63\u5728\u7b49\u5f85\u793a\u4f8b\u6570\u636e\u3002";
+  }
+
+  const detail = qs("#storageFileDetail");
+  if (detail && teachingSurface && hasFile && !detail.querySelector("[data-testid='teaching-storage-next-step']")) {
+    const next = document.createElement("div");
+    next.className = "real-actions compact-actions";
+    next.dataset.testid = "teaching-storage-next-step";
+    next.innerHTML = `
+      <button class="primary-btn" type="button" data-view-jump="analysis"><i data-lucide="sliders-horizontal"></i><span>\u8fdb\u5165\u6570\u636e\u51c6\u5907</span></button>
+      <span class="customer-note">\u793a\u4f8b\u6570\u636e\u53ea\u8bfb\uff0c\u4e0a\u4f20\u548c\u7f16\u8f91\u5df2\u6536\u8d77\u3002</span>
+    `;
+    detail.appendChild(next);
+  }
+  if (detail && teachingSurface && !hasFile && hasProject) {
+    detail.innerHTML = `
+      <strong>\u793a\u4f8b\u6570\u636e</strong>
+      <p>\u793a\u4f8b\u9879\u76ee\u5df2\u6253\u5f00\uff0c\u7cfb\u7edf\u6b63\u5728\u8f7d\u5165\u53ef\u4f53\u9a8c\u7684 EEG \u6570\u636e\u3002</p>
+    `;
   }
   if (window.lucide) lucide.createIcons();
 }
@@ -5139,9 +7890,11 @@ function renderProjectDataManagement() {
     `;
   }
 
+  applyCustomerTrialProjectSurfaceCleanup();
   updateDashboardSummaryCards({ project, file, plan, epochSet, projectFiles, files });
   renderStorageManagement();
   applyCleanVisibleCopy();
+  applyCustomerTrialAnalysisSurfaceCleanup();
 }
 
 function updateDashboardSummaryCards({ project, file, plan, epochSet, projectFiles = [], files = [] }) {
@@ -5180,12 +7933,12 @@ function applyProductPageStructureCleanup() {
         </div>
         <div id="realResultReview" class="result-review"></div>
       </section>
+      <div id="epilepsyResultReviewV3"></div>
       <section class="panel" data-testid="result-boundary-panel">
         <div class="panel-head compact"><h2>结果说明</h2></div>
         <p class="customer-note">当前结果用于科研分析参考。若需要组水平统计，请先完成对应的数据汇总和统计流程。</p>
       </section>
-    `;
-  }
+    `;  }
 
   const publication = qs("#publication");
   if (publication && publication.dataset.productClean !== "true") {
@@ -5424,6 +8177,8 @@ function applyCleanVisibleCopy() {
     button.hidden = state.role !== "admin";
     button.setAttribute("aria-hidden", state.role !== "admin" ? "true" : "false");
   });
+  applyCustomerTrialAnalysisSurfaceCleanup();
+  applyCustomerTrialStorageSurfaceCleanup();
   const activeView = qs(".view.active")?.id || "dashboard";
   setTextIfPresent("#viewTitle", PRODUCT_VIEW_TITLES[activeView] || "项目分析");
   setTextIfPresent("#topEyebrow", "QLanalyser Online · EEG 数据到报告");
@@ -5455,29 +8210,76 @@ function applyCleanVisibleCopy() {
   applyCustomerAnalysisTaskCopy();
   sanitizeVisibleCopyTree();
   updateRealActionGate();
+  applyCustomerTrialP0Fixes();
 }
 
 
+function eegCanvasChannelFromEvent(event) {
+  const canvas = qs("#eegCanvas");
+  const plot = eegState.lastPlot;
+  const payload = currentWaveformPayload();
+  if (!canvas || !plot || !payload?.channels?.length) return "";
+  const rect = canvas.getBoundingClientRect();
+  const y = Number(event.clientY - rect.top);
+  const top = Number(plot.top || 0);
+  const plotHeight = Math.max(1, Number(plot.plotHeight || 1));
+  const visibleCount = Math.min(payload.channels.length, Number(eegState.visibleChannels || payload.channels.length));
+  const index = Math.max(0, Math.min(visibleCount - 1, Math.floor(((y - top) / plotHeight) * visibleCount)));
+  const channel = payload.channels[index];
+  return typeof channel === "string" ? channel : (channel?.name || "");
+}
+
 function handleEegCanvasPointerDown(event) {
-  if (event.button !== 0) return;
+  if (event.button !== 0 && event.button !== 1) return;
   const time = eegCanvasTimeFromEvent(event);
   if (!Number.isFinite(time)) return;
   event.preventDefault();
   const canvas = qs("#eegCanvas");
+  canvas?.focus?.({ preventScroll: true });
+  eegState.hoverTimeSec = time;
+  eegState.hoverChannelName = eegCanvasChannelFromEvent(event);
+  if ((event.button === 1 || event.buttons === 4) && eegState.interactionMode === "browse") {
+    eegState.middlePan = { startX: event.clientX, startSec: Number(eegState.start || 0) };
+    canvas?.classList.add("dragging");
+    renderWaveformInteractionHint("中键拖动：水平浏览当前 EEG。");
+    return;
+  }
+  if (eegState.interactionMode === "browse") {
+    renderWaveformInteractionHint(`浏览 ${time.toFixed(2)} s${eegState.hoverChannelName ? ` / ${eegState.hoverChannelName}` : ""}；左键不会写入草稿。`);
+    renderWaveformWorkbenchStatus();
+    return;
+  }
+  if (eegState.interactionMode === "markBadChannel") {
+    handleIaAction("mark-bad-channel").catch((error) => showToast(error.message || "坏道标记失败。"));
+    return;
+  }
   canvas?.classList.add("dragging");
-  eegState.drag = { startTime: time, currentTime: time, moved: false };
-  eegState.selectedSegment = { start_sec: time, end_sec: time + 0.05 };
-  updateSelectedSegmentInputs(eegState.selectedSegment);
+  eegState.drag = { mode: eegState.interactionMode, startTime: time, currentTime: time, moved: false };
+  if (eegState.interactionMode === "selectSegment") {
+    eegState.selectedSegment = { start_sec: time, end_sec: time + waveformAnchorDriftToleranceSec() };
+    updateSelectedSegmentInputs(eegState.selectedSegment);
+  }
   redrawCurrentWaveform();
 }
 
 function handleEegCanvasPointerMove(event) {
+  if (eegState.middlePan) {
+    const plot = eegState.lastPlot;
+    const dx = Number(event.clientX - eegState.middlePan.startX);
+    const plotWidth = Math.max(1, Number(plot?.plotWidth || 1));
+    const deltaSec = -(dx / plotWidth) * Math.max(2, Number(eegState.windowSec || 10));
+    eegState.start = clampEegWindowStart(eegState.middlePan.startSec + deltaSec, eegState.windowSec);
+    syncEegControlsFromState();
+    redrawCurrentWaveform();
+    event.preventDefault();
+    return;
+  }
   if (!eegState.drag) return;
   const time = eegCanvasTimeFromEvent(event);
   if (!Number.isFinite(time)) return;
   event.preventDefault();
   eegState.drag.currentTime = time;
-  eegState.drag.moved = Math.abs(time - eegState.drag.startTime) > 0.05;
+  eegState.drag.moved = Math.abs(time - eegState.drag.startTime) > waveformAnchorDriftToleranceSec();
   const normalized = normalizeSegmentRange(eegState.drag.startTime, time);
   if (normalized) {
     eegState.selectedSegment = normalized;
@@ -5487,15 +8289,28 @@ function handleEegCanvasPointerMove(event) {
 }
 
 function handleEegCanvasPointerUp(event) {
+  if (eegState.middlePan) {
+    event.preventDefault();
+    eegState.middlePan = null;
+    qs("#eegCanvas")?.classList.remove("dragging");
+    reloadWaveformAfterViewportChange({ silent: true });
+    return;
+  }
   if (!eegState.drag) return;
   event.preventDefault();
+  const mode = eegState.drag.mode;
   const normalized = normalizeSegmentRange(eegState.drag.startTime, eegState.drag.currentTime);
   eegState.drag = null;
   qs("#eegCanvas")?.classList.remove("dragging");
   if (normalized) {
     eegState.selectedSegment = normalized;
     updateSelectedSegmentInputs(normalized);
-    renderWaveformInteractionHint(`已选择 ${normalized.start_sec.toFixed(2)}-${normalized.end_sec.toFixed(2)} s，可剔除或添加标签`);
+    if (mode === "markBadSegment") {
+      handleIaAction("exclude-segment").catch((error) => showToast(error.message || "坏段标记失败。"));
+      renderWaveformInteractionHint(`已标记坏段 ${normalized.start_sec.toFixed(2)}-${normalized.end_sec.toFixed(2)} s，可恢复。`);
+    } else {
+      renderWaveformInteractionHint(`已选择 ${normalized.start_sec.toFixed(2)}-${normalized.end_sec.toFixed(2)} s，可剔除或添加标签`);
+    }
     redrawCurrentWaveform();
   }
 }
@@ -5510,25 +8325,244 @@ function handleEegCanvasWheel(event) {
     const oldStart = Number(eegState.start || plot?.timeStart || 0);
     const oldDuration = Math.max(2, Number(eegState.windowSec || 10));
     const anchorTime = plot ? canvasXToTime(event.clientX - rect.left, plot) : oldStart + oldDuration / 2;
-    const anchorRatio = clampNumber((anchorTime - oldStart) / oldDuration, 0, 1);
-    const factor = event.deltaY > 0 ? 1.2 : 0.8;
-    const newDuration = Math.max(2, Math.min(30, oldDuration * factor));
-    eegState.windowSec = newDuration;
-    eegState.start = Math.max(0, anchorTime - anchorRatio * newDuration);
+    const factor = event.deltaY > 0 ? EDF_BROWSER_INTERACTION_CONSTANTS.zoomFactor : 1 / EDF_BROWSER_INTERACTION_CONSTANTS.zoomFactor;
+    zoomEegWindow(factor, anchorTime, { silent: true });
   } else {
-    const step = Math.max(0.2, Number(eegState.windowSec || 10) * 0.08);
-    eegState.start = Math.max(0, Number(eegState.start || 0) + (event.deltaY > 0 ? step : -step));
+    const direction = event.deltaY > 0 ? 1 : -1;
+    shiftEegWindow(direction, EDF_BROWSER_INTERACTION_CONSTANTS.wheelPanRatio, { silent: true });
   }
-  syncEegControlsFromState();
-  reloadWaveformPreview().catch((error) => showToast(error.message || "波形预览更新失败。"));
+}
+
+function shouldHandleWaveformKeydown(event) {
+  const target = event.target;
+  const tagName = String(target?.tagName || "").toLowerCase();
+  if (tagName === "input" || tagName === "textarea" || tagName === "select" || target?.isContentEditable) return false;
+  const workbench = target?.closest?.('[data-testid="preview-edit-workbench"], .eeg-viewer, .eeg-toolbar');
+  return Boolean(workbench || currentWaveformPayload()?.data_uv?.length);
+}
+
+function runWaveformKeyboardAction(action) {
+  Promise.resolve(action).catch((error) => showToast(error.message || "波形预览更新失败。"));
+  qs("#eegCanvas")?.focus?.({ preventScroll: true });
+}
+
+function handleWaveformKeydown(event) {
+  if (!shouldHandleWaveformKeydown(event)) return false;
+  const key = event.key;
+  if (key === "PageUp") {
+    event.preventDefault();
+    runWaveformKeyboardAction(shiftEegWindow(-1, EDF_BROWSER_INTERACTION_CONSTANTS.pagePanRatio));
+    return true;
+  }
+  if (key === "PageDown") {
+    event.preventDefault();
+    runWaveformKeyboardAction(shiftEegWindow(1, EDF_BROWSER_INTERACTION_CONSTANTS.pagePanRatio));
+    return true;
+  }
+  if (key === "ArrowLeft") {
+    event.preventDefault();
+    runWaveformKeyboardAction(shiftEegWindow(-1, EDF_BROWSER_INTERACTION_CONSTANTS.arrowPanRatio));
+    return true;
+  }
+  if (key === "ArrowRight") {
+    event.preventDefault();
+    runWaveformKeyboardAction(shiftEegWindow(1, EDF_BROWSER_INTERACTION_CONSTANTS.arrowPanRatio));
+    return true;
+  }
+  if ((key === "+" || key === "=") && (event.ctrlKey || event.metaKey)) {
+    event.preventDefault();
+    runWaveformKeyboardAction(zoomEegWindow(1 / EDF_BROWSER_INTERACTION_CONSTANTS.zoomFactor));
+    return true;
+  }
+  if ((key === "-" || key === "_") && (event.ctrlKey || event.metaKey)) {
+    event.preventDefault();
+    runWaveformKeyboardAction(zoomEegWindow(EDF_BROWSER_INTERACTION_CONSTANTS.zoomFactor));
+    return true;
+  }
+  if (key === "+" || key === "=") {
+    event.preventDefault();
+    runWaveformKeyboardAction(adjustEegAmplitudeSensitivity(1));
+    return true;
+  }
+  if (key === "-" || key === "_") {
+    event.preventDefault();
+    runWaveformKeyboardAction(adjustEegAmplitudeSensitivity(-1));
+    return true;
+  }
+  if (key === "Escape" || key.toLowerCase() === "b") {
+    event.preventDefault();
+    setWaveformInteractionMode("browse");
+    return true;
+  }
+  if (!event.ctrlKey && !event.metaKey && key.toLowerCase() === "s") {
+    event.preventDefault();
+    setWaveformInteractionMode("selectSegment");
+    return true;
+  }
+  if (!event.ctrlKey && !event.metaKey && key.toLowerCase() === "x") {
+    event.preventDefault();
+    setWaveformInteractionMode("markBadSegment");
+    return true;
+  }
+  if (!event.ctrlKey && !event.metaKey && key.toLowerCase() === "c") {
+    event.preventDefault();
+    setWaveformInteractionMode("markBadChannel");
+    return true;
+  }
+  if (!event.ctrlKey && !event.metaKey && key.toLowerCase() === "r") {
+    event.preventDefault();
+    runWaveformKeyboardAction(resetEegPreviewControls());
+    return true;
+  }
+  if (!event.ctrlKey && !event.metaKey && key.toLowerCase() === "f") {
+    event.preventDefault();
+    const toggle = qs("#eegFilterPreviewToggle");
+    if (toggle) {
+      toggle.checked = !toggle.checked;
+      eegState.filterEnabled = Boolean(toggle.checked);
+      eegState.showFiltered = Boolean(toggle.checked);
+      runWaveformKeyboardAction(reloadWaveformPreview());
+    }
+    return true;
+  }
+  if (key === "?") {
+    event.preventDefault();
+    renderWaveformInteractionHint("快捷键：滚轮浏览，Ctrl/Cmd+滚轮缩放，PageUp/PageDown 翻页，Left/Right 小步，+/- 调振幅，S/X/C/B 切换模式。");
+    return true;
+  }
+  return false;
+}
+
+function handleInlineEpilepsyReaderWheel(event) {
+  const target = inlineEpilepsyReaderEventTarget(event.target);
+  if (!target) return;
+  event.preventDefault();
+  const file = currentWorkspaceFile() || state.real.eegFile || {};
+  const rect = target.getBoundingClientRect();
+  const anchorRatio = rect.width ? Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width)) : 0.5;
+  if (event.ctrlKey || event.metaKey) {
+    const factor = event.deltaY > 0 ? EDF_BROWSER_INTERACTION_CONSTANTS.zoomFactor : 1 / EDF_BROWSER_INTERACTION_CONSTANTS.zoomFactor;
+    zoomInlineEpilepsyViewport(factor, anchorRatio, file);
+  } else {
+    panInlineEpilepsyViewport(Math.sign(event.deltaY || event.deltaX || 1) * EDF_BROWSER_INTERACTION_CONSTANTS.wheelPanRatio, file);
+  }
+  rerenderInlineEpilepsyReaderAfterInteraction();
+}
+
+function handleInlineEpilepsyReaderKeydown(event) {
+  const target = inlineEpilepsyReaderEventTarget(document.activeElement) || inlineEpilepsyReaderEventTarget(event.target);
+  if (!target) return false;
+  if (["INPUT", "TEXTAREA", "SELECT"].includes(event.target?.tagName)) return false;
+  const file = currentWorkspaceFile() || state.real.eegFile || {};
+  const key = event.key;
+  if (key === "ArrowLeft") {
+    event.preventDefault();
+    panInlineEpilepsyViewport(-EDF_BROWSER_INTERACTION_CONSTANTS.arrowPanRatio, file);
+  } else if (key === "ArrowRight") {
+    event.preventDefault();
+    panInlineEpilepsyViewport(EDF_BROWSER_INTERACTION_CONSTANTS.arrowPanRatio, file);
+  } else if (key === "PageUp") {
+    event.preventDefault();
+    panInlineEpilepsyViewport(-EDF_BROWSER_INTERACTION_CONSTANTS.pagePanRatio, file);
+  } else if (key === "PageDown") {
+    event.preventDefault();
+    panInlineEpilepsyViewport(EDF_BROWSER_INTERACTION_CONSTANTS.pagePanRatio, file);
+  } else if (key === "+" || key === "=") {
+    event.preventDefault();
+    if (event.ctrlKey || event.metaKey) zoomInlineEpilepsyViewport(1 / EDF_BROWSER_INTERACTION_CONSTANTS.zoomFactor, 0.5, file);
+    else {
+      const reader = inlineEpilepsyReaderState();
+      reader.sensitivityUvPerRow = Math.min(EDF_BROWSER_INTERACTION_CONSTANTS.maxSensitivityUvPerRow, reader.sensitivityUvPerRow * EDF_BROWSER_INTERACTION_CONSTANTS.gainStepRatio);
+    }
+  } else if (key === "-" || key === "_") {
+    event.preventDefault();
+    if (event.ctrlKey || event.metaKey) zoomInlineEpilepsyViewport(EDF_BROWSER_INTERACTION_CONSTANTS.zoomFactor, 0.5, file);
+    else {
+      const reader = inlineEpilepsyReaderState();
+      reader.sensitivityUvPerRow = Math.max(EDF_BROWSER_INTERACTION_CONSTANTS.minSensitivityUvPerRow, reader.sensitivityUvPerRow / EDF_BROWSER_INTERACTION_CONSTANTS.gainStepRatio);
+    }
+  } else {
+    return false;
+  }
+  rerenderInlineEpilepsyReaderAfterInteraction();
+  return true;
+}
+
+function setInlineEpilepsyOverviewFromPointer(event, overview) {
+  const rect = overview.getBoundingClientRect();
+  const durationTotal = Number(overview.dataset.durationSec || inlineEpilepsyFileDuration());
+  const reader = inlineEpilepsyReaderState();
+  const ratio = rect.width ? Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width)) : 0;
+  setInlineEpilepsyViewport({
+    startSec: ratio * durationTotal - reader.durationSec / 2,
+    file: currentWorkspaceFile() || state.real.eegFile || {},
+  });
+  syncInlineEpilepsyOverviewTargetDom(overview);
+}
+
+function syncInlineEpilepsyOverviewTargetDom(overview = qs('[data-testid="inline-epilepsy-overview-strip"]')) {
+  if (!overview) return;
+  const reader = inlineEpilepsyReaderState();
+  const durationTotal = Math.max(1, Number(overview.dataset.durationSec || inlineEpilepsyFileDuration()));
+  const current = overview.querySelector(".inline-overview-current-window");
+  const left = Math.max(0, Math.min(100, (Number(reader.startSec || 0) / durationTotal) * 100));
+  const width = Math.max(1, Math.min(100 - left, (Number(reader.durationSec || 0) / durationTotal) * 100));
+  overview.dataset.startSec = Number(reader.startSec || 0).toFixed(3);
+  overview.dataset.windowSec = Number(reader.durationSec || 0).toFixed(3);
+  overview.setAttribute("aria-valuenow", Number(reader.startSec || 0).toFixed(1));
+  if (current) {
+    current.style.left = `${left.toFixed(3)}%`;
+    current.style.width = `${width.toFixed(3)}%`;
+  }
 }
 
 document.addEventListener("mousedown", (event) => {
   if (event.target?.matches?.("#eegCanvas")) handleEegCanvasPointerDown(event);
+  const overview = event.target?.closest?.('[data-testid="inline-epilepsy-overview-strip"]');
+  if (overview) {
+    event.preventDefault();
+    inlineEpilepsyReaderState().overviewDrag = true;
+    setInlineEpilepsyOverviewFromPointer(event, overview);
+    return;
+  }
+  if (event.button === 1 && inlineEpilepsyReaderEventTarget(event.target)) {
+    event.preventDefault();
+    const reader = inlineEpilepsyReaderState();
+    reader.middlePan = { clientX: event.clientX, startSec: reader.startSec };
+  }
 });
-document.addEventListener("mousemove", handleEegCanvasPointerMove);
-document.addEventListener("mouseup", handleEegCanvasPointerUp);
+document.addEventListener("auxclick", (event) => {
+  if (event.target?.matches?.("#eegCanvas")) event.preventDefault();
+});
+document.addEventListener("mousemove", (event) => {
+  handleEegCanvasPointerMove(event);
+  const reader = inlineEpilepsyReaderState();
+  const overview = qs('[data-testid="inline-epilepsy-overview-strip"]');
+  if (reader.overviewDrag && overview) {
+    setInlineEpilepsyOverviewFromPointer(event, overview);
+    return;
+  }
+  if (reader.middlePan) {
+    const panel = qs('[data-testid="inline-epilepsy-waveform-panel"]');
+    const width = Math.max(1, panel?.getBoundingClientRect?.().width || 900);
+    const dx = event.clientX - reader.middlePan.clientX;
+    setInlineEpilepsyViewport({
+      startSec: reader.middlePan.startSec - (dx / width) * reader.durationSec,
+      file: currentWorkspaceFile() || state.real.eegFile || {},
+    });
+    rerenderInlineEpilepsyReaderAfterInteraction();
+  }
+});
+document.addEventListener("mouseup", (event) => {
+  handleEegCanvasPointerUp(event);
+  const reader = inlineEpilepsyReaderState();
+  const wasOverviewDrag = Boolean(reader.overviewDrag);
+  reader.overviewDrag = false;
+  reader.middlePan = null;
+  if (wasOverviewDrag) rerenderInlineEpilepsyReaderAfterInteraction();
+});
 document.addEventListener("wheel", handleEegCanvasWheel, { passive: false });
+document.addEventListener("wheel", handleInlineEpilepsyReaderWheel, { passive: false });
 
 document.addEventListener("click", (event) => {
   const modalCloseButton = event.target?.closest?.("#modalCloseBtn");
@@ -5669,17 +8703,24 @@ document.addEventListener("click", (event) => {
     });
     return;
   }
+  const waveformModeButton = event.target?.closest?.("[data-mode-target]");
+  if (waveformModeButton) {
+    event.preventDefault?.();
+    setWaveformInteractionMode(waveformModeButton.dataset.modeTarget || "browse");
+    qs("#eegCanvas")?.focus?.({ preventScroll: true });
+    return;
+  }
   const waveformControl = event.target?.closest?.("#eegPrevBtn, #eegNextBtn, #eegZoomOutBtn, #eegZoomInBtn, #eegResetBtn");
   if (waveformControl) {
     event.preventDefault?.();
     const run = waveformControl.id === "eegPrevBtn"
-      ? shiftEegWindow(-1)
+      ? shiftEegWindow(-1, EDF_BROWSER_INTERACTION_CONSTANTS.pagePanRatio)
       : waveformControl.id === "eegNextBtn"
-        ? shiftEegWindow(1)
+        ? shiftEegWindow(1, EDF_BROWSER_INTERACTION_CONSTANTS.pagePanRatio)
         : waveformControl.id === "eegZoomInBtn"
-          ? zoomEegWindow(0.5)
+          ? zoomEegWindow(1 / EDF_BROWSER_INTERACTION_CONSTANTS.zoomFactor)
           : waveformControl.id === "eegZoomOutBtn"
-            ? zoomEegWindow(1.5)
+            ? zoomEegWindow(EDF_BROWSER_INTERACTION_CONSTANTS.zoomFactor)
             : resetEegPreviewControls();
     Promise.resolve(run).catch((error) => {
       const message = error.message || "波形预览更新失败。";
@@ -5733,6 +8774,18 @@ document.addEventListener("click", (event) => {
     handleSubmitAnalysisClick();
     return;
   }
+  const epilepsyActionButton = event.target?.closest?.("[data-epilepsy-action]");
+  if (epilepsyActionButton) {
+    event.preventDefault?.();
+    if (epilepsyActionButton.disabled || epilepsyActionButton.getAttribute("aria-disabled") === "true") {
+      const message = epilepsyActionButton.dataset.disabledReason || epilepsyActionButton.title || "该操作当前不可用，请先完成前置步骤。";
+      recordUiAction(`epilepsy:${epilepsyActionButton.dataset.epilepsyAction}`, "blocked", message);
+      showToast(message);
+      return;
+    }
+    handleInlineEpilepsyAction(epilepsyActionButton.dataset.epilepsyAction, epilepsyActionButton);
+    return;
+  }
   const realActionButton = event.target?.closest?.("[data-real-action]");
   if (realActionButton) {
     event.preventDefault?.();
@@ -5742,7 +8795,16 @@ document.addEventListener("click", (event) => {
       showToast(message);
       return;
     }
-    handleRealAction(realActionButton.dataset.realAction);
+    if (realActionButton.dataset.busy === "true") return; // double-click guard
+    realActionButton.dataset.busy = "true";
+    const release = () => { realActionButton.dataset.busy = "false"; };
+    Promise.resolve(handleRealAction(realActionButton.dataset.realAction))
+      .catch((error) => {
+        const message = `${realActionButton.dataset.realAction}未完成：${error?.message || error}`;
+        recordUiAction(`real:${realActionButton.dataset.realAction}`, "blocked", message);
+        showToast(message);
+      })
+      .finally(release);
     return;
   }
   const actionButton = event.target?.closest?.("[data-ia-action]");
@@ -5821,7 +8883,7 @@ document.addEventListener("input", (event) => {
   if (event.target?.matches?.("#eegGainInput, #eegChannelInput")) {
     eegState.gain = numberFromInput("#eegGainInput", eegState.gain);
     eegState.visibleChannels = numberFromInput("#eegChannelInput", eegState.visibleChannels);
-    setTextIfPresent("#eegGainLabel", `${eegState.gain}x`);
+    setTextIfPresent("#eegGainLabel", `${Number(waveformSensitivityUvPerRow().toFixed(1))} uV/row`);
     setTextIfPresent("#eegChannelLabel", String(eegState.visibleChannels));
     if (eegState.data) {
       const payload = currentWaveformPayload();
@@ -5842,7 +8904,10 @@ document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && state.teaching.guideActive) {
     event.preventDefault();
     finishTeachingGuide();
+    return;
   }
+  if (handleInlineEpilepsyReaderKeydown(event)) return;
+  handleWaveformKeydown(event);
 });
 
 window.addEventListener("resize", () => {

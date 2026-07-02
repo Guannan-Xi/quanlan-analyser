@@ -120,6 +120,8 @@ def run_qc_preview(input_path: str | Path, output_dir: str | Path, parameters: d
         "input_file": str(input_file),
         "start_sec": start_sec,
         "duration_sec": duration,
+        "file_duration_sec": duration_sec,
+        "duration_total_sec": duration_sec,
         "sfreq_original": sfreq,
         "sfreq_display": display_sfreq,
         "channels": channel_names,

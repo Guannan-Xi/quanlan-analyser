@@ -798,7 +798,7 @@ function renderModulePanel(id, module, hidden = false) {
   const boundaryNotes = module.boundaryNotes?.length ? `<div class="method-boundary-notes" aria-label="${h(module.title)}科学边界">
       ${module.boundaryNotes.map((note) => `<span>${h(note)}</span>`).join("")}
     </div>` : "";
-  const workbenchLink = module.workbenchPage ? `<div class="module-workbench-link"><a class="btn primary" href="${h(module.workbenchPage)}?api=${encodeURIComponent(API_BASE)}">${icon("monitor-cog")}打开癫痫分析工作台</a><small>进入参数、候选事件、epoch 时间轴和人工复核界面。</small></div>` : "";
+  const workbenchLink = module.workbenchPage ? `<div class="module-workbench-link"><a class="btn primary" href="${h(module.workbenchPage)}?lab=1&api=${encodeURIComponent(API_BASE)}">${icon("monitor-cog")}打开癫痫分析工作台</a><small>进入参数、候选事件、epoch 时间轴和人工复核界面。</small></div>` : "";
   return `<section class="method-panel" id="module-${h(id)}" data-method-panel="${h(id)}" ${hidden ? "hidden" : ""}>
     <div class="method-panel-head"><strong>${h(module.title)}</strong><span>${h(module.statusLabel || module.lifecycle || "可运行")}</span></div>
     <p>${h(module.description)}</p>

@@ -4,8 +4,9 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>QLanalyser Online</title>
-    <link rel="stylesheet" href="./styles.css?v=20260624-project-polish" />
-    <script src="./vendor/lucide.min.js"></script>
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob: https:; media-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' http://127.0.0.1:* http://localhost:* ws://127.0.0.1:* ws://localhost:*; font-src 'self' data:;" />
+    <link rel="stylesheet" href="./styles.css?v=20260701-rc-final-clean" />
+    <script src="./vendor/lucide.min.js" defer></script>
   </head>
   <body>
     <a class="boss-home" href="./expert-entry-demo.html" data-entry-home hidden aria-hidden="true">返回首页</a>
@@ -39,8 +40,8 @@
         </div>
 
         <form class="login-form active" id="customerLoginForm">
-          <label><span>邮箱 / 手机号</span><input id="customerEmail" type="text" value="demo.customer@quanlan.cn" autocomplete="username" /></label>
-          <label><span>密码</span><input id="customerPassword" type="password" value="demo123456" autocomplete="current-password" /></label>
+          <label><span>邮箱 / 手机号</span><input id="customerEmail" type="text" placeholder="邮箱 / 手机号" autocomplete="username" /></label>
+          <label><span>密码</span><input id="customerPassword" type="password" placeholder="密码" autocomplete="current-password" /></label>
           <label class="remember-row"><input id="rememberCustomer" type="checkbox" checked /> 记住登录状态</label>
           <button class="primary-btn full" id="customerLoginBtn" type="submit"><i data-lucide="log-in"></i><span>登录并进入项目</span></button>
           <button class="ghost-btn full" id="forgotPasswordBtn" type="button">帮助与账号找回</button>
@@ -59,7 +60,7 @@
 
         <form class="login-form admin-form" id="adminLoginForm">
           <p class="admin-note">后台仅用于运营人员管理客户、订单、任务和系统状态。</p>
-          <label><span>管理员邮箱</span><input id="adminEmail" type="email" value="ops@quanlan.cn" autocomplete="username" /></label>
+          <label><span>管理员邮箱</span><input id="adminEmail" type="email" placeholder="管理员邮箱" autocomplete="username" /></label>
           <label><span>管理员密码</span><input id="adminPassword" type="password" autocomplete="current-password" /></label>
           <button class="primary-btn full" type="submit"><i data-lucide="shield-check"></i><span>进入后台</span></button>
         </form>
@@ -104,7 +105,7 @@
             <h1 id="viewTitle">项目分析</h1>
           </div>
           <div class="top-actions">
-            <button class="ghost-btn teaching-mode-btn" id="teachingModeBtn" type="button" data-teaching-action="start"><i data-lucide="graduation-cap"></i><span>教学模式</span></button>
+            <button class="ghost-btn teaching-mode-btn" id="teachingModeBtn" type="button" data-teaching-action="start"><i data-lucide="graduation-cap"></i><span>示例模式</span></button>
             <button class="icon-btn" id="knowledgeBtn" title="知识库"><i data-lucide="book-open"></i></button>
             <button class="icon-btn" id="auditBtn" title="操作记录"><i data-lucide="shield-check"></i><span class="dot"></span></button>
             <button class="ghost-btn" id="logoutBtn"><i data-lucide="log-out"></i><span>退出</span></button>
@@ -178,6 +179,10 @@
                   <button class="primary-btn" type="button" data-real-action="upload-eeg"><i data-lucide="upload-cloud"></i><span>上传到当前项目</span></button>
                   <small class="file-picked-name" id="realEegFileName">尚未选择文件</small>
                 </div>
+                <label class="upload-authorization-row">
+                  <input type="checkbox" data-upload-authorization="eeg" />
+                  <span>我确认有权上传该 EEG 数据，并同意本次云端试用仅用于科研分析与候选事件初筛。</span>
+                </label>
                 <div class="ia-data-actions">
                   <button class="ghost-btn" type="button" data-ia-action="rename-data"><i data-lucide="tag"></i><span>重命名 / 备注</span></button>
                 </div>
@@ -193,7 +198,7 @@
         <section class="view" id="journey">
           <section class="panel span-2" data-testid="review-validation-workbench">
             <div class="panel-head">
-              <div><h2>质量检查</h2><p>这里只放页面可操作性、结果完整性和边界提醒，不重复项目、数据和分析流程教学。</p></div>
+                <div><h2>质量检查</h2><p>这里只放页面可操作性、结果完整性和边界提醒，不重复项目、数据和分析流程说明。</p></div>
             </div>
           </section>
         </section>
@@ -211,7 +216,7 @@
                   <span>数据准备只处理当前项目内已选数据；上传数据请回到“数据管理”。</span>
                 </div>
                 <div class="segment-summary teaching-protected-note" data-testid="teaching-data-protected" hidden>
-                  <span>教学内置数据 / 受保护：可预览、可练习、可试跑分析，不可删除或覆盖。</span>
+                  <span>示例数据 / 受保护：可预览、可练习、可试跑分析，不可删除或覆盖。</span>
                 </div>
                 <div class="ia-table compact" id="prepDataQueue"></div>
               <div class="real-actions compact-actions">
@@ -384,8 +389,25 @@
               <button class="ia-method-card available" type="button" data-module-id="pac" data-real-action="run-pac"><strong>PAC 相位-振幅耦合</strong><span>查看相位-振幅耦合的描述性图表和表格，不能单独解释为因果机制。</span><b>耦合</b></button>
               <button class="ia-method-card available" type="button" data-module-id="connectivity" data-real-action="run-connectivity"><strong>Connectivity 连接性分析</strong><span>查看连接性矩阵和边表，结果用于研究参考，不证明信息流或因果方向。</span><b>连接</b></button>
               <button class="ia-method-card available" type="button" data-module-id="reference_csd" data-real-action="run-reference-csd"><strong>CSD 电流源密度计算</strong><span>基于通道位置信息计算头皮电位空间分布变化；这是传感器空间滤波，不是源定位或诊断。</span><b>需通道位置</b></button>
+              <button class="ia-method-card available" type="button" data-module-id="epilepsy_ml" data-real-action="open-epilepsy-workbench"><strong>癫痫样事件分析台</strong><span>进入操作台后先阅读波形，再运行候选事件初筛，查看波形、同轴 STFT 预览、Stage_Code 与候选事件，并进行人工矫正。</span><b>初筛/人工矫正</b></button>
             </div>
           </section>
+        </section>
+
+        <section class="view" id="epilepsyWorkbenchInline" data-testid="main-epilepsy-workbench-inline">
+          <section class="panel epilepsy-inline-context" data-testid="inline-epilepsy-context-header"></section>
+          <div class="epilepsy-inline-grid">
+            <main class="epilepsy-inline-main">
+              <section class="panel epilepsy-inline-waveform" data-testid="inline-epilepsy-waveform-panel"></section>
+              <section class="panel epilepsy-inline-start" data-testid="inline-epilepsy-screening-panel"></section>
+              <section class="panel epilepsy-inline-spectrogram" data-testid="inline-epilepsy-spectrogram-panel"></section>
+              <section class="panel epilepsy-inline-epoch" data-testid="inline-epilepsy-epoch-panel"></section>
+              <section class="panel epilepsy-inline-events" data-testid="inline-epilepsy-events-panel"></section>
+              <section class="panel epilepsy-inline-summary" data-testid="inline-epilepsy-summary-panel"></section>
+              <section class="panel epilepsy-inline-source" data-testid="inline-epilepsy-source-panel"></section>
+            </main>
+            <aside class="panel epilepsy-inline-review" data-testid="inline-epilepsy-review-panel"></aside>
+          </div>
         </section>
 
         <section class="view" id="paradigms">
@@ -464,6 +486,10 @@
                       <button class="primary-btn" type="button" data-real-action="upload-eeg"><i data-lucide="upload-cloud"></i><span>上传到当前项目</span></button>
                     </div>
                   </div>
+                  <label class="upload-authorization-row storage-upload-authorization">
+                    <input type="checkbox" data-upload-authorization="eeg" />
+                    <span>我确认有权上传该 EEG 数据，并同意本次云端试用仅用于科研分析与候选事件初筛。</span>
+                  </label>
                   <div class="storage-table project-file-table" id="storageFileRows"></div>
                 </section>
                 <aside class="storage-file-detail" id="storageFileDetail" aria-label="数据文件详情"></aside>
@@ -575,7 +601,7 @@
               <div class="checklist">
                 <label><input type="checkbox" checked /> 客户账号已注册。</label>
                 <label><input type="checkbox" checked /> 充值 1000 元和 5 元扣费已展示。</label>
-                <label><input type="checkbox" checked /> 教学样例结果已生成。</label>
+                <label><input type="checkbox" checked /> 示例数据结果已生成。</label>
                 <label><input type="checkbox" /> 结果通知等待运营确认。</label>
               </div>
             </section>
@@ -648,6 +674,6 @@
         <div id="modalBody"></div>
       </section>
     </div>
-    <script src="./app.js?v=20260624-project-polish"></script>
+    <script src="./app.js?v=20260701-rc-final-clean"></script>
   </body>
 </html>

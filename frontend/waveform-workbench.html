@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>脑电波形与数据准备工作台 | QLanalyser</title>
+    <link rel="stylesheet" href="./waveform-workbench.css?v=20260628-toolbar-disclosure" />
+  </head>
+  <body>
+    <main class="ww-shell" data-testid="waveform-workbench-shell">
+      <header class="ww-topbar">
+        <div>
+          <span class="ww-eyebrow">QLanalyser 独立波形工作台</span>
+          <h1>脑电波形与数据准备工作台</h1>
+          <p>连续浏览 EEG，按 epoch 或时间段标记剔除/保留；所有操作只写入准备草稿，不修改原始数据。</p>
+        </div>
+        <div class="ww-top-actions">
+          <div class="ww-workbench-switch" role="group" aria-label="波形工作台模式">
+            <button type="button" data-workbench-switch="basic" data-testid="waveform-switch-basic">基础预览</button>
+            <button type="button" data-workbench-switch="epoch" data-testid="waveform-switch-epoch">Epoch 复核</button>
+          </div>
+          <button id="loadTeachingBtn" class="ww-primary" type="button">加载示例数据</button>
+          <a id="backToMainLink" class="ww-ghost" href="./?customer_demo=auto&teaching_demo=auto#analysis">返回主工作台</a>
+        </div>
+      </header>
+
+      <section class="ww-card ww-context" aria-label="当前数据">
+        <div><span>当前文件</span><strong id="wwFileName">等待加载</strong></div>
+        <div><span>数据状态</span><strong id="wwDataState">未加载</strong></div>
+        <div><span>准备方案</span><strong id="wwPrepState">未确认</strong></div>
+        <div><span>边界</span><strong>科研数据准备，不用于诊断</strong></div>
+      </section>
+
+      <section class="ww-card ww-workbench" data-testid="waveform-workbench">
+        <div class="ww-toolbar" data-testid="waveform-governed-toolbar" aria-label="波形工具栏">
+          <section class="ww-toolbar-band ww-toolbar-band-browse" data-toolbar-layer="browse">
+            <div class="ww-band-head">
+              <strong>浏览连续 EEG</strong>
+              <span>只移动时间窗，不写入准备草稿。</span>
+            </div>
+            <div class="ww-group ww-browse-group ww-advanced-control" aria-label="浏览连续 EEG">
+              <button id="wwFirstBtn" type="button" title="第一页">|&lt;</button>
+              <button id="wwPrevBtn" type="button" title="上一页">&lt;</button>
+              <button id="wwNextBtn" type="button" title="下一页">&gt;</button>
+              <button id="wwLastBtn" type="button" title="最后一页">&gt;|</button>
+            </div>
+            <p class="ww-layer-note">滚轮平移，Ctrl/⌘ + 滚轮缩放；PageUp/PageDown 翻页。</p>
+          </section>
+
+          <section class="ww-toolbar-band ww-toolbar-band-display" data-toolbar-layer="display">
+            <div class="ww-band-head">
+              <strong>调整显示</strong>
+              <span>这些设置只影响屏幕预览，不改原始 EEG。</span>
+            </div>
+            <div class="ww-display-controls">
+              <label class="ww-control">
+                <span>时间窗</span>
+                <select id="wwTimescale">
+                  <option value="5">5 s/page</option>
+                  <option value="10">10 s/page</option>
+                  <option value="24" selected>24 s/page</option>
+                  <option value="30">30 s/page</option>
+                </select>
+              </label>
+              <label class="ww-control ww-advanced-control">
+                <span>事件标记</span>
+                <select id="wwEventDisplay" data-testid="waveform-event-display">
+                  <option value="light" selected>简洁（淡化）</option>
+                  <option value="full">详细</option>
+                  <option value="hidden">隐藏</option>
+                </select>
+              </label>
+              <label class="ww-control">
+                <span>每行振幅</span>
+                <select id="wwSensitivityPreset">
+                  <option value="50">50 uV/row</option>
+                  <option value="100">100 uV/row</option>
+                  <option value="200" selected>200 uV/row</option>
+                  <option value="500">500 uV/row</option>
+                  <option value="1000">1000 uV/row</option>
+                </select>
+              </label>
+              <label class="ww-control ww-range-control ww-advanced-control">
+                <span>振幅细调</span>
+                <input id="wwSensitivity" type="range" min="5" max="1000" step="5" value="200" />
+                <b id="wwSensitivityLabel">200 uV/row</b>
+              </label>
+              <label class="ww-control ww-range-control ww-advanced-control">
+                <span>显示通道数</span>
+                <input id="wwChannels" type="range" min="1" max="32" step="1" value="8" />
+                <b id="wwChannelsLabel">8</b>
+              </label>
+            </div>
+            <button id="wwAdvancedToggle" class="ww-toolbar-advanced-toggle" type="button" data-testid="waveform-toolbar-advanced-toggle" aria-expanded="false">更多设置</button>
+          </section>
+
+          <section class="ww-toolbar-band ww-toolbar-band-write" data-toolbar-layer="write">
+            <div class="ww-band-head">
+              <strong>标注与复核</strong>
+              <span>浏览模式不写草稿；选段、坏段、坏道、Epoch 复核才写入准备草稿。</span>
+            </div>
+            <div class="ww-group ww-mode-group" data-testid="waveform-mode-group" aria-label="标注与复核模式">
+              <button data-mode="browse" data-testid="waveform-mode-browse" class="active" type="button">浏览</button>
+              <button data-mode="selectSegment" data-testid="waveform-mode-select-segment" type="button">选段</button>
+              <button data-mode="epochReview" data-testid="waveform-mode-epoch-review" type="button">Epoch 复核</button>
+              <button data-mode="markBadSegment" data-testid="waveform-mode-mark-bad-segment" type="button">候选坏段</button>
+              <button data-mode="markBadChannel" data-testid="waveform-mode-mark-bad-channel" type="button">坏道</button>
+              <button id="wwShortcutBtn" class="ww-ghost-mini ww-advanced-control" type="button" data-testid="waveform-shortcut-help">快捷键</button>
+            </div>
+            <div class="ww-group ww-epoch-controls ww-advanced-control" data-testid="waveform-epoch-controls" aria-label="Epoch 复核设置">
+              <span>Epoch 复核设置</span>
+              <small>仅在 Epoch 复核模式下生效。</small>
+              <label><small>长度</small><select id="wwEpochLength" data-testid="waveform-epoch-length"><option value="0.5">0.5 s</option><option value="1">1 s</option><option value="2">2 s</option><option value="4" selected>4 s</option></select></label>
+              <label><small>显示</small><select id="wwVisibleEpochs" data-testid="waveform-visible-epochs"><option value="6" selected>6 个</option><option value="10">10 个</option><option value="25">25 个</option></select></label>
+            </div>
+          </section>
+        </div>
+
+        <div class="ww-main-grid">
+          <section class="ww-canvas-panel">
+            <div class="ww-canvas-wrap" id="wwCanvasWrap" data-mode="browse">
+              <canvas id="wwCanvas" width="1400" height="720" tabindex="0" aria-label="EEG 波形"></canvas>
+              <div class="ww-empty" id="wwEmpty">等待加载 EEG 数据</div>
+              <div class="ww-loading" id="wwLoadingOverlay" hidden>正在读取当前时间窗</div>
+            </div>
+            <div class="ww-overview" id="wwOverview" data-testid="waveform-overview" aria-label="全局时间轴">
+              <div class="ww-overview-track" id="wwOverviewTrack" role="slider" tabindex="0" aria-label="全局时间轴，可拖动定位当前窗口"></div>
+              <div class="ww-overview-caption" id="wwOverviewCaption">等待加载连续时间轴</div>
+            </div>
+            <div class="ww-legend" aria-label="波形标记图例">
+              <span><i class="legend-selected"></i>当前选区</span>
+              <span><i class="legend-candidate"></i>候选坏段</span>
+              <span><i class="legend-reject"></i>剔除 Reject</span>
+              <span><i class="legend-remain"></i>保留 Remain</span>
+              <span><i class="legend-event"></i>事件标记</span>
+            </div>
+            <div class="ww-status" id="wwStatus" data-testid="waveform-status-bar"></div>
+          </section>
+
+          <aside class="ww-side-panel">
+            <div class="ww-side-header">
+              <h2>下一步处理</h2>
+              <span id="wwActionState" class="ww-action-state">等待选择</span>
+            </div>
+            <p id="wwActionHint">先在波形中选中一段，再决定保留、剔除或作为候选坏段；所有操作只写入准备草稿，不修改原始 EEG。</p>
+            <div class="ww-draft" id="wwDraftSummary">暂无草稿。</div>
+            <div class="ww-primary-action" id="wwPrimaryAction" data-testid="waveform-primary-action-hint">请先在已加载波形中选择一段数据。</div>
+            <div class="ww-review-actions" aria-label="人工复核操作">
+              <button id="wwRejectBtn" type="button" class="ww-danger" data-testid="waveform-reject-selected">剔除 Reject</button>
+              <button id="wwRemainBtn" type="button" class="ww-keep" data-testid="waveform-remain-selected">保留 Remain</button>
+            </div>
+            <div class="ww-candidate-actions" aria-label="候选坏段操作">
+              <button id="wwConfirmBadSegmentsBtn" type="button" class="ww-primary" data-testid="waveform-confirm-candidate-bad-segments">确认候选坏段</button>
+              <button id="wwDiscardCandidatesBtn" type="button" class="ww-ghost" data-testid="waveform-discard-candidate-bad-segments">取消候选</button>
+            </div>
+            <div class="ww-history-actions" aria-label="草稿历史操作">
+              <button id="wwUndoBtn" type="button" class="ww-ghost" data-testid="waveform-undo">撤销</button>
+              <button id="wwRedoBtn" type="button" class="ww-ghost" data-testid="waveform-redo">重做</button>
+              <button id="wwRestoreSegmentBtn" type="button" class="ww-ghost" data-testid="waveform-restore-bad-segment">恢复最近剔除</button>
+            </div>
+            <div class="ww-side-actions ww-danger-zone">
+              <button id="wwCancelAllBtn" type="button" class="ww-danger ww-soft-danger" data-testid="waveform-cancel-all">清空本轮草稿</button>
+              <button id="wwClearDraftBtn" type="button" class="ww-danger ww-soft-danger" data-testid="waveform-clear-all-draft">清空全部草稿</button>
+            </div>
+            <div class="ww-help" id="wwShortcutHelp" hidden>浏览：滚轮水平浏览，PageUp/PageDown 翻页，Left/Right 小步移动。缩放：Ctrl/Cmd + 滚轮调整时间窗，+/- 调整振幅。标注：S 选段，E Epoch 复核，X 候选坏段，C 坏道，B/Esc 回到浏览，Z 撤销，Y 重做。</div>
+          </aside>
+        </div>
+      </section>
+    </main>
+    <script type="module" src="./waveform-workbench.js?v=20260628-toolbar-disclosure"></script>
+  </body>
+</html>
