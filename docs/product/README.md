@@ -30,6 +30,7 @@ Read these documents together when planning, implementing, reviewing, or accepti
 - [Page change log](./page_change_log.md)
 - [Review log](./review_log.md)
 - [Review system governance](./review_system_governance.md)
+- [User-level E2E adversarial review standard](./qlanalyser_user_level_e2e_adversarial_review_standard_20260702.md)
 - [Product documentation governance](./product_doc_governance.md)
 
 ## Update rule
