@@ -6705,7 +6705,11 @@ function loginAs(role, profile = null) {
       accountMeta.textContent = `${maskEmail(customer.email || demoCustomer.email)} / ${isDemoCustomer ? "审核账号" : "客户账号"}`;
     }
     qs("#topEyebrow").textContent = "项目工作台";
-    setView(isEpilepsyWorkbenchDeepLinkIntent() ? "epilepsyWorkbenchInline" : "dashboard");
+    const hashView = window.location.hash.slice(1);
+    const targetView = isEpilepsyWorkbenchDeepLinkIntent() 
+      ? "epilepsyWorkbenchInline" 
+      : (hashView || "dashboard");
+    setView(targetView);
     updateRealActionGate();
     refreshProjectWorkspace().then(() => {
       if (isEpilepsyWorkbenchDeepLinkIntent()) bootstrapEpilepsyDeepLinkWorkbench("login_restore").catch((error) => {
@@ -8934,6 +8938,13 @@ if (window.ResizeObserver) {
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", observeEegCanvas, { once: true });
   else observeEegCanvas();
 }
+
+window.addEventListener("hashchange", () => {
+  const hash = window.location.hash.slice(1);
+  if (hash && state.role) {
+    setView(hash);
+  }
+});
 
 document.addEventListener("submit", (event) => {
   if (event.target?.matches?.("#customerLoginForm")) {
