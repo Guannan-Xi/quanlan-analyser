@@ -2,7 +2,7 @@ import json
 import os
 import threading
 import time
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import TypeVar
@@ -19,6 +19,19 @@ _PROCESS_LOCK = threading.RLock()
 
 ModelT = TypeVar("ModelT", bound=BaseModel)
 
+# Reentrancy tracker: lets the same thread acquire the same registry lock
+# multiple times (and lets billing hold accounts+transactions atomically while
+# inner helpers call upsert_item). Per-thread dict name -> depth.
+_HELD_LOCKS = threading.local()
+
+
+def _held_counts() -> dict[str, int]:
+    counts = getattr(_HELD_LOCKS, "counts", None)
+    if counts is None:
+        counts = {}
+        _HELD_LOCKS.counts = counts
+    return counts
+
 
 def _state_file(name: str) -> Path:
     return STATE_ROOT / f"{name}.json"
@@ -32,12 +45,20 @@ def _lock_file(name: str) -> Path:
 def _registry_lock(name: str):
     """Serialize registry writes across threads and local processes.
 
-    The V01 pilot uses JSON registry files rather than a database. On Windows,
-    concurrent os.replace calls against the same data/state directory can raise
-    PermissionError when another process briefly owns the target or temp file.
-    A tiny lock file keeps the file-system backend predictable until the product
-    graduates to a real transactional store.
+    Reentrant within the same thread (so billing can hold accounts lock and
+    still call upsert_item("billing_transactions", ...)).
     """
+    counts = _held_counts()
+    depth = counts.get(name, 0)
+    if depth > 0:
+        # Already held by this thread — re-enter without re-acquiring.
+        counts[name] = depth + 1
+        try:
+            yield
+        finally:
+            counts[name] -= 1
+        return
+
     STATE_ROOT.mkdir(parents=True, exist_ok=True)
     lock_path = _lock_file(name)
     start = time.monotonic()
@@ -50,8 +71,6 @@ def _registry_lock(name: str):
                 break
             except FileExistsError:
                 if time.monotonic() - start > _LOCK_TIMEOUT_SEC:
-                    # If the owning process is gone, the stale lock should not
-                    # permanently block local development or acceptance tests.
                     try:
                         age = time.time() - lock_path.stat().st_mtime
                     except OSError:
@@ -64,15 +83,33 @@ def _registry_lock(name: str):
                             pass
                     raise TimeoutError(f"Timed out waiting for state registry lock: {lock_path}")
                 time.sleep(_LOCK_POLL_SEC)
-        try:
-            yield
-        finally:
-            if handle is not None:
-                os.close(handle)
+    counts[name] = 1
+    try:
+        yield
+    finally:
+        counts[name] -= 1
+        if handle is not None:
+            os.close(handle)
+        if counts.get(name, 0) <= 0:
+            counts.pop(name, None)
             try:
                 lock_path.unlink()
             except FileNotFoundError:
                 pass
+
+
+@contextmanager
+def atomic_cross_registry_lock(registry_names: list[str]):
+    """Hold multiple registry locks atomically for cross-registry transactions
+    (e.g. billing: accounts + transactions).
+
+    Acquires locks in sorted name order to prevent deadlock.
+    """
+    sorted_names = sorted(registry_names)
+    with ExitStack() as stack:
+        for name in sorted_names:
+            stack.enter_context(_registry_lock(name))
+        yield
 
 
 def _replace_with_retry(temp_path: Path, target_path: Path) -> None:

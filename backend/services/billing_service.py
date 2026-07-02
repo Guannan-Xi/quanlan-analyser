@@ -99,79 +99,81 @@ def get_recharge_order(order_id: str) -> RechargeOrderRead:
 
 
 def confirm_recharge_order(order_id: str, payload: PaymentConfirm | None = None) -> RechargeOrderRead:
-    orders = _load_orders()
-    order = orders.get(order_id)
-    if not order:
-        raise HTTPException(status_code=404, detail="Recharge order not found")
-    if payload and payload.status not in {"paid", "failed", "cancelled"}:
-        raise HTTPException(status_code=422, detail="Unsupported payment status")
-    if order.status == "paid":
-        return order
-    if payload and payload.status in {"failed", "cancelled"}:
-        order.status = payload.status
-        order.provider_trade_no = payload.provider_trade_no
+    with state_store.atomic_cross_registry_lock([RECHARGES, TRANSACTIONS, "accounts"]):
+        orders = state_store.load_registry(RECHARGES, RechargeOrderRead)
+        order = orders.get(order_id)
+        if not order:
+            raise HTTPException(status_code=404, detail="Recharge order not found")
+        if payload and payload.status not in {"paid", "failed", "cancelled"}:
+            raise HTTPException(status_code=422, detail="Unsupported payment status")
+        if order.status == "paid":
+            return order
+        if payload and payload.status in {"failed", "cancelled"}:
+            order.status = payload.status
+            order.provider_trade_no = payload.provider_trade_no
+            state_store.upsert_item(RECHARGES, order)
+            return order
+        account = account_service.get_account(order.account_id)
+        account.balance_credits = round(account.balance_credits + order.amount_credits, 2)
+        account.total_recharged_credits = round(account.total_recharged_credits + order.amount_credits, 2)
+        account_service.update_account(account)
+        order.status = "paid"
+        order.provider_trade_no = payload.provider_trade_no if payload else ""
+        order.paid_at = datetime.now(timezone.utc)
         state_store.upsert_item(RECHARGES, order)
+        tx = BillingTransactionRead(
+            account_id=account.id,
+            direction="credit",
+            amount_credits=order.amount_credits,
+            balance_after_credits=account.balance_credits,
+            source_type="recharge_order",
+            source_id=order.id,
+            description=f"{order.payment_method} recharge",
+            metadata_json={"payment_method": order.payment_method, "provider_trade_no": order.provider_trade_no},
+        )
+        state_store.upsert_item(TRANSACTIONS, tx)
+        audit_service.record_event(
+            action="billing.recharge_order.paid",
+            object_type="recharge_order",
+            object_id=order.id,
+            organization_id=account.organization_name or "local-org",
+            actor_user_id=account.id,
+            metadata_json={"amount_credits": order.amount_credits, "payment_method": order.payment_method},
+        )
         return order
-    account = account_service.get_account(order.account_id)
-    account.balance_credits = round(account.balance_credits + order.amount_credits, 2)
-    account.total_recharged_credits = round(account.total_recharged_credits + order.amount_credits, 2)
-    account_service.update_account(account)
-    order.status = "paid"
-    order.provider_trade_no = payload.provider_trade_no if payload else ""
-    order.paid_at = datetime.now(timezone.utc)
-    state_store.upsert_item(RECHARGES, order)
-    tx = BillingTransactionRead(
-        account_id=account.id,
-        direction="credit",
-        amount_credits=order.amount_credits,
-        balance_after_credits=account.balance_credits,
-        source_type="recharge_order",
-        source_id=order.id,
-        description=f"{order.payment_method} recharge",
-        metadata_json={"payment_method": order.payment_method, "provider_trade_no": order.provider_trade_no},
-    )
-    state_store.upsert_item(TRANSACTIONS, tx)
-    audit_service.record_event(
-        action="billing.recharge_order.paid",
-        object_type="recharge_order",
-        object_id=order.id,
-        organization_id=account.organization_name or "local-org",
-        actor_user_id=account.id,
-        metadata_json={"amount_credits": order.amount_credits, "payment_method": order.payment_method},
-    )
-    return order
 
 
 def charge_analysis_task(*, account_id: str, task_id: str, module_name: str, quantity_credits: float, metadata_json: dict | None = None) -> BillingTransactionRead:
-    account = account_service.get_account(normalize_account_id(account_id))
-    amount = round(max(float(quantity_credits), 0.0), 2)
-    if amount <= 0:
-        amount = 1.0
-    if account.balance_credits < amount:
-        raise HTTPException(status_code=402, detail={"message": "Insufficient balance", "required_credits": amount, "balance_credits": account.balance_credits})
-    account.balance_credits = round(account.balance_credits - amount, 2)
-    account.total_spent_credits = round(account.total_spent_credits + amount, 2)
-    account_service.update_account(account)
-    tx = BillingTransactionRead(
-        account_id=account.id,
-        direction="debit",
-        amount_credits=amount,
-        balance_after_credits=account.balance_credits,
-        source_type="analysis_task",
-        source_id=task_id,
-        description=f"{module_name.upper()} analysis task",
-        metadata_json=metadata_json or {},
-    )
-    state_store.upsert_item(TRANSACTIONS, tx)
-    audit_service.record_event(
-        action="billing.analysis_task.charged",
-        object_type="analysis_task",
-        object_id=task_id,
-        organization_id=account.organization_name or "local-org",
-        actor_user_id=account.id,
-        metadata_json={"amount_credits": amount, "module_name": module_name},
-    )
-    return tx
+    with state_store.atomic_cross_registry_lock([TRANSACTIONS, "accounts"]):
+        account = account_service.get_account(normalize_account_id(account_id))
+        amount = round(max(float(quantity_credits), 0.0), 2)
+        if amount <= 0:
+            amount = 1.0
+        if account.balance_credits < amount:
+            raise HTTPException(status_code=402, detail={"message": "Insufficient balance", "required_credits": amount, "balance_credits": account.balance_credits})
+        account.balance_credits = round(account.balance_credits - amount, 2)
+        account.total_spent_credits = round(account.total_spent_credits + amount, 2)
+        account_service.update_account(account)
+        tx = BillingTransactionRead(
+            account_id=account.id,
+            direction="debit",
+            amount_credits=amount,
+            balance_after_credits=account.balance_credits,
+            source_type="analysis_task",
+            source_id=task_id,
+            description=f"{module_name.upper()} analysis task",
+            metadata_json=metadata_json or {},
+        )
+        state_store.upsert_item(TRANSACTIONS, tx)
+        audit_service.record_event(
+            action="billing.analysis_task.charged",
+            object_type="analysis_task",
+            object_id=task_id,
+            organization_id=account.organization_name or "local-org",
+            actor_user_id=account.id,
+            metadata_json={"amount_credits": amount, "module_name": module_name},
+        )
+        return tx
 
 
 def list_recharge_orders() -> list[dict]:
@@ -185,6 +187,12 @@ def list_transactions() -> list[dict]:
 def normalize_account_id(account_id: str | None) -> str:
     if not account_id or account_id in {"local-user", "demo", "customer"}:
         return "demo-customer"
+    try:
+        account_service.get_account(account_id)
+    except HTTPException as exc:
+        if exc.status_code == 404:
+            return "demo-customer"
+        raise
     return account_id
 
 

@@ -36,7 +36,10 @@ def _hash_password(password: str, salt: str | None = None) -> tuple[str, str]:
 def _verify_password(password: str, account: AccountRead) -> bool:
     if not account.password_hash or not account.password_salt:
         return False
-    digest, _ = _hash_password(password, account.password_salt)
+    try:
+        digest, _ = _hash_password(password, account.password_salt)
+    except HTTPException:
+        return False  # short password — don't leak that it was too short vs wrong
     return hmac.compare_digest(digest, account.password_hash)
 
 

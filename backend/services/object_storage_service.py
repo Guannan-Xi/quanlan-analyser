@@ -14,6 +14,7 @@ from fastapi import HTTPException, UploadFile
 ROOT = Path(__file__).resolve().parents[2]
 OBJECT_ROOT = Path(os.getenv("QLANALYSER_OBJECT_ROOT", ROOT / "data"))
 DEFAULT_UPLOAD_CHUNK_BYTES = int(os.getenv("QLANALYSER_UPLOAD_CHUNK_BYTES", str(8 * 1024 * 1024)))
+MAX_UPLOAD_BYTES = int(os.getenv("QLANALYSER_MAX_UPLOAD_BYTES", str(2 * 1024 * 1024 * 1024)))  # 2 GB default
 STORAGE_BACKEND = os.getenv("QLANALYSER_STORAGE_BACKEND", "local").strip().lower()
 OSS_BACKEND_NAMES = {"oss", "aliyun", "aliyun-oss"}
 OSS_CACHE_ROOT = Path(os.getenv("QLANALYSER_OBJECT_CACHE_ROOT", OBJECT_ROOT / ".oss-cache"))
@@ -112,6 +113,20 @@ def _metadata_headers(metadata: dict | None, sha256: str) -> dict[str, str]:
     return headers
 
 
+class UploadSizeExceeded(HTTPException):
+    def __init__(self, received: int, limit: int):
+        super().__init__(
+            status_code=413,
+            detail={
+                "code": "UPLOAD_SIZE_EXCEEDED",
+                "message": "Uploaded EEG file exceeds the maximum allowed size.",
+                "received_bytes": received,
+                "max_bytes": limit,
+                "suggested_action": "Use a smaller recording or contact the administrator to raise the quota.",
+            },
+        )
+
+
 async def put_upload_file_stream(upload: UploadFile, object_key: str, metadata: dict | None = None) -> dict:
     """Persist an UploadFile in chunks and return object metadata."""
     safe_key = _safe_object_key(object_key)
@@ -135,6 +150,8 @@ async def _put_upload_file_stream_local(upload: UploadFile, object_key: str, met
                 if not chunk:
                     break
                 size_bytes += len(chunk)
+                if size_bytes > MAX_UPLOAD_BYTES:
+                    raise UploadSizeExceeded(size_bytes, MAX_UPLOAD_BYTES)
                 digest.update(chunk)
                 tmp.write(chunk)
         if size_bytes <= 0:
@@ -142,6 +159,10 @@ async def _put_upload_file_stream_local(upload: UploadFile, object_key: str, met
                 tmp_path.unlink()
             raise HTTPException(status_code=422, detail="Uploaded EEG file is empty")
         os.replace(tmp_path, target)
+    except UploadSizeExceeded:
+        if tmp_path and tmp_path.exists():
+            tmp_path.unlink(missing_ok=True)
+        raise
     except HTTPException:
         raise
     except Exception as exc:  # pragma: no cover - defensive IO boundary
@@ -176,6 +197,8 @@ async def _put_upload_file_stream_oss(upload: UploadFile, object_key: str, metad
                 if not chunk:
                     break
                 size_bytes += len(chunk)
+                if size_bytes > MAX_UPLOAD_BYTES:
+                    raise UploadSizeExceeded(size_bytes, MAX_UPLOAD_BYTES)
                 digest.update(chunk)
                 tmp.write(chunk)
         if size_bytes <= 0:
@@ -189,6 +212,8 @@ async def _put_upload_file_stream_oss(upload: UploadFile, object_key: str, metad
         if content_type:
             headers["Content-Type"] = str(content_type)
         _oss_bucket().put_object_from_file(target_key, str(tmp_path), headers=headers)
+    except UploadSizeExceeded:
+        raise
     except HTTPException:
         raise
     except Exception as exc:  # pragma: no cover - requires cloud credentials

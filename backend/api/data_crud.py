@@ -6,8 +6,13 @@ router = APIRouter()
 
 
 @router.get("/data/files")
-def list_customer_files() -> list[dict]:
-    return [file.model_dump(mode="json") for file in storage_service.list_eeg_files()]
+def list_customer_files(project_id: str | None = None, input_file_id: str | None = None) -> list[dict]:
+    files = storage_service.list_eeg_files()
+    if project_id:
+        files = [file for file in files if file.project_id == project_id]
+    if input_file_id:
+        files = [file for file in files if file.id == input_file_id]
+    return [file.model_dump(mode="json") for file in files]
 
 
 @router.patch("/data/files/{file_id}")

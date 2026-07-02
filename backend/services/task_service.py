@@ -92,6 +92,9 @@ _BASE_WORKFLOW_TEMPLATES = [
             "tables/epilepsy_ml_events.csv",
             "tables/epilepsy_ml_features.csv",
             "tables/epilepsy_ml_features_scaled.csv",
+            "data/epilepsy_ml_spectrogram.json",
+            "figures/epilepsy_ml_event_timeline.svg",
+            "figures/epilepsy_ml_spectrogram_preview.svg",
             "reproducibility/epilepsy_ml_summary.json",
             "reproducibility/epilepsy_ml_model_manifest.json",
             "reproducibility/parameters.json",
@@ -192,6 +195,11 @@ WORKFLOW_TEMPLATES = module_contract_service.enrich_workflow_templates(_BASE_WOR
 
 _tasks: dict[str, AnalysisTaskRead] = state_store.load_registry("tasks", AnalysisTaskRead)
 _artifacts: dict[str, ArtifactRead] = state_store.load_registry("artifacts", ArtifactRead)
+
+_MODULES_ALLOWED_BEFORE_DATA_PREPARATION = {"qc"}
+_STRICT_WORKFLOW_BY_MODULE = {
+    "epilepsy_ml": "epilepsy_ml_xgboost",
+}
 
 
 def _refresh_tasks() -> None:
@@ -334,7 +342,58 @@ def _merge_plan_into_task_parameters(module_name: str, parameters: dict, plan) -
 
 def create_task(payload: AnalysisTaskCreate) -> AnalysisTaskRead:
     eeg_file = storage_service.get_eeg_file(payload.input_file_id)
+    strict_workflow = _STRICT_WORKFLOW_BY_MODULE.get(payload.module_name)
+    if strict_workflow and payload.workflow_id != strict_workflow:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "WORKFLOW_CONTRACT_MISMATCH",
+                "message": f"{payload.module_name} requires workflow_id={strict_workflow}.",
+                "suggested_action": f"Use workflow_id={strict_workflow} for this module.",
+            },
+        )
+    if (
+        getattr(eeg_file, "upload_authorization_confirmed", False)
+        and payload.module_name not in _MODULES_ALLOWED_BEFORE_DATA_PREPARATION
+        and not payload.parameters_json.get("data_preparation_plan_id")
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "DATA_PREPARATION_REQUIRED",
+                "message": "Please confirm a data preparation plan before running formal analysis on uploaded EEG data.",
+                "suggested_action": "Open Data Preparation, confirm the preparation plan, then start this analysis again.",
+            },
+        )
     data_preparation_plan = data_preparation_service.validate_task_parameters(payload.module_name, payload.parameters_json)
+    if data_preparation_plan is not None:
+        if data_preparation_plan.status != "confirmed":
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "code": "DATA_PREPARATION_PLAN_NOT_CONFIRMED",
+                    "message": "Formal analysis requires a confirmed data preparation plan.",
+                    "suggested_action": "Confirm the data preparation plan before starting analysis.",
+                },
+            )
+        if data_preparation_plan.input_file_id != payload.input_file_id:
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "code": "DATA_PREPARATION_FILE_MISMATCH",
+                    "message": "The data preparation plan belongs to a different EEG file.",
+                    "suggested_action": "Use the confirmed preparation plan for the selected EEG file.",
+                },
+            )
+        if data_preparation_plan.project_id != payload.project_id:
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "code": "DATA_PREPARATION_PROJECT_MISMATCH",
+                    "message": "The data preparation plan belongs to a different project.",
+                    "suggested_action": "Use a preparation plan from the current project.",
+                },
+            )
     effective_parameters = _merge_plan_into_task_parameters(payload.module_name, payload.parameters_json, data_preparation_plan)
     payload = payload.model_copy(update={"parameters_json": effective_parameters})
     estimate = quota_service.task_resource_estimate(payload.module_name, eeg_file.size_bytes, payload.parameters_json)

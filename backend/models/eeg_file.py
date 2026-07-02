@@ -27,6 +27,9 @@ class EEGFileRead(BaseModel):
     metadata_json: dict = Field(default_factory=dict)
     status: str = "uploaded"
     upload_status: str = "uploaded"
+    upload_authorization_confirmed: bool = False
+    upload_authorization_text: str | None = None
+    upload_authorization_confirmed_at: datetime | None = None
     owner_user_id: str = "local-user"
     created_by: str = "local-user"
     updated_by: str | None = None

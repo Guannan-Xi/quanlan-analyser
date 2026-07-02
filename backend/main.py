@@ -1,9 +1,10 @@
 import os
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.api import accounts, admin, artifacts, billing, data_crud, data_preparation, eeg_files, epilepsy_workbench, health, lab_demo, projects, reports, subjects, tasks, templates, workflow
+from backend.services import account_service
 
 app = FastAPI(
     title="QuanLan Analyser API",
@@ -40,19 +41,24 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# 公开端点：无需认证
 app.include_router(health.router, prefix="/api", tags=["health"])
 app.include_router(accounts.router, prefix="/api", tags=["accounts"])
 app.include_router(lab_demo.router, prefix="/api", tags=["lab-demo"])
-app.include_router(projects.router, prefix="/api", tags=["projects"])
-app.include_router(subjects.router, prefix="/api", tags=["subjects"])
-app.include_router(eeg_files.router, prefix="/api", tags=["eeg-files"])
-app.include_router(templates.router, prefix="/api", tags=["templates"])
-app.include_router(tasks.router, prefix="/api", tags=["tasks"])
-app.include_router(artifacts.router, prefix="/api", tags=["artifacts"])
-app.include_router(epilepsy_workbench.router, prefix="/api", tags=["epilepsy-workbench"])
-app.include_router(reports.router, prefix="/api", tags=["reports"])
-app.include_router(billing.router, prefix="/api", tags=["billing"])
-app.include_router(data_crud.router, prefix="/api", tags=["data-crud"])
-app.include_router(data_preparation.router, prefix="/api", tags=["data-preparation"])
-app.include_router(workflow.router, prefix="/api", tags=["workflow"])
-app.include_router(admin.router, prefix="/api", tags=["admin"])
+
+# 需认证端点
+app.include_router(projects.router, prefix="/api", tags=["projects"], dependencies=[Depends(account_service.require_current_account)])
+app.include_router(subjects.router, prefix="/api", tags=["subjects"], dependencies=[Depends(account_service.require_current_account)])
+app.include_router(eeg_files.router, prefix="/api", tags=["eeg-files"], dependencies=[Depends(account_service.require_current_account)])
+app.include_router(templates.router, prefix="/api", tags=["templates"], dependencies=[Depends(account_service.require_current_account)])
+app.include_router(tasks.router, prefix="/api", tags=["tasks"], dependencies=[Depends(account_service.require_current_account)])
+app.include_router(artifacts.router, prefix="/api", tags=["artifacts"], dependencies=[Depends(account_service.require_current_account)])
+app.include_router(epilepsy_workbench.router, prefix="/api", tags=["epilepsy-workbench"], dependencies=[Depends(account_service.require_current_account)])
+app.include_router(reports.router, prefix="/api", tags=["reports"], dependencies=[Depends(account_service.require_current_account)])
+app.include_router(billing.router, prefix="/api", tags=["billing"], dependencies=[Depends(account_service.require_current_account)])
+app.include_router(data_crud.router, prefix="/api", tags=["data-crud"], dependencies=[Depends(account_service.require_current_account)])
+app.include_router(data_preparation.router, prefix="/api", tags=["data-preparation"], dependencies=[Depends(account_service.require_current_account)])
+app.include_router(workflow.router, prefix="/api", tags=["workflow"], dependencies=[Depends(account_service.require_current_account)])
+
+# 需管理员权限
+app.include_router(admin.router, prefix="/api", tags=["admin"], dependencies=[Depends(account_service.require_admin_account)])

@@ -7,9 +7,9 @@ from pydantic import AliasChoices, BaseModel, Field
 from backend.models.base import new_id, utc_now
 
 
-PlanModuleName = Literal["qc", "psd", "erp", "epilepsy", "tfr", "pac", "reference_csd", "multitaper_psd_tfr", "connectivity"]
-SUPPORTED_PLAN_MODULES = {"qc", "psd", "erp", "epilepsy", "tfr", "pac", "reference_csd", "multitaper_psd_tfr", "connectivity"}
-DEFAULT_PLAN_MODULE_SCOPE: list[PlanModuleName] = ["qc", "psd", "erp", "epilepsy", "tfr", "pac", "reference_csd", "multitaper_psd_tfr", "connectivity"]
+PlanModuleName = Literal["qc", "psd", "erp", "epilepsy", "epilepsy_ml", "tfr", "pac", "reference_csd", "multitaper_psd_tfr", "connectivity"]
+SUPPORTED_PLAN_MODULES = {"qc", "psd", "erp", "epilepsy", "epilepsy_ml", "tfr", "pac", "reference_csd", "multitaper_psd_tfr", "connectivity"}
+DEFAULT_PLAN_MODULE_SCOPE: list[PlanModuleName] = ["qc", "psd", "erp", "epilepsy", "epilepsy_ml", "tfr", "pac", "reference_csd", "multitaper_psd_tfr", "connectivity"]
 
 
 class DataPreparationPlanCreate(BaseModel):

@@ -10,7 +10,6 @@ class ProjectCreate(BaseModel):
     name: str
     description: str = ""
     research_type: str = "resting_state"
-    owner_id: str = "local-user"
     owner_user_id: str = "local-user"
     created_by: str = "local-user"
     updated_by: str | None = None

@@ -163,6 +163,27 @@ def archive_project(project_id: str, actor_user_id: str = "local-user") -> Proje
     return project
 
 
+def delete_project(project_id: str, actor_user_id: str = "local-user") -> ProjectRead:
+    project = get_project(project_id)
+    if _is_protected_teaching_project(project):
+        _raise_teaching_protected("project", project.id)
+    project.status = "deleted"
+    project.updated_by = actor_user_id
+    project.updated_at = utc_now()
+    _projects[project.id] = project
+    state_store.upsert_item("projects", project)
+    audit_service.record_event(
+        action="project.soft_deleted",
+        object_type="project",
+        object_id=project.id,
+        organization_id=project.organization_id,
+        project_id=project.id,
+        actor_user_id=actor_user_id,
+        metadata_json={"delete_mode": "soft", "status": "deleted"},
+    )
+    return project
+
+
 def create_subject(project_id: str, payload: SubjectCreate) -> SubjectRead:
     get_project(project_id)
     subject = SubjectRead(project_id=project_id, **payload.model_dump())
@@ -177,8 +198,17 @@ def list_subjects(project_id: str) -> list[SubjectRead]:
     return [subject for subject in _subjects.values() if subject.project_id == project_id]
 
 
-async def create_eeg_file(project_id: str, subject_id: str | None, upload: UploadFile | None) -> EEGFileRead:
+async def create_eeg_file(
+    project_id: str,
+    subject_id: str | None,
+    upload: UploadFile | None,
+    *,
+    upload_authorization_confirmed: bool = False,
+    upload_authorization_text: str | None = None,
+) -> EEGFileRead:
     project = get_project(project_id)
+    if _is_protected_teaching_project(project):
+        _raise_teaching_protected("project", project.id)
     _refresh_subjects()
     if subject_id and subject_id not in _subjects:
         raise HTTPException(status_code=404, detail="Subject not found")
@@ -220,6 +250,9 @@ async def create_eeg_file(project_id: str, subject_id: str | None, upload: Uploa
         content_type=stored_object.get("content_type"),
         status=upload_status,
         upload_status=upload_status,
+        upload_authorization_confirmed=bool(upload_authorization_confirmed),
+        upload_authorization_text=upload_authorization_text,
+        upload_authorization_confirmed_at=utc_now() if upload_authorization_confirmed else None,
         owner_user_id=project.owner_user_id,
         created_by=project.owner_user_id,
         quota_account_id=project.quota_account_id,
@@ -229,6 +262,13 @@ async def create_eeg_file(project_id: str, subject_id: str | None, upload: Uploa
         from backend.services import metadata_service
 
         metadata_service.extract_metadata(eeg_file)
+        eeg_file.metadata_json.update(
+            {
+                "upload_authorization_confirmed": bool(upload_authorization_confirmed),
+                "upload_authorization_text": upload_authorization_text,
+                "upload_authorization_confirmed_at": eeg_file.upload_authorization_confirmed_at.isoformat() if eeg_file.upload_authorization_confirmed_at else None,
+            }
+        )
         eeg_file.metadata_extracted_at = utc_now()
         eeg_file.status = "metadata_ready"
     except Exception as exc:
@@ -252,6 +292,8 @@ async def create_eeg_file(project_id: str, subject_id: str | None, upload: Uploa
             "size_bytes": eeg_file.size_bytes,
             "sha256": eeg_file.sha256,
             "upload_status": eeg_file.upload_status,
+            "upload_authorization_confirmed": eeg_file.upload_authorization_confirmed,
+            "upload_authorization_text": eeg_file.upload_authorization_text,
         },
     )
     eeg_file.audit_trace_id = audit.audit_trace_id

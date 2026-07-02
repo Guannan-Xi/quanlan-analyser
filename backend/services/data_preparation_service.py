@@ -31,6 +31,7 @@ EPOCH_SET_REGISTRY = "epoch_sets"
 CONTRACT_VERSION = "qlanalyser-data-preparation-v0.2"
 EPOCH_SET_CONTRACT_VERSION = "qlanalyser-epoch-set-v0.1"
 LEGACY_DEFAULT_PLAN_MODULE_SCOPE = {"qc", "psd", "erp", "tfr", "pac", "reference_csd"}
+LEGACY_DEFAULT_PLAN_SCOPE_WITHOUT_EPILEPSY_ML = set(DEFAULT_PLAN_MODULE_SCOPE) - {"epilepsy_ml"}
 
 DEFAULT_ARTIFACT_CONTRACT = {
     "contract_version": CONTRACT_VERSION,
@@ -172,7 +173,7 @@ def _write_plan_artifacts(plan: DataPreparationPlanRead) -> Path:
 
 def _normalize_legacy_default_scope(plan: DataPreparationPlanRead) -> DataPreparationPlanRead:
     current_scope = set(plan.module_scope or [])
-    if current_scope == LEGACY_DEFAULT_PLAN_MODULE_SCOPE:
+    if current_scope in (LEGACY_DEFAULT_PLAN_MODULE_SCOPE, LEGACY_DEFAULT_PLAN_SCOPE_WITHOUT_EPILEPSY_ML):
         plan.module_scope = list(DEFAULT_PLAN_MODULE_SCOPE)
         _write_plan_artifacts(plan)
         state_store.upsert_item(REGISTRY, plan)
