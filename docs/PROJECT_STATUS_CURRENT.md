@@ -70,6 +70,26 @@ Admin:    ops@quanlan.cn, via the top-right management entry
 
 ## Evidence Entry Points
 
+Latest user-level E2E adversarial acceptance baseline:
+
+```text
+work\release_evidence\user_level_e2e_adversarial_20260702_175838\user_level_e2e_adversarial_result.json
+work\release_evidence\user_level_e2e_adversarial_20260702_175838\user_level_e2e_adversarial_receipt.md
+work\release_evidence\user_level_e2e_adversarial_20260702_175838\screenshots\
+```
+
+Result: `passed`, P0=0, P1=0, P2=0, screenshots=11.
+
+Previous conditional baseline:
+
+```text
+work\release_evidence\user_level_e2e_adversarial_20260702_122302\user_level_e2e_adversarial_result.json
+work\release_evidence\user_level_e2e_adversarial_20260702_122302\user_level_e2e_adversarial_receipt.md
+work\release_evidence\user_level_e2e_adversarial_20260702_122302\screenshots\
+```
+
+Historical evidence:
+
 ```text
 work\release_evidence\20260620-v01-acceptance\START_HERE_RELEASE_REVIEW.md
 work\release_evidence\20260620-v01-public\PUBLIC_DEPLOYMENT_EVIDENCE.md

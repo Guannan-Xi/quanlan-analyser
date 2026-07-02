@@ -31,6 +31,99 @@ YYYY-MM-DD
 
 ---
 
+## 最新任务
+
+### 日期
+2026-07-02
+
+### 任务目标
+完成 QLanalyser 用户级端到端对抗验收，并修复本地 ZCode GPT-5.5 路由阻塞恢复机制。
+
+### 修改文件
+- `scripts/e2e_user_level_adversarial_acceptance.mjs`：将验收路径改为真实用户路径，先启用示例数据，再检查项目、数据、数据准备、工作流和癫痫样事件分析台；使用截图时刻的可见性证据避免异步二次判定误报。
+- `C:\Users\XGN\Desktop\router\quanlan-zcode-triage-gateway.mjs`：新增 GPT-5.5 tier 超时和熔断器。
+- `C:\Users\XGN\Desktop\router\quanlan-zcode-headroom-watchdog.mjs`：新增/修复 Headroom watchdog，加入启动宽限、PID 0 跳过和重启风暴保护。
+- `C:\Users\XGN\Desktop\router\Start-ZCode-Stack.ps1`：支持 `-WithWatchdog`，并将 triage gateway 固定到 `8895`，避开 ZCode `model-stats` 插件占用的 `8795`。
+- `C:\Users\XGN\Desktop\router\Clear-ZCode-GPT55-Block.ps1`：新增一键清空 GPT-5.5 阻塞脚本。
+
+### 已完成
+- 定位 GPT-5.5 连接失败根因：原 `8795`/8787 链路配置可用，但 gwlink.cc 524/连接重置会造成 Headroom 请求阻塞；同时发现 `8795` 可被 model-stats 插件占用导致 chat/livez 404，因此 triage gateway 改到 `8895`。
+- 建立三层恢复机制：triage gateway 超时+熔断、watchdog 自动探测+重启、一键清阻塞脚本。
+- 重新运行用户级 E2E 对抗验收，结果从 `conditional_pass` 收敛到 `passed`。
+
+### 测试方式
+```bash
+powershell -NoProfile -ExecutionPolicy Bypass -File C:\Users\XGN\Desktop\router\Clear-ZCode-GPT55-Block.ps1 -WithWatchdog -TimeoutSec 60
+node --check scripts/e2e_user_level_adversarial_acceptance.mjs
+QLANALYSER_UI_TIMEOUT_MS=15000 node scripts/e2e_user_level_adversarial_acceptance.mjs --frontend http://127.0.0.1:4174 --api http://127.0.0.1:8001/api
+```
+
+### 测试结果
+- GPT-5.5 smoke test: `OK`
+- triage gateway: `quanlan-zcode-triage-gateway` on `8895`, GPT-5.5 circuit `closed`, failures `0`, timeout `120000ms`
+- QLanalyser E2E verdict: `passed`
+- P0: 0
+- P1: 0
+- P2: 0
+- screenshots: 11
+- evidence: `work/release_evidence/user_level_e2e_adversarial_20260702_175838/`
+
+### 风险点
+- 工作树已有大量历史未提交变更，本次只确认上述文件与验收证据。
+- GPT-5.5 上游 gwlink.cc 仍可能出现 524/连接重置；当前机制是本地熔断与恢复，不等于上游稳定性已解决。
+
+### 未完成事项
+- 未提交 Git commit；需用户确认提交范围。
+
+### 下一步建议
+- 提交本次 E2E 脚本和路由清阻塞机制相关文件。
+- 后续若 GPT-5.5 路由再阻塞，优先运行 `Clear-ZCode-GPT55-Block.ps1`。
+
+---
+
+## 历史任务
+
+### 日期
+2026-07-02
+
+### 任务目标
+将对抗性审查升级为用户级端到端验收，而不是静态代码扫描。
+
+### 修改文件
+- `docs/product/qlanalyser_user_level_e2e_adversarial_review_standard_20260702.md`：新增用户级 E2E 对抗验收标准。
+- `scripts/e2e_user_level_adversarial_acceptance.mjs`：新增真实浏览器验收脚本，输出 JSON、Markdown 和截图证据。
+- `AGENTS.md`：项目级规则新增用户级 E2E 验收要求。
+- `docs/product/README.md`：新增标准文档索引。
+
+### 已完成
+- 定义用户级 E2E 对抗验收标准。
+- 建立浏览器级验收脚本，覆盖登录、项目、数据、分析、结果、交付、个人中心、后台和边界 API 检查。
+- 运行本地验收，产出 10 张截图和 JSON/Markdown 证据。
+
+### 测试方式
+```bash
+node --check scripts/e2e_user_level_adversarial_acceptance.mjs
+QLANALYSER_UI_TIMEOUT_MS=10000 node scripts/e2e_user_level_adversarial_acceptance.mjs --frontend http://127.0.0.1:4174 --api http://127.0.0.1:8001/api
+```
+
+### 测试结果
+- verdict: `conditional_pass`
+- P0: 0
+- P1: 2
+- screenshots: 10
+- evidence: `work/release_evidence/user_level_e2e_adversarial_20260702_122302/`
+
+### 风险点
+- `#epilepsyWorkbenchInline` 没有常规客户主导航入口，脚本无法从主导航直接进入，保留 P1。
+
+### 未完成事项
+- 后续应为癫痫工作台提供稳定客户入口，或在验收脚本中补充明确前置数据/入口。
+
+### 下一步建议
+- 以 `work/release_evidence/user_level_e2e_adversarial_20260702_122302/` 为基线继续修复剩余 P1。
+
+---
+
 ## 历史任务
 
 ### 日期
