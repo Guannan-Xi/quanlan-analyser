@@ -2,8 +2,19 @@ const DEFAULT_API_BASE = ["localhost", "127.0.0.1"].includes(window.location.hos
 const params = new URLSearchParams(window.location.search);
 const API_BASE = params.get("api") || DEFAULT_API_BASE;
 const START_TASK_ID = params.get("task") || "";
+const START_FILE_ID = params.get("file") || params.get("input_file_id") || "";
+const START_PROJECT_ID = params.get("project") || "";
 const START_MODE = params.get("mode") || "ml_epoch_classifier";
-const START_RENDERER = params.get("renderer") === "timechart" ? "timechart" : "svg";
+const START_RENDERER = ["canvas", "svg"].includes(params.get("renderer")) ? params.get("renderer") : "canvas";
+const EMBED_MODE = params.get("embed") === "1";
+const LAB_MODE = params.get("lab") === "1" || params.get("fixture") || params.get("dev") === "1";
+const CONTEXT_HINT = {
+  domain: params.get("domain") || "epilepsy",
+  plan: params.get("plan") || "",
+  rev: params.get("rev") || "",
+  contract: params.get("contract") || "",
+  results: params.get("results") || "#results",
+};
 const REVIEW_STORE_PREFIX = "qlanalyser.epilepsy.review.v1.";
 const TIMECHART_CDN_SOURCES = [
   "https://cdn.jsdelivr.net/npm/timechart@0.5.2/dist/timechart.min.js",
@@ -58,6 +69,7 @@ const state = {
   reviewNote: "",
   reviewSession: null,
   reviewSessionError: "",
+  reviewExport: null,
   history: [],
   future: [],
   waveformTask: null,
@@ -68,10 +80,15 @@ const state = {
   waveformRenderer: START_RENDERER,
   waveformViewport: { startSec: null, durationSec: null, lastEventId: "" },
   waveformInteraction: { mode: "browse", gain: "auto" },
+  waveformRequestSeq: 0,
+  activeWaveformRequestId: "",
+  requestedWaveformWindowKey: "",
+  ignoredWaveformResponses: [],
   timechartLoadState: "idle",
   timechartLoadError: "",
   timechartInstance: null,
   timechartMetrics: null,
+  mainPreviewMetrics: null,
   activeWaveformLabel: "raw_preview_figure",
   message: "请选择或上传 EEG，然后运行工作台分析。",
   error: false,
@@ -82,6 +99,8 @@ const state = {
 
 let waveformPreviewTimer = null;
 let waveformDragState = null;
+let waveformWheelDelegateBound = false;
+let lastWaveformPointerScrollPosition = null;
 
 function icon(name) { return `<i data-lucide="${h(name)}" aria-hidden="true"></i>`; }
 function h(value) {
@@ -109,8 +128,44 @@ function clamp(value, min, max) {
 }
 function selectedFile() { return state.files.find((item) => item.id === state.selectedFileId); }
 function artifactByLabel(label, list = state.artifacts) { return list.find((item) => item.label === label); }
+function artifactByAnyLabel(labels, list = state.artifacts) {
+  const expected = new Set((Array.isArray(labels) ? labels : [labels]).filter(Boolean));
+  return list.find((item) => expected.has(item.label) || expected.has(String(item.object_key || "").split("/").pop()));
+}
 function artifactUrl(artifact) { return api(`/artifacts/${artifact.id}/download`); }
 function reviewKey() { return `${REVIEW_STORE_PREFIX}${state.task?.id || state.selectedFileId || "draft"}`; }
+function taskParameters() {
+  const raw = state.task?.parameters_json || {};
+  if (raw && typeof raw === "object") return raw;
+  try { return JSON.parse(String(raw || "{}")); } catch { return {}; }
+}
+function inheritedContextReady() {
+  return Boolean(EMBED_MODE && (START_TASK_ID || START_FILE_ID) && CONTEXT_HINT.plan && CONTEXT_HINT.rev && CONTEXT_HINT.contract);
+}
+function contextMismatchItems() {
+  const taskParams = taskParameters();
+  const items = [];
+  if (CONTEXT_HINT.plan && taskParams.data_preparation_plan_id && String(taskParams.data_preparation_plan_id) !== String(CONTEXT_HINT.plan)) items.push("plan");
+  if (CONTEXT_HINT.rev && taskParams.data_preparation_revision !== undefined && String(taskParams.data_preparation_revision) !== String(CONTEXT_HINT.rev)) items.push("revision");
+  if (CONTEXT_HINT.contract && taskParams.data_preparation_contract_version && String(taskParams.data_preparation_contract_version) !== String(CONTEXT_HINT.contract)) items.push("contract");
+  return items;
+}
+function clientWaveformWindowKey(fileId, viewport, channels, filterProfileId, maxPoints = "2400") {
+  return [
+    fileId || "",
+    Number(viewport?.start || 0).toFixed(3),
+    Number(viewport?.duration || 0).toFixed(3),
+    (channels || []).join("|"),
+    filterProfileId || "raw",
+    String(maxPoints),
+  ].join(":");
+}
+function waveformIsStale(payload = state.waveformWindow) {
+  return Boolean(payload && !waveformWindowMatchesActiveView(payload));
+}
+function correctionWritesAllowed() {
+  return Boolean(correctionModeActive() && !state.waveformInFlight && waveformWindowMatchesActiveView(state.waveformWindow));
+}
 function resetWaveformPreview() {
   state.waveformTask = null;
   state.waveformArtifacts = [];
@@ -118,10 +173,13 @@ function resetWaveformPreview() {
   state.waveformEventId = "";
   state.waveformError = "";
   state.waveformInFlight = false;
+  state.activeWaveformRequestId = "";
+  state.requestedWaveformWindowKey = "";
   state.activeWaveformLabel = "raw_preview_figure";
   state.waveformViewport = { startSec: null, durationSec: null, lastEventId: "" };
   state.waveformInteraction = { mode: "browse", gain: "auto" };
   state.timechartMetrics = null;
+  state.mainPreviewMetrics = null;
   state.timechartInstance = null;
 }
 function resetAnalysisOutputs() {
@@ -143,6 +201,7 @@ function resetAnalysisOutputs() {
   state.reviewNote = "";
   state.reviewSession = null;
   state.reviewSessionError = "";
+  state.reviewExport = null;
   state.history = [];
   state.future = [];
   resetWaveformPreview();
@@ -228,6 +287,8 @@ function waveformFilterProfileId() {
 }
 function waveformWindowMatchesActiveView(payload) {
   if (!payload) return false;
+  const clientKey = payload.__client_window_key || "";
+  if (state.requestedWaveformWindowKey && clientKey && String(clientKey) !== String(state.requestedWaveformWindowKey)) return false;
   return String(payload.filter_profile_id || "raw") === waveformFilterProfileId() && waveformViewportMatchesPayload(payload);
 }
 function waveformGainMultiplier() {
@@ -259,38 +320,69 @@ function canRunWaveformPreview() {
   const event = selectedEvent();
   return Boolean(file && event && state.task?.input_file_id === file.id && !state.waveformInFlight);
 }
-function scheduleWaveformPreview(reason = "viewport") {
+function captureScrollPosition() {
+  return { x: window.scrollX || 0, y: window.scrollY || 0 };
+}
+function restoreScrollPosition(position) {
+  if (!position) return;
+  const restore = () => {
+    const scroller = document.scrollingElement || document.documentElement;
+    scroller.scrollLeft = position.x;
+    scroller.scrollTop = position.y;
+  };
+  restore();
+  requestAnimationFrame(restore);
+  setTimeout(restore, 0);
+  setTimeout(restore, 24);
+  setTimeout(restore, 60);
+  setTimeout(restore, 90);
+  setTimeout(restore, 180);
+  setTimeout(restore, 320);
+}
+function renderWithOptionalScrollRestore(position) {
+  render();
+  restoreScrollPosition(position);
+}
+function scheduleWaveformPreview(reason = "viewport", options = {}) {
   clearTimeout(waveformPreviewTimer);
   waveformPreviewTimer = setTimeout(() => {
     waveformPreviewTimer = null;
-    if (canRunWaveformPreview()) runWaveformPreview({ reason, automatic: true });
+    if (canRunWaveformPreview()) {
+      runWaveformPreview({
+        reason,
+        automatic: true,
+        preserveScroll: Boolean(options.preserveScroll || options.scrollPosition),
+        scrollPosition: options.scrollPosition || null,
+      });
+    }
   }, WAVEFORM_DEBOUNCE_MS);
 }
-function updateWaveformViewportAndSchedule(startSec, durationSec, reason = "viewport") {
+function updateWaveformViewportAndSchedule(startSec, durationSec, reason = "viewport", options = {}) {
+  const scrollPosition = options.scrollPosition || (options.preserveScroll ? captureScrollPosition() : null);
   setWaveformViewport(startSec, durationSec, { eventId: selectedEvent()?.event_id, keepPreview: true });
-  render();
-  scheduleWaveformPreview(reason);
+  renderWithOptionalScrollRestore(scrollPosition);
+  scheduleWaveformPreview(reason, { ...options, scrollPosition });
 }
-function zoomWaveformAtRatio(ratio, factor) {
+function zoomWaveformAtRatio(ratio, factor, options = {}) {
   const viewport = currentWaveformViewport();
   const anchorRatio = clamp(ratio, 0, 1);
   const anchorTime = viewport.start + viewport.duration * anchorRatio;
   const nextDuration = clamp(viewport.duration * factor, WAVEFORM_MIN_DURATION_SEC, WAVEFORM_MAX_DURATION_SEC);
   const nextStart = anchorTime - anchorRatio * nextDuration;
-  updateWaveformViewportAndSchedule(nextStart, nextDuration, "zoom");
+  updateWaveformViewportAndSchedule(nextStart, nextDuration, "zoom", options);
 }
-function panWaveformBy(deltaSec) {
+function panWaveformBy(deltaSec, options = {}) {
   const viewport = currentWaveformViewport();
-  updateWaveformViewportAndSchedule(viewport.start + deltaSec, viewport.duration, "pan");
+  updateWaveformViewportAndSchedule(viewport.start + deltaSec, viewport.duration, "pan", options);
 }
-function zoomWaveformToRatioRange(startRatio, endRatio) {
+function zoomWaveformToRatioRange(startRatio, endRatio, options = {}) {
   const viewport = currentWaveformViewport();
   const leftRatio = clamp(Math.min(startRatio, endRatio), 0, 1);
   const rightRatio = clamp(Math.max(startRatio, endRatio), 0, 1);
   if (rightRatio - leftRatio < 0.01) return;
   const nextStart = viewport.start + viewport.duration * leftRatio;
   const nextDuration = viewport.duration * (rightRatio - leftRatio);
-  updateWaveformViewportAndSchedule(nextStart, nextDuration, "selection-zoom");
+  updateWaveformViewportAndSchedule(nextStart, nextDuration, "selection-zoom", options);
 }
 function resetWaveformToEvent() {
   const event = selectedEvent();
@@ -306,19 +398,16 @@ function toggleWaveformFilter() {
   render();
   scheduleWaveformPreview("filter-toggle");
 }
-function renderWaveformMiniMap(event = selectedEvent(), viewport = currentWaveformViewport(event), file = selectedFile()) {
+function renderWaveformMiniMap(event = selectedEvent(), file = selectedFile()) {
   const duration = recordingDurationSec(file);
   if (!duration) {
     return `<div class="waveform-minimap empty-mini" data-testid="epilepsy-waveform-minimap">No duration metadata</div>`;
   }
   const pct = (value) => clamp((Number(value) / duration) * 100, 0, 100);
-  const viewportLeft = pct(viewport.start);
-  const viewportWidth = Math.max(1, pct(viewport.duration));
   const eventLeft = event ? pct(numeric(event.start_sec)) : 0;
   const eventWidth = event ? Math.max(0.8, pct(numeric(event.end_sec) - numeric(event.start_sec))) : 0;
-  return `<div class="waveform-minimap" data-testid="epilepsy-waveform-minimap" aria-label="waveform window overview">
+  return `<div class="waveform-minimap" data-testid="epilepsy-waveform-minimap" aria-label="candidate event position overview">
     <span class="waveform-minimap-track"></span>
-    <span class="waveform-minimap-window" style="left:${viewportLeft}%;width:${Math.min(100 - viewportLeft, viewportWidth)}%"></span>
     ${event ? `<span class="waveform-minimap-event" style="left:${eventLeft}%;width:${Math.min(100 - eventLeft, eventWidth)}%"></span>` : ""}
   </div>`;
 }
@@ -428,7 +517,7 @@ function renderTimeChartHost(payload) {
   const labels = channels.map((channel, index) => `<span style="top:${8 + (index + 0.5) * (84 / Math.max(1, channels.length))}%">${h(channel.name || `CH${index + 1}`)}</span>`).join("");
   const meta = `${fmt(start, 2)}-${fmt(stop, 2)}s | ${h(payload.filter_profile?.description || payload.filter_profile_id || "raw")} | ${h(payload.unit || "")}`;
   return `<div class="waveform-window timechart-window" data-timechart-key="${h(waveformPayloadKey(payload))}">
-    <div class="waveform-meta">${meta}<span class="timechart-status" id="timechartStatus">TimeChart experimental</span></div>
+    <div class="waveform-meta">${meta}<span class="timechart-status" id="timechartStatus">Legacy renderer disabled</span></div>
     <div class="timechart-shell">
       <div class="timechart-host" id="timechartWaveformHost" data-testid="epilepsy-timechart-host"></div>
       ${selected ? `<div class="timechart-event-overlay" style="left:${eventStartPct}%;width:${Math.max(0.5, eventEndPct - eventStartPct)}%"></div>` : ""}
@@ -436,7 +525,160 @@ function renderTimeChartHost(payload) {
     </div>
   </div>`;
 }
+function renderMainPreviewCanvasHost(payload) {
+  const channels = Array.isArray(payload?.channels) ? payload.channels : [];
+  const start = Number(payload.start_sec || 0);
+  const stop = Number(payload.stop_sec ?? (start + Number(payload.duration_sec || 0)));
+  const profile = payload.filter_profile?.description || payload.filter_profile_id || "raw";
+  const meta = `${fmt(start, 2)}-${fmt(stop, 2)}s | ${h(profile)} | ${h(payload.unit || "uV")} | ${channels.length} channels`;
+  return `<div class="waveform-window main-preview-window" data-main-preview-key="${h(waveformPayloadKey(payload))}">
+    <div class="waveform-meta main-preview-meta">
+      <span>${meta}</span>
+      <span class="main-preview-status" id="mainPreviewStatus">Main preview Canvas</span>
+    </div>
+    <div class="main-preview-canvas-shell">
+      <canvas id="mainPreviewWaveformCanvas" data-testid="epilepsy-main-preview-canvas" aria-label="Main trunk waveform preview canvas"></canvas>
+    </div>
+    <div class="main-preview-hint">EDFbrowser 操作：滚轮平移，Ctrl+滚轮缩放，左键框选放大，中键拖动平移，方向键翻阅。</div>
+  </div>`;
+}
+function drawMainPreviewCanvas(payload) {
+  const canvas = document.querySelector("#mainPreviewWaveformCanvas");
+  const ctx = canvas?.getContext?.("2d");
+  const channels = Array.isArray(payload?.channels) ? payload.channels : [];
+  if (!canvas || !ctx || !channels.length) return false;
+  const started = performance.now();
+  const rect = canvas.getBoundingClientRect();
+  const dpr = Math.max(1, window.devicePixelRatio || 1);
+  const cssWidth = Math.max(720, Math.round(rect.width || canvas.clientWidth || 1080));
+  const cssHeight = Math.max(360, Math.round(rect.height || canvas.clientHeight || 520));
+  if (canvas.width !== Math.round(cssWidth * dpr) || canvas.height !== Math.round(cssHeight * dpr)) {
+    canvas.width = Math.round(cssWidth * dpr);
+    canvas.height = Math.round(cssHeight * dpr);
+  }
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, cssWidth, cssHeight);
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, cssWidth, cssHeight);
+
+  const left = 86;
+  const right = 26;
+  const top = 44;
+  const bottom = 44;
+  const plotWidth = Math.max(240, cssWidth - left - right);
+  const plotHeight = Math.max(220, cssHeight - top - bottom);
+  const start = Number(payload.start_sec || 0);
+  const stop = Number(payload.stop_sec ?? (start + Number(payload.duration_sec || 0)));
+  const duration = Math.max(0.001, stop - start);
+  const rowHeight = plotHeight / Math.max(1, channels.length);
+  const palette = ["#155c9c", "#157a77", "#7c4dff", "#c2410c", "#0f766e", "#9333ea", "#b45309", "#0369a1"];
+  const xOf = (time) => left + plotWidth * ((Number(time) - start) / duration);
+  const selected = selectedEvent();
+  let pointCount = 0;
+
+  ctx.strokeStyle = "#e5edf1";
+  ctx.lineWidth = 1;
+  ctx.font = "12px system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif";
+  for (let i = 0; i <= 5; i += 1) {
+    const x = left + (plotWidth * i) / 5;
+    ctx.beginPath();
+    ctx.moveTo(x, top);
+    ctx.lineTo(x, top + plotHeight);
+    ctx.stroke();
+    ctx.fillStyle = "#64748b";
+    ctx.fillText(`${(start + (duration * i) / 5).toFixed(1)} s`, x - 16, top + plotHeight + 24);
+  }
+
+  if (selected) {
+    const eventStart = xOf(numeric(selected.start_sec));
+    const eventEnd = xOf(numeric(selected.end_sec));
+    const eventX = clamp(eventStart, left, left + plotWidth);
+    const eventW = Math.max(2, clamp(eventEnd, left, left + plotWidth) - eventX);
+    ctx.fillStyle = "rgba(217, 95, 67, 0.12)";
+    ctx.fillRect(eventX, top, eventW, plotHeight);
+    ctx.strokeStyle = "rgba(217, 95, 67, 0.45)";
+    ctx.strokeRect(eventX, top, eventW, plotHeight);
+    ctx.fillStyle = "#b45309";
+    ctx.font = "700 11px system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif";
+    ctx.fillText(`Event #${selected.event_id}`, eventX + 6, top + 16);
+  }
+
+  channels.forEach((channel, rowIndex) => {
+    const centerY = top + rowHeight * rowIndex + rowHeight / 2;
+    const values = channel.encoding === "minmax" ? [...(channel.min_values || []), ...(channel.max_values || [])] : (channel.values || []);
+    const finite = values.map(Number).filter(Number.isFinite);
+    const absMax = Math.max(1e-9, ...finite.map((value) => Math.abs(value)));
+    const scale = (rowHeight * 0.34 * waveformGainMultiplier()) / absMax;
+    const times = Array.isArray(channel.times_sec) ? channel.times_sec : [];
+    const channelName = channel.name || `CH${rowIndex + 1}`;
+
+    ctx.strokeStyle = "#edf2f6";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(left, centerY);
+    ctx.lineTo(left + plotWidth, centerY);
+    ctx.stroke();
+
+    ctx.fillStyle = "#334155";
+    ctx.font = "12px system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif";
+    ctx.fillText(channelName, 18, centerY + 4);
+    ctx.strokeStyle = palette[rowIndex % palette.length];
+    ctx.lineWidth = channel.encoding === "minmax" ? 1.1 : 1.35;
+    if (channel.encoding === "minmax") {
+      times.forEach((time, pointIndex) => {
+        const x = xOf(time);
+        const minY = centerY - numeric((channel.min_values || [])[pointIndex]) * scale;
+        const maxY = centerY - numeric((channel.max_values || [])[pointIndex]) * scale;
+        ctx.beginPath();
+        ctx.moveTo(x, clamp(minY, centerY - rowHeight * 0.43, centerY + rowHeight * 0.43));
+        ctx.lineTo(x, clamp(maxY, centerY - rowHeight * 0.43, centerY + rowHeight * 0.43));
+        ctx.stroke();
+      });
+      pointCount += times.length * 2;
+    } else {
+      ctx.beginPath();
+      times.forEach((time, pointIndex) => {
+        const x = xOf(time);
+        const y = centerY - numeric((channel.values || [])[pointIndex]) * scale;
+        const clippedY = clamp(y, centerY - rowHeight * 0.43, centerY + rowHeight * 0.43);
+        if (pointIndex === 0) ctx.moveTo(x, clippedY);
+        else ctx.lineTo(x, clippedY);
+      });
+      ctx.stroke();
+      pointCount += times.length;
+    }
+  });
+
+  const isFiltered = String(payload.filter_profile_id || "raw") !== "raw";
+  ctx.fillStyle = "#0f172a";
+  ctx.font = "700 14px system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif";
+  ctx.fillText(isFiltered ? "Filter preview waveform" : "Raw EDF waveform", left, 24);
+  ctx.fillStyle = "#64748b";
+  ctx.font = "12px system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif";
+  ctx.fillText(`${channels.length} channels | ${payload.unit || "uV"} | ${isFiltered ? "filter preview only" : "raw signal"} | non-medical research review`, left + 150, 24);
+
+  state.mainPreviewMetrics = {
+    renderer: "main_canvas",
+    fallback: false,
+    point_count: pointCount,
+    channel_count: channels.length,
+    duration_ms: Number((performance.now() - started).toFixed(2)),
+    payload_key: waveformPayloadKey(payload),
+  };
+  window.__QLANALYSER_EPILEPSY_MAIN_PREVIEW__ = state.mainPreviewMetrics;
+  const status = document.querySelector("#mainPreviewStatus");
+  if (status) status.textContent = `Canvas ${state.mainPreviewMetrics.duration_ms} ms`;
+  return true;
+}
 async function hydrateWaveformRenderer() {
+  if (state.waveformRenderer === "canvas") {
+    const canvas = document.querySelector("#mainPreviewWaveformCanvas");
+    const payload = state.waveformWindow;
+    if (!canvas || !payload || canvas.dataset.rendered === waveformPayloadKey(payload)) return;
+    canvas.dataset.rendered = waveformPayloadKey(payload);
+    drawMainPreviewCanvas(payload);
+    return;
+  }
   if (state.waveformRenderer !== "timechart") return;
   const host = document.querySelector("#timechartWaveformHost");
   const status = document.querySelector("#timechartStatus");
@@ -723,6 +965,9 @@ function buildTaskParameters() {
       probability_threshold: 0.5,
       unit_mode: "source_compatible",
       bad_channels: badChannels,
+      data_preparation_plan_id: CONTEXT_HINT.plan || undefined,
+      data_preparation_revision: CONTEXT_HINT.rev ? Number(CONTEXT_HINT.rev) : undefined,
+      data_preparation_contract_version: CONTEXT_HINT.contract || undefined,
     };
   }
   return {
@@ -740,6 +985,9 @@ function buildTaskParameters() {
     min_event_epochs: Number(state.parameters.min_event_epochs || 2),
     event_window_sec: Number(state.parameters.event_window_sec || 1800),
     bad_channels: badChannels,
+    data_preparation_plan_id: CONTEXT_HINT.plan || undefined,
+    data_preparation_revision: CONTEXT_HINT.rev ? Number(CONTEXT_HINT.rev) : undefined,
+    data_preparation_contract_version: CONTEXT_HINT.contract || undefined,
   };
 }
 
@@ -780,28 +1028,33 @@ function setMessage(message, error = false) {
 
 function render() {
   const root = document.querySelector("#epilepsyWorkbench");
-  root.innerHTML = `
-    <header class="ep-top">
+  if (!EMBED_MODE && !LAB_MODE) {
+    root.innerHTML = renderContextBlocked();
+    syncIcons();
+    return;
+  }
+  const content = `
+    ${EMBED_MODE ? "" : `<header class="ep-top">
       <nav class="ep-nav">
-        <a class="brand" href="./epilepsy-workbench.html?api=${encodeURIComponent(API_BASE)}">
+        <a class="brand" href="./epilepsy-workbench.html?lab=1&api=${encodeURIComponent(API_BASE)}">
           <span class="brand-mark">EP</span>
-          <span><strong>癫痫样事件分析工作台</strong><small>参数 / 候选事件 / 波形预览 / 人工复核</small></span>
+          <span><strong>Epilepsy-like Event Screening</strong><small>Lab route / candidate events / waveform evidence</small></span>
         </a>
         <div class="top-links">
-          <a href="./module-lab.html?customer_demo=login&api=${encodeURIComponent(API_BASE)}">${icon("layout-dashboard")}返回方法库</a>
-          <a href="./qc-lab.html?api=${encodeURIComponent(API_BASE)}">${icon("waves")}QC 波形页</a>
+          <a href="./?customer_demo=auto&teaching_demo=auto&api=${encodeURIComponent(API_BASE)}#analysis">${icon("layout-dashboard")}Analysis</a>
         </div>
       </nav>
-    </header>
-    <section class="ep-wrap">
-      ${renderHero()}
-      <div class="layout">
-        <aside>
+    </header>`}
+    <section class="ep-wrap ${EMBED_MODE ? "embedded-child-page" : "lab-standalone-page"}">
+      ${EMBED_MODE ? renderContextHeader() : renderHero()}
+      <div class="layout ${EMBED_MODE ? "inherited-layout" : ""}">
+        ${EMBED_MODE ? "" : `<aside>
           ${renderFilePanel()}
           ${renderParameterPanel()}
           ${renderReviewExportPanel()}
-        </aside>
+        </aside>`}
         <main>
+          ${EMBED_MODE ? renderEmbeddedScreeningPanel() : ""}
           ${renderRunSummary()}
           ${renderSourceReplicaToolbar()}
           ${renderTimelinePanel()}
@@ -809,12 +1062,100 @@ function render() {
           ${renderWaveformPanel()}
           ${renderArtifactsPanel()}
         </main>
+        ${EMBED_MODE ? `<aside>${renderReviewExportPanel()}</aside>` : ""}
       </div>
     </section>
   `;
+  root.innerHTML = EMBED_MODE ? renderMainNavigationFrame(content) : content;
   bindEvents();
   syncIcons();
   hydrateWaveformRenderer();
+}
+
+function renderMainNavigationFrame(content) {
+  const resultsHref = CONTEXT_HINT.results && !String(CONTEXT_HINT.results).startsWith("#")
+    ? CONTEXT_HINT.results
+    : `./?customer_demo=auto&teaching_demo=auto&api=${encodeURIComponent(API_BASE)}#statistics`;
+  return `<div class="ql-child-shell" data-testid="ql-main-navigation-frame">
+    <aside class="ql-child-sidebar" aria-label="QLanalyser 主导航">
+      <div class="ql-child-brand">
+        <div class="ql-child-brand-mark">QL</div>
+        <div class="ql-child-brand-copy">
+          <strong>QLanalyser</strong>
+          <small>科研脑电分析平台</small>
+        </div>
+      </div>
+      <nav class="ql-child-nav">
+        <a href="./?customer_demo=auto&teaching_demo=auto&api=${encodeURIComponent(API_BASE)}#project"><span></span>项目管理</a>
+        <a href="./?customer_demo=auto&teaching_demo=auto&api=${encodeURIComponent(API_BASE)}#data"><span></span>数据管理</a>
+        <a href="./?customer_demo=auto&teaching_demo=auto&api=${encodeURIComponent(API_BASE)}#preprocessing"><span></span>数据准备</a>
+        <a class="active" aria-current="page" href="./?customer_demo=auto&teaching_demo=auto&api=${encodeURIComponent(API_BASE)}#analysis"><span></span>分析任务</a>
+        <a href="${h(resultsHref)}"><span></span>结果查看</a>
+        <a href="./?customer_demo=auto&teaching_demo=auto&api=${encodeURIComponent(API_BASE)}#delivery"><span></span>报告交付</a>
+      </nav>
+    </aside>
+    <main class="ql-child-main" data-testid="staging-subview">${content}</main>
+  </div>`;
+}
+
+function renderEmbeddedScreeningPanel() {
+  const hasTask = Boolean(state.task?.id || START_TASK_ID);
+  const isMl = state.algorithmMode === "ml_epoch_classifier";
+  const runLabel = hasTask
+    ? (isMl ? "重新初筛" : "重新 STD 初筛")
+    : (isMl ? "开始初筛" : "开始 STD 初筛");
+  const statusText = hasTask
+    ? "已生成初筛结果，可继续查看候选事件、波形证据并进行人工复核。"
+    : "已继承数据准备方案。先在本操作台内进行癫痫样事件初筛，再查看 Stage_Code、候选事件和波形证据并人工复核。";
+  return `<section class="panel embedded-screening-panel" data-testid="epilepsy-console-screening-panel">
+    <div>
+      <p class="eyebrow">Screening inside console</p>
+      <h2>${icon("activity")}癫痫样事件分析台</h2>
+      <p class="notice" data-testid="epilepsy-console-empty-state">${h(statusText)}</p>
+    </div>
+    <button class="btn primary" id="runTaskBtn" data-testid="epilepsy-run" ${state.runInFlight ? "disabled" : ""}>${icon("play")}${runLabel}</button>
+  </section>`;
+}
+
+function renderContextBlocked() {
+  return `<section class="ep-wrap embedded-child-page">
+    <article class="panel context-blocked" data-testid="epilepsy-context-blocked">
+      <p class="eyebrow">QLanalyser analysis child page</p>
+      <h1>Open this page from an Analysis task</h1>
+      <p>This child page inherits the prepared EEG file, screening task, plan revision, and Results route from QLanalyser. Direct standalone entry is blocked for customer use.</p>
+      <div class="inline-actions">
+        <a class="btn primary" href="./?customer_demo=auto&teaching_demo=auto&api=${encodeURIComponent(API_BASE)}#analysis">${icon("layout-dashboard")}Back to Analysis</a>
+      </div>
+    </article>
+  </section>`;
+}
+
+function renderContextHeader() {
+  const taskParams = taskParameters();
+  const mismatches = contextMismatchItems();
+  const file = selectedFile();
+  const taskLabel = state.task?.id || START_TASK_ID || "未初筛";
+  const fileLabel = file?.original_filename || file?.filename || state.task?.input_file_id || state.selectedFileId || "-";
+  const taskStatus = state.task?.status || (START_TASK_ID ? "loading" : "waiting_screening");
+  const plan = CONTEXT_HINT.plan || taskParams.data_preparation_plan_id || "-";
+  const revision = CONTEXT_HINT.rev || taskParams.data_preparation_revision || "-";
+  const contract = CONTEXT_HINT.contract || taskParams.data_preparation_contract_version || "-";
+  return `<section class="panel context-header ${mismatches.length ? "context-stale" : ""}" data-testid="epilepsy-context-header" data-context-state="${mismatches.length ? "stale" : "ready"}">
+    <div>
+      <p class="eyebrow">Analysis child page</p>
+      <h1>Epilepsy-like Event Screening</h1>
+      <p>Inherited data preparation first. Start event screening inside this console, then inspect waveform evidence, candidate events, and manual corrections. Research support only; not for diagnosis or clinical decisions.</p>
+    </div>
+    <div class="context-grid">
+      <span data-context-field="task"><strong>Task</strong>${h(taskLabel)} / ${h(taskStatus)}</span>
+      <span data-context-field="file"><strong>File</strong>${h(fileLabel)}</span>
+      <span data-context-field="plan"><strong>Plan</strong>${h(plan)}</span>
+      <span data-context-field="revision"><strong>Revision</strong>${h(revision)}</span>
+      <span data-context-field="contract"><strong>Contract</strong>${h(contract)}</span>
+      <span data-context-field="results"><strong>Results</strong>${h(CONTEXT_HINT.results || "#results")}</span>
+    </div>
+    ${mismatches.length ? `<div class="context-warning" data-testid="epilepsy-context-stale">ContextStale: ${h(mismatches.join(", "))} does not match the task. Correction is blocked until the task is reopened from Analysis.</div>` : ""}
+  </section>`;
 }
 
 function renderHero() {
@@ -872,7 +1213,10 @@ function renderFilePanel() {
 function renderParameterPanel() {
   const p = state.parameters;
   const isMl = state.algorithmMode === "ml_epoch_classifier";
-  const runLabel = isMl ? "运行 ML 高保真筛查" : "运行 STD 阈值筛查";
+  const hasTask = Boolean(state.task?.id || START_TASK_ID);
+  const runLabel = hasTask
+    ? (isMl ? "重新运行 ML 初筛" : "重新运行 STD 初筛")
+    : (isMl ? "开始 ML 初筛" : "开始 STD 初筛");
   const notice = isMl
     ? "当前算法底座为源项目 XGBoost ML：模型文件 hash 校验、19 个特征顺序、0.5 阈值、完整 epoch 截断和连续 2 个 epoch 事件规则均按源代码迁移。"
     : "当前算法底座为 STD 阈值筛查；可随时切换到 ML 高保真模式。";
@@ -897,6 +1241,7 @@ function renderParameterPanel() {
       </div>
       <div class="field"><label>排除通道</label><input name="bad_channels" value="${h(p.bad_channels)}" placeholder="英文逗号分隔" /></div>
     </form>
+    ${EMBED_MODE && !state.task?.id ? `<p class="notice" data-testid="epilepsy-console-empty-state">已继承数据准备方案。请先在本操作台内开始初筛，完成后再查看 Stage_Code、候选事件和波形并人工矫正。</p>` : ""}
     <button class="btn primary" id="runTaskBtn" data-testid="epilepsy-run" ${state.runInFlight ? "disabled" : ""}>${icon("play")}${runLabel}</button>
     <p class="notice">${h(notice)}</p>
   </section>`;
@@ -905,8 +1250,14 @@ function renderParameterPanel() {
 function renderReviewExportPanel() {
   const taskId = state.task?.id || "未运行";
   const correctedCount = Object.keys(state.epochOverrides).length;
+  const canOpenResults = Boolean(EMBED_MODE && CONTEXT_HINT.results);
+  const registeredCount = Array.isArray(state.reviewExport?.registered_artifacts) ? state.reviewExport.registered_artifacts.length : 0;
+  const resultsHref = CONTEXT_HINT.results && !String(CONTEXT_HINT.results).startsWith("#")
+    ? CONTEXT_HINT.results
+    : `./?customer_demo=auto&teaching_demo=auto&api=${encodeURIComponent(API_BASE)}#statistics`;
+  const labDownloads = !EMBED_MODE || LAB_MODE;
   return `<section class="panel">
-    <h2>${icon("clipboard-check")}复核导出</h2>
+    <h2>${icon("clipboard-check")}草稿与结果回流</h2>
     <div class="field">
       <label>当前任务</label>
       <input value="${h(taskId)}" readonly />
@@ -917,34 +1268,42 @@ function renderReviewExportPanel() {
       <button class="btn warn" id="resetReviewsBtn" ${(Object.keys(state.reviews).length || correctedCount) ? "" : "disabled"}>${icon("rotate-ccw")}Reset</button>
     </div>
     <div class="inline-actions">
-      <button class="btn" id="downloadReviewJsonBtn" ${state.task ? "" : "disabled"}>${icon("download")}导出 JSON</button>
-      <button class="btn" id="downloadReviewCsvBtn" ${state.task ? "" : "disabled"}>${icon("table")}导出矫正 Epoch CSV</button>
-      <button class="btn" id="downloadEventsCsvBtn" ${state.task ? "" : "disabled"}>${icon("list-checks")}导出事件 CSV</button>
+      <button class="btn primary" id="saveReviewDraftBtn" data-testid="epilepsy-save-draft" ${state.reviewSession?.id ? "" : "disabled"}>${icon("save")}保存草稿</button>
+      <button class="btn primary" id="publishReviewResultsBtn" data-testid="epilepsy-publish-results" ${state.reviewSession?.id ? "" : "disabled"}>${icon("upload-cloud")}发布到结果查看</button>
+      <a class="btn ${canOpenResults ? "" : "disabled"}" data-testid="epilepsy-open-results" href="${h(resultsHref)}" ${canOpenResults ? "" : "aria-disabled=\"true\""}>${icon("panel-right-open")}回到主程序结果查看</a>
     </div>
-    <p class="kbd-hint">快捷键：Shift+2 将当前 epoch 范围标为 Seizure；Shift+1 标为 Normal。已矫正 epoch：${correctedCount}，动作记录：${state.reviewActions.length}</p>
+    ${labDownloads ? `<div class="inline-actions">
+      <button class="btn" id="downloadReviewJsonBtn" ${state.task ? "" : "disabled"}>${icon("download")}下载草稿 JSON</button>
+      <button class="btn" id="downloadReviewCsvBtn" ${state.task ? "" : "disabled"}>${icon("table")}下载草稿 Epoch CSV</button>
+      <button class="btn" id="downloadEventsCsvBtn" ${state.task ? "" : "disabled"}>${icon("list-checks")}下载候选事件 CSV</button>
+    </div>` : ""}
+    <p class="kbd-hint">发布会把人工矫正 epoch、事件、动作日志和 manifest 注册为当前分析任务的结果产物；不会覆盖原始 ML 输出。已矫正 epoch：${correctedCount}，动作记录：${state.reviewActions.length}${registeredCount ? `，已注册结果产物：${registeredCount}` : ""}</p>
   </section>`;
 }
 
 function renderRunSummary() {
   const summary = state.summary || {};
   const reviewed = Object.keys(state.reviews).length + Object.keys(state.epochOverrides).length;
+  const taskStatus = state.task?.status || "未初筛";
+  const threshold = summary.threshold ?? state.task?.parameters_json?.probability_threshold ?? buildTaskParameters().probability_threshold ?? "-";
+  const planLabel = CONTEXT_HINT.plan ? `${CONTEXT_HINT.plan} / r${CONTEXT_HINT.rev || "-"}` : "未继承";
+  const workflowLabel = state.task?.workflow_id || (state.algorithmMode === "ml_epoch_classifier" ? "ML 源模型初筛" : "STD 阈值初筛");
   return `<section class="panel">
     <div class="panel-head">
       <h2>${icon("activity")}工作台概览</h2>
-      <span class="badge ${state.task?.status === "completed" ? "" : "warn"}">${h(state.task?.status || "等待运行")}</span>
+      <span class="badge ${state.task?.status === "completed" ? "" : "warn"}">${h(taskStatus)}</span>
     </div>
     <div class="metric-grid">
       <div class="metric"><span>候选事件</span><strong>${summary.event_count ?? (state.eventRows.length || "-")}</strong></div>
       <div class="metric"><span>Epoch</span><strong>${summary.epoch_count ?? (state.epochRows.length || "-")}</strong></div>
-      <div class="metric"><span>阈值</span><strong>${summary.threshold ? fmt(summary.threshold, 7) : "-"}</strong></div>
+      <div class="metric"><span>阈值</span><strong>${threshold === "-" ? "-" : fmt(threshold, 7)}</strong></div>
       <div class="metric"><span>人工修改</span><strong>${reviewed}</strong></div>
     </div>
-    <pre class="param-preview">${h(JSON.stringify({
-      task_id: state.task?.id,
-      workflow_id: state.task?.workflow_id,
-      input_file_id: state.task?.input_file_id,
-      parameters: state.task?.parameters_json || buildTaskParameters(),
-    }, null, 2))}</pre>
+    <div class="summary-list" data-testid="epilepsy-console-summary">
+      <span><strong>数据准备</strong>${h(planLabel)}</span>
+      <span><strong>分析流程</strong>${h(workflowLabel)}</span>
+      <span><strong>波形与矫正</strong>${state.task?.id ? "结果已生成，可查看候选事件波形并进行人工复核。" : "初筛完成后显示 Stage_Code、候选事件和波形证据。"}</span>
+    </div>
   </section>`;
 }
 
@@ -953,7 +1312,7 @@ function renderSourceReplicaToolbar() {
   if (!total) {
     return `<section class="panel source-replica">
       <h2>${icon("panel-top")}ML Epilepsy Analysis 源交互区</h2>
-      <div class="empty">运行分析后，这里会显示源代码式 epoch 导航、Seizure/Normal 人工矫正、Undo/Redo/Reset 和幅度控制。</div>
+      <div class="empty">运行初筛后，这里会显示源代码式 epoch 导航、候选事件/Normal 人工复核、Undo/Redo/Reset 和幅度控制。</div>
     </section>`;
   }
   const range = selectedEpochRange();
@@ -1155,7 +1514,15 @@ function renderEventsPanel() {
   const selected = selectedEvent();
   const selectedReview = selected ? (state.reviews[String(selected.event_id)] || {}) : {};
   const correctionReady = correctionModeActive();
-  const stageButtonState = selected && correctionReady ? "" : "disabled";
+  const writesAllowed = correctionWritesAllowed();
+  const disabledReason = !selected
+    ? "Select an event first."
+    : !correctionReady
+      ? "Switch to Correction mode before changing review state."
+      : state.waveformInFlight || waveformIsStale() || !waveformWindowMatchesActiveView(state.waveformWindow)
+        ? "Wait until the current waveform window is ready."
+        : "";
+  const stageButtonState = selected && writesAllowed ? "" : `disabled title="${h(disabledReason)}" data-disabled-reason="${h(disabledReason)}"`;
   return `<section class="panel">
     <div class="panel-head">
       <h2>${icon("list-checks")}候选事件与人工矫正</h2>
@@ -1180,9 +1547,9 @@ function renderEventsPanel() {
           <textarea id="reviewNote" placeholder="例如：高幅连续 3 个 epoch，需回看原始波形。">${h(state.reviewNote || selectedReview.note || "")}</textarea>
         </div>
         <div class="review-actions">
-          <button class="btn danger" id="markSeizureBtn" ${stageButtonState}>${icon("badge-alert")}Seizure</button>
-          <button class="btn primary" id="markNormalBtn" ${stageButtonState}>${icon("check")}Normal</button>
-          <button class="btn" id="markNeedsReviewBtn" ${selected ? "" : "disabled"}>${icon("eye")}待复核</button>
+          <button class="btn danger" id="markSeizureBtn" data-testid="epilepsy-stage-seizure" ${stageButtonState}>${icon("badge-alert")}Seizure</button>
+          <button class="btn primary" id="markNormalBtn" data-testid="epilepsy-stage-normal" ${stageButtonState}>${icon("check")}Normal</button>
+          <button class="btn" id="markNeedsReviewBtn" data-testid="epilepsy-event-needs-review" ${stageButtonState}>${icon("eye")}Needs review</button>
         </div>
         <p class="kbd-hint">${correctionReady ? "矫正模式已开启：Seizure/Normal 会修改当前事件 epoch 范围的工作台 Stage_Code。" : "浏览模式：Seizure/Normal 已锁定，进入 Correction mode 后才可修改 Stage_Code。"} 算法原始产物不会被覆盖。</p>
       </aside>
@@ -1223,9 +1590,15 @@ function renderWaveformPanel() {
     ? "生成中"
     : (previewMatchesSelection ? state.waveformTask?.status : "") || "未生成";
   const canRunWaveform = Boolean(selected && state.selectedFileId && analysisMatchesFile && !state.waveformInFlight);
+  const displayedWindowLabel = state.waveformWindow
+    ? `${fmt(state.waveformWindow.start_sec, 2)}-${fmt(state.waveformWindow.stop_sec ?? (Number(state.waveformWindow.start_sec || 0) + Number(state.waveformWindow.duration_sec || 0)), 2)}s`
+    : "-";
+  const requestedWindowLabel = `${fmt(viewport.start, 2)}-${fmt(viewportStop, 2)}s`;
   const gainOptions = WAVEFORM_GAINS.map((item) => `<option value="${h(item)}" ${gain === item ? "selected" : ""}>${item === "auto" ? "Auto" : `${item}x`}</option>`).join("");
+  const renderer = state.waveformRenderer === "svg" ? "svg" : "canvas";
+  const labRendererControls = !EMBED_MODE || LAB_MODE;
   const frameBody = directWindow || staleWindow
-    ? `${staleWindow ? '<div class="waveform-stale-banner">正在读取新窗口，暂显示上一帧波形。</div>' : ""}${state.waveformRenderer === "timechart" ? renderTimeChartHost(directWindow || staleWindow) : renderWaveformWindow(directWindow || staleWindow)}`
+    ? `${staleWindow ? `<div class="waveform-stale-banner">Stale waveform: displayed ${h(displayedWindowLabel)}, requested ${h(requestedWindowLabel)}. Correction is locked until the new window is ready.</div>` : ""}${renderer === "canvas" ? renderMainPreviewCanvasHost(directWindow || staleWindow) : renderWaveformWindow(directWindow || staleWindow)}`
     : figure
     ? `<img src="${h(artifactUrl(figure))}" alt="癫痫候选事件波形预览" />`
     : previewMatchesSelection && state.waveformError
@@ -1237,21 +1610,19 @@ function renderWaveformPanel() {
         : previewMatchesSelection && state.waveformTask?.status === "completed"
           ? `<div class="empty">后端任务已完成，但没有返回 Raw / Filter preview 图像产物。</div>`
       : `<div class="empty">选择候选事件后点击“刷新当前候选波形”。</div>`;
-  return `<section class="panel">
+  return `<section class="panel waveform-panel" data-waveform-wheel-region>
     <div class="panel-head">
       <h2>${icon("waves")}候选波形预览</h2>
       <span class="badge ${status === "completed" ? "" : "warn"}">${h(status)}</span>
     </div>
-    <div class="waveform-statusbar" data-testid="epilepsy-waveform-statusbar" data-mode="${h(mode)}" data-gain="${h(gain)}" data-start-sec="${viewport.start}" data-duration-sec="${viewport.duration}">
-      <span><strong>File</strong>${h(fileLabel)}</span>
-      <span><strong>Event</strong>${selected ? `#${h(selected.event_id)}` : "-"}</span>
-      <span><strong>Window</strong>${fmt(viewport.start, 2)}-${fmt(viewportStop, 2)}s</span>
-      <span><strong>Filter</strong>${h(filterLabel)}</span>
-      <span><strong>Gain</strong>${gain === "auto" ? "Auto" : `${h(gain)}x`}</span>
-      <span><strong>Mode</strong>${mode === "correct" ? "Correction" : "Browse"}</span>
+    <div class="waveform-statusbar waveform-primary-status" data-testid="epilepsy-waveform-statusbar" data-mode="${h(mode)}" data-gain="${h(gain)}" data-start-sec="${viewport.start}" data-duration-sec="${viewport.duration}" data-window-key="${h(state.waveformWindow?.window_key || state.waveformWindow?.__client_window_key || "")}" data-requested-window-key="${h(state.requestedWaveformWindowKey || "")}">
+      <span><strong>${mode === "correct" ? "Correction" : "Browse"}</strong>${h(requestedWindowLabel)}</span>
+      <span>${selected ? `Event #${h(selected.event_id)}` : "No event selected"}</span>
+      <span>${h(filterLabel)} · ${gain === "auto" ? "Auto gain" : `${h(gain)}x gain`} · ${h(fileLabel)}</span>
+      ${staleWindow ? `<span class="warn">Stale ${h(displayedWindowLabel)}</span>` : ""}
     </div>
-    ${renderWaveformMiniMap(selected, viewport, file)}
-    <div class="toolbar">
+    ${renderWaveformMiniMap(selected, file)}
+    <div class="toolbar waveform-toolbar">
       <button class="btn primary" id="runWaveformBtn" ${canRunWaveform ? "" : "disabled"}>${icon("activity")}${state.waveformInFlight ? "正在生成波形" : "刷新当前候选波形"}</button>
       <button class="btn ${state.activeWaveformLabel === "raw_preview_figure" ? "primary" : ""}" data-waveform-label="raw_preview_figure">Raw</button>
       <button class="btn ${state.activeWaveformLabel === "filter_preview_figure" ? "primary" : ""}" data-waveform-label="filter_preview_figure">Filter preview</button>
@@ -1262,11 +1633,11 @@ function renderWaveformPanel() {
         <select data-waveform-gain data-testid="epilepsy-waveform-gain">${gainOptions}</select>
       </label>
       <span class="toolbar-spacer"></span>
-      <button class="btn ${state.waveformRenderer === "svg" ? "primary" : ""}" data-waveform-renderer="svg" data-testid="epilepsy-renderer-svg">SVG current</button>
-      <button class="btn ${state.waveformRenderer === "timechart" ? "primary" : ""}" data-waveform-renderer="timechart" data-testid="epilepsy-renderer-timechart">TimeChart experimental</button>
+      <button class="btn ${renderer === "canvas" ? "primary" : ""}" data-waveform-renderer="canvas" data-testid="epilepsy-renderer-canvas">Canvas preview</button>
+      ${labRendererControls ? `<button class="btn ${renderer === "svg" ? "primary" : ""}" data-waveform-renderer="svg" data-testid="epilepsy-renderer-svg">SVG fallback</button>` : ""}
     </div>
     <p class="notice">波形预览按当前候选事件窗口生成，保留 Raw / Filter preview 两种视图，供人工复核时回看原始波形。</p>
-    <div class="figure-frame waveform-frame ${mode === "correct" ? "correct-mode" : "browse-mode"}" tabindex="0" data-waveform-interactive="true" data-testid="epilepsy-waveform-frame">
+    <div class="figure-frame waveform-frame ${mode === "correct" ? "correct-mode" : "browse-mode"} ${staleWindow ? "stale-window" : ""}" tabindex="0" data-waveform-interactive="true" data-testid="epilepsy-waveform-frame" data-window-key="${h(state.waveformWindow?.window_key || state.waveformWindow?.__client_window_key || "")}" data-requested-window-key="${h(state.requestedWaveformWindowKey || "")}">
       ${frameBody}
       <div class="waveform-selection-overlay" data-testid="epilepsy-waveform-selection" hidden></div>
     </div>
@@ -1352,6 +1723,8 @@ function bindEvents() {
   document.querySelector("#undoReviewBtn")?.addEventListener("click", undoReview);
   document.querySelector("#redoReviewBtn")?.addEventListener("click", redoReview);
   document.querySelector("#resetReviewsBtn")?.addEventListener("click", resetReviews);
+  document.querySelector("#saveReviewDraftBtn")?.addEventListener("click", saveReviewDraft);
+  document.querySelector("#publishReviewResultsBtn")?.addEventListener("click", publishReviewResults);
   document.querySelector("#downloadReviewJsonBtn")?.addEventListener("click", () => downloadReview("json"));
   document.querySelector("#downloadReviewCsvBtn")?.addEventListener("click", () => downloadReview("csv"));
   document.querySelector("#downloadEventsCsvBtn")?.addEventListener("click", () => downloadReview("events_csv"));
@@ -1364,8 +1737,10 @@ function bindEvents() {
     }
   }));
   document.querySelectorAll("[data-waveform-renderer]").forEach((button) => button.addEventListener("click", () => {
-    state.waveformRenderer = button.dataset.waveformRenderer === "timechart" ? "timechart" : "svg";
+    const renderer = button.dataset.waveformRenderer;
+    state.waveformRenderer = ["canvas", "svg"].includes(renderer) ? renderer : "canvas";
     state.timechartMetrics = null;
+    state.mainPreviewMetrics = null;
     render();
   }));
   document.querySelectorAll("[data-waveform-mode]").forEach((button) => button.addEventListener("click", () => setWaveformMode(button.dataset.waveformMode)));
@@ -1382,6 +1757,63 @@ function refocusWaveformFrame() {
   requestAnimationFrame(() => {
     document.querySelector("[data-waveform-interactive='true']")?.focus({ preventScroll: true });
   });
+}
+
+function handleWaveformPointerMoveCapture(event) {
+  if (!event.target?.closest?.("[data-waveform-wheel-region]")) return;
+  lastWaveformPointerScrollPosition = {
+    ...captureScrollPosition(),
+    time: Date.now(),
+  };
+}
+
+function handleWaveformWheelCapture(event) {
+  const wheelRegion = event.target?.closest?.("[data-waveform-wheel-region]");
+  if (!wheelRegion || !selectedEvent()) return;
+  const frame = wheelRegion.querySelector("[data-waveform-interactive='true']");
+  if (!frame) return;
+  if (editableKeyTarget(event.target)) {
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation?.();
+    return;
+  }
+  const currentScrollPosition = captureScrollPosition();
+  const pointerScrollPosition = lastWaveformPointerScrollPosition
+    && Date.now() - lastWaveformPointerScrollPosition.time < 2500
+    ? lastWaveformPointerScrollPosition
+    : null;
+  const scrollPosition = pointerScrollPosition || currentScrollPosition;
+  window.__QLANALYSER_EPILEPSY_WHEEL_CAPTURE__ = {
+    target: event.target?.tagName || "",
+    in_frame: frame.contains(event.target),
+    scroll_y: scrollPosition.y,
+    current_scroll_y: currentScrollPosition.y,
+    pointer_scroll_y: pointerScrollPosition?.y ?? null,
+    delta_y: event.deltaY,
+    time: Date.now(),
+  };
+  event.preventDefault();
+  event.stopPropagation();
+  event.stopImmediatePropagation?.();
+  if (!frame.contains(event.target)) {
+    restoreScrollPosition(scrollPosition);
+    return;
+  }
+  if (frame.contains(event.target)) {
+    frame.focus({ preventScroll: true });
+  }
+  const viewport = currentWaveformViewport();
+  if (event.ctrlKey || event.metaKey) {
+    const rect = frame.getBoundingClientRect();
+    const ratio = rect.width ? (event.clientX - rect.left) / rect.width : 0.5;
+    zoomWaveformAtRatio(ratio, event.deltaY > 0 ? 1.2 : 0.82, { preserveScroll: true, scrollPosition });
+    return;
+  }
+  const dominantDelta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
+  const direction = dominantDelta > 0 ? 1 : -1;
+  const stepRatio = event.shiftKey ? 0.5 : WAVEFORM_WHEEL_PAN_RATIO;
+  panWaveformBy(direction * viewport.duration * stepRatio, { preserveScroll: true, scrollPosition });
 }
 
 function bindWaveformInteractions() {
@@ -1402,22 +1834,11 @@ function bindWaveformInteractions() {
     selectionOverlay.style.left = `${left}px`;
     selectionOverlay.style.width = `${Math.max(1, right - left)}px`;
   };
-  frame.addEventListener("wheel", (event) => {
-    if (!selectedEvent()) return;
-    event.preventDefault();
-    frame.focus({ preventScroll: true });
-    const viewport = currentWaveformViewport();
-    if (event.ctrlKey || event.metaKey) {
-      const rect = frame.getBoundingClientRect();
-      const ratio = rect.width ? (event.clientX - rect.left) / rect.width : 0.5;
-      zoomWaveformAtRatio(ratio, event.deltaY > 0 ? 1.2 : 0.82);
-      return;
-    }
-    const dominantDelta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
-    const direction = dominantDelta > 0 ? 1 : -1;
-    const stepRatio = event.shiftKey ? 0.5 : WAVEFORM_WHEEL_PAN_RATIO;
-    panWaveformBy(direction * viewport.duration * stepRatio);
-  }, { passive: false });
+  if (!waveformWheelDelegateBound) {
+    document.addEventListener("pointermove", handleWaveformPointerMoveCapture, { passive: true, capture: true });
+    document.addEventListener("wheel", handleWaveformWheelCapture, { passive: false, capture: true });
+    waveformWheelDelegateBound = true;
+  }
   frame.addEventListener("dblclick", (event) => {
     event.preventDefault();
     resetWaveformToEvent();
@@ -1518,7 +1939,8 @@ function bindWaveformInteractions() {
   });
 }
 
-async function loadFiles() {
+async function loadFiles(options = {}) {
+  const ensureDemo = options.ensureDemo !== false && (!EMBED_MODE || LAB_MODE);
   try {
     let files = await request("/eeg/files");
     state.files = Array.isArray(files) ? files : [];
@@ -1529,13 +1951,24 @@ async function loadFiles() {
         status: "ready",
         file: existingFixture,
       };
-    } else {
+    } else if (ensureDemo) {
       await ensureEpilepsyDemoFixture();
       files = await request("/eeg/files");
       state.files = Array.isArray(files) ? files : [];
     }
     state.files.sort((a, b) => fixtureRank(b) - fixtureRank(a));
-    if (!state.selectedFileId && state.files.length) {
+    if (START_FILE_ID && !state.selectedFileId) {
+      state.selectedFileId = START_FILE_ID;
+      if (!state.files.some((file) => file.id === START_FILE_ID)) {
+        state.files.unshift({
+          id: START_FILE_ID,
+          project_id: START_PROJECT_ID || undefined,
+          original_filename: START_FILE_ID,
+          metadata_json: { inherited_from_analysis: true },
+        });
+      }
+    }
+    if (!state.selectedFileId && state.files.length && ensureDemo) {
       const fixedFixtureId = state.demoFixture?.file?.id || "";
       const fixture = state.files.find((file) => file.id === fixedFixtureId) || findEpilepsyFixture(state.files) || state.files.find((file) => fixtureRank(file) > 0);
       state.selectedFileId = fixture?.id || state.files[0].id;
@@ -1647,7 +2080,7 @@ async function runEpilepsyTask() {
   render();
   try {
     const payload = {
-      project_id: file.project_id,
+      project_id: file.project_id || START_PROJECT_ID || "local-project",
       module_name: isMl ? "epilepsy_ml" : "epilepsy",
       workflow_id: isMl ? "epilepsy_ml_xgboost" : "epilepsy_std_threshold",
       input_file_id: file.id,
@@ -1663,6 +2096,7 @@ async function runEpilepsyTask() {
     state.artifacts = await request(`/tasks/${encodeURIComponent(state.task.id)}/artifacts`);
     await loadEpilepsyOutputs();
     loadReviews();
+    await ensureReviewSession();
     state.selectedEventId = state.eventRows[0] ? String(state.eventRows[0].event_id) : "";
     if (state.selectedEventId) selectEvent(state.selectedEventId, false);
     setMessage(`工作台分析完成：${state.task.id}，候选事件 ${state.eventRows.length} 个。`, false);
@@ -1696,9 +2130,9 @@ async function loadTask(taskId) {
 }
 
 async function loadEpilepsyOutputs() {
-  const epochArtifact = artifactByLabel("epilepsy_epoch_scores");
-  const eventsArtifact = artifactByLabel("epilepsy_events");
-  const summaryArtifact = artifactByLabel("epilepsy_summary");
+  const epochArtifact = artifactByAnyLabel(["epilepsy_epoch_scores", "epilepsy_ml_epoch_predictions", "epilepsy_epoch_scores.csv", "epilepsy_ml_epoch_predictions.csv"]);
+  const eventsArtifact = artifactByAnyLabel(["epilepsy_events", "epilepsy_ml_events", "epilepsy_events.csv", "epilepsy_ml_events.csv"]);
+  const summaryArtifact = artifactByAnyLabel(["epilepsy_summary", "epilepsy_ml_summary", "epilepsy_summary.json", "epilepsy_ml_summary.json", "epilepsy_ml_model_manifest.json"]);
   state.sourceEpochRows = epochArtifact ? normalizeEpochRows(parseCsv(await fetch(artifactUrl(epochArtifact)).then((r) => r.text()))) : [];
   state.sourceEventRows = eventsArtifact ? parseCsv(await fetch(artifactUrl(eventsArtifact)).then((r) => r.text())) : [];
   state.epochRows = state.sourceEpochRows;
@@ -1712,6 +2146,7 @@ async function loadEpilepsyOutputs() {
 async function ensureReviewSession() {
   if (!state.task?.id || state.reviewSession?.task_id === state.task.id) return state.reviewSession;
   state.reviewSessionError = "";
+  const taskParams = taskParameters();
   try {
     state.reviewSession = await request(`/tasks/${encodeURIComponent(state.task.id)}/epilepsy-review-sessions`, {
       method: "POST",
@@ -1719,6 +2154,9 @@ async function ensureReviewSession() {
       body: JSON.stringify({
         input_file_id: state.task.input_file_id,
         workflow_id: state.task.workflow_id,
+        data_preparation_plan_id: CONTEXT_HINT.plan || taskParams.data_preparation_plan_id || "",
+        data_preparation_revision: Number(CONTEXT_HINT.rev || taskParams.data_preparation_revision || 0) || null,
+        data_preparation_contract_version: CONTEXT_HINT.contract || taskParams.data_preparation_contract_version || "",
         epoch_length_sec: epochLengthSec(),
         current_epoch: state.selectedEpoch,
         selected_range: { start: state.epochSelectionStart, end: state.epochSelectionEnd },
@@ -1798,6 +2236,44 @@ function queueReviewSessionSync() {
     });
 }
 
+async function saveReviewDraft() {
+  if (!state.task?.id) {
+    setMessage("No screening task is loaded; open this child page from Analysis first.", true);
+    render();
+    return;
+  }
+  try {
+    await ensureReviewSession();
+    await syncReviewSession();
+    setMessage("Review draft saved to the inherited analysis task session. Formal Results publishing is still disabled in P0.", false);
+  } catch (error) {
+    setMessage(`Review draft save failed: ${error.message || error}`, true);
+  }
+  render();
+}
+
+async function publishReviewResults() {
+  if (!state.task?.id) {
+    setMessage("No screening task is loaded; open this child page from Analysis first.", true);
+    render();
+    return;
+  }
+  try {
+    await ensureReviewSession();
+    await syncReviewSession();
+    if (!state.reviewSession?.id) throw new Error("review session is not ready");
+    state.reviewExport = await request(`/epilepsy-review-sessions/${encodeURIComponent(state.reviewSession.id)}/exports`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
+    const count = Array.isArray(state.reviewExport?.registered_artifacts) ? state.reviewExport.registered_artifacts.length : 0;
+    setMessage(`Review results registered to the analysis task: ${count} artifacts. You can return to the main Results page.`, false);
+  } catch (error) {
+    setMessage(`Review results publish failed: ${error.message || error}`, true);
+  }
+  render();
+}
+
 function selectEpoch(epochIndex, extend = false) {
   if (extend) {
     state.epochSelectionEnd = clamp(epochIndex, 0, Math.max(0, state.epochRows.length - 1));
@@ -1829,12 +2305,12 @@ function selectEvent(eventId, rerender = true) {
 function markSelectedEvent(status) {
   const event = selectedEvent();
   if (!event) return;
+  if (!correctionWritesAllowed()) {
+    setMessage("Current waveform is read-only. Switch to Correction mode and wait for the active waveform window before writing review changes.", true);
+    render();
+    return;
+  }
   if (status === "seizure_candidate" || status === "normal") {
-    if (!correctionModeActive()) {
-      setMessage("当前是浏览模式。请先进入 Correction mode，再修改 Stage_Code。", true);
-      render();
-      return;
-    }
     setEpochSelection(Number(event.start_epoch || 0), Number(event.end_epoch || event.start_epoch || 0));
     applyStageToSelection(status === "seizure_candidate" ? 1 : 0, { event, status });
     return;
@@ -1895,8 +2371,8 @@ function pushHistory(previous, next, label) {
 
 function applyStageToSelection(stageCode, context = {}) {
   if (!state.sourceEpochRows.length) return;
-  if (!context.force && !correctionModeActive()) {
-    setMessage("当前是浏览模式。Stage_Code 修改已被拦截；进入 Correction mode 后再执行 Seizure/Normal。", true);
+  if (!context.force && !correctionWritesAllowed()) {
+    setMessage("Current waveform is read-only. Stage_Code changes require Correction mode and a ready, non-stale waveform window.", true);
     render();
     return;
   }
@@ -2027,14 +2503,16 @@ function updateEpochRangeFromInputs() {
   render();
 }
 
-async function runWaveformPreview() {
+async function runWaveformPreview(options = {}) {
+  const runOptions = options instanceof Event ? {} : (options || {});
+  const preserveScroll = runOptions.scrollPosition || (runOptions.preserveScroll ? captureScrollPosition() : null);
   const file = selectedFile();
   const event = selectedEvent();
   if (!file || !event) return;
   if (!state.task || state.task.input_file_id !== file.id) {
     resetWaveformPreview();
     setMessage("请先对当前数据文件运行筛查，再刷新候选波形。", true);
-    render();
+    renderWithOptionalScrollRestore(preserveScroll);
     return;
   }
   state.waveformInFlight = true;
@@ -2042,29 +2520,54 @@ async function runWaveformPreview() {
   state.waveformArtifacts = [];
   state.waveformEventId = String(event.event_id);
   state.waveformError = "";
-  setMessage("正在读取当前候选事件 EDF 波形窗口……", false);
-  render();
+  if (!runOptions.automatic) {
+    setMessage("正在读取当前候选事件 EDF 波形窗口……", false);
+  }
+  let requestId = "";
+  let windowKey = "";
   try {
     const viewport = currentWaveformViewport(event, file);
     setWaveformViewport(viewport.start, viewport.duration, { eventId: event.event_id, invalidate: false });
+    const channels = waveformChannelsForRequest();
+    const requestSeq = ++state.waveformRequestSeq;
+    requestId = `wf_${Date.now()}_${requestSeq}`;
+    windowKey = clientWaveformWindowKey(file.id, viewport, channels, waveformFilterProfileId(), "2400");
+    state.activeWaveformRequestId = requestId;
+    state.requestedWaveformWindowKey = windowKey;
+    renderWithOptionalScrollRestore(preserveScroll);
     const query = new URLSearchParams({
       start_sec: String(viewport.start),
       duration_sec: String(viewport.duration),
-      channels: waveformChannelsForRequest().join(","),
+      channels: channels.join(","),
       max_points: "2400",
       filter_profile_id: waveformFilterProfileId(),
       include_events: "true",
+      request_id: requestId,
     });
-    state.waveformWindow = await request(`/eeg/files/${encodeURIComponent(file.id)}/waveform-window?${query.toString()}`);
+    const response = await request(`/eeg/files/${encodeURIComponent(file.id)}/waveform-window?${query.toString()}`);
+    response.__client_window_key = windowKey;
+    response.request_id = response.request_id || requestId;
+    const responseKey = response.__client_window_key;
+    if (state.activeWaveformRequestId !== requestId || state.requestedWaveformWindowKey !== responseKey) {
+      state.ignoredWaveformResponses.push({ request_id: requestId, response_window_key: response.window_key || "", client_window_key: responseKey, expected_window_key: state.requestedWaveformWindowKey, ignored_at: new Date().toISOString() });
+      return;
+    }
+    state.waveformWindow = response;
     state.waveformTask = { status: "completed", mode: "waveform-window", id: `${file.id}:${event.event_id}:${state.waveformWindow.filter_profile_id}` };
-    setMessage(`波形窗口已读取：${fmt(state.waveformWindow.start_sec, 2)}-${fmt(state.waveformWindow.stop_sec, 2)}s。`, false);
+    if (!runOptions.automatic) {
+      setMessage(`波形窗口已读取：${fmt(state.waveformWindow.start_sec, 2)}-${fmt(state.waveformWindow.stop_sec, 2)}s。`, false);
+    }
   } catch (error) {
-    state.waveformTask = { status: "failed" };
-    state.waveformError = error.message || String(error);
-    setMessage(`波形预览失败：${error.message || error}`, true);
+    if (!requestId || state.activeWaveformRequestId === requestId) {
+      state.waveformTask = { status: "failed" };
+      state.waveformError = error.message || String(error);
+      setMessage(`波形预览失败：${error.message || error}`, true);
+    }
   } finally {
-    state.waveformInFlight = false;
-    render();
+    if (!requestId || state.activeWaveformRequestId === requestId) {
+      state.waveformInFlight = false;
+    }
+    renderWithOptionalScrollRestore(preserveScroll);
   }
 }
 
@@ -2180,14 +2683,17 @@ document.addEventListener("keydown", (event) => {
 
 async function main() {
   render();
+  if (!EMBED_MODE && !LAB_MODE) {
+    return;
+  }
   if (START_TASK_ID) {
     setMessage(`正在载入任务：${START_TASK_ID}……`, false);
     render();
-    await Promise.all([loadFiles(), loadTask(START_TASK_ID)]);
+    await Promise.all([loadFiles({ ensureDemo: false }), loadTask(START_TASK_ID)]);
     render();
     return;
   }
-  await loadFiles();
+  await loadFiles({ ensureDemo: LAB_MODE });
 }
 
 main();

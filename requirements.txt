@@ -7,3 +7,5 @@ edfio>=0.4.13
 oss2>=2.18
 reportlab>=4.0
 xgboost>=2.1
+joblib>=1.4
+scikit-learn>=1.5

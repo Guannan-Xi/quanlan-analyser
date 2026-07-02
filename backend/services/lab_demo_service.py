@@ -36,11 +36,45 @@ WORKFLOW_BY_MODULE = {
 }
 
 
+def _latest_completed_demo_waveform_task() -> dict | None:
+    tasks = [
+        task
+        for task in task_service.list_tasks()
+        if task.project_id == DEMO_PROJECT_ID
+        and task.input_file_id == DEMO_FILE_ID
+        and task.module_name == "qc"
+        and task.workflow_id == "qc_waveform_preview"
+        and task.status == "completed"
+    ]
+    tasks.sort(key=lambda task: task.finished_at or task.updated_at or task.created_at, reverse=True)
+    for task in tasks:
+        artifacts = task_service.list_task_artifacts(task.id)
+        artifact_key = " ".join(
+            f"{artifact.label or ''} {artifact.artifact_type or ''} {artifact.object_key or ''} {artifact.path or ''}"
+            for artifact in artifacts
+        ).lower()
+        if "waveform_preview" in artifact_key and "json" in artifact_key:
+            return task.model_dump(mode="json")
+    return None
+
+
 def ensure_demo_dataset() -> dict:
     DEMO_ROOT.mkdir(parents=True, exist_ok=True)
     edf_path = DEMO_ROOT / "teaching_oddball.edf"
     fif_path = DEMO_ROOT / "teaching_oddball_with_montage_raw.fif"
     events_tsv_path = DEMO_ROOT / "teaching_oddball_events.tsv"
+    try:
+        existing_project = storage_service.get_project(DEMO_PROJECT_ID)
+        existing_file = storage_service.get_eeg_file(DEMO_FILE_ID)
+        if Path(existing_file.stored_path).exists() and fif_path.exists():
+            return {
+                "project": existing_project.model_dump(mode="json"),
+                "file": existing_file.model_dump(mode="json"),
+                "qc_preview_task": _latest_completed_demo_waveform_task(),
+                "source": "existing_teaching_dataset",
+            }
+    except Exception:
+        pass
     if not edf_path.exists() or not fif_path.exists() or not events_tsv_path.exists():
         raw = build_raw()
         raw.save(fif_path, overwrite=True, verbose="ERROR")
@@ -105,7 +139,11 @@ def ensure_demo_dataset() -> dict:
         retention_policy="protected_teaching_demo",
     )
     storage_service.register_eeg_file(eeg_file)
-    return {"project": project.model_dump(mode="json"), "file": eeg_file.model_dump(mode="json")}
+    return {
+        "project": project.model_dump(mode="json"),
+        "file": eeg_file.model_dump(mode="json"),
+        "qc_preview_task": _latest_completed_demo_waveform_task(),
+    }
 
 
 def ensure_epilepsy_demo_dataset() -> dict:
