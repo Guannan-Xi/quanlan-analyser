@@ -51,7 +51,7 @@ def main() -> None:
 
     with sample_path.open("rb") as handle:
         response = client.post(
-            f"/api/eeg/upload?project_id={project['id']}",
+            f"/api/eeg/upload?project_id={project['id']}&upload_authorization_confirmed=true",
             files={"file": (sample_path.name, handle, "application/octet-stream")},
         )
     response.raise_for_status()
@@ -63,11 +63,39 @@ def main() -> None:
     assert metadata["status"] == "readable", metadata
     assert metadata["annotation_count"] >= 5, metadata
 
+    response = client.post(
+        "/api/data-preparation/plans",
+        json={
+            "project_id": project["id"],
+            "input_file_id": eeg_file["id"],
+            "status": "confirmed",
+            "title": "V01 smoke confirmed data preparation plan",
+            "description": "Smoke-test preparation plan for formal analysis gating.",
+            "source_file": {
+                "file_id": eeg_file["id"],
+                "original_filename": eeg_file["original_filename"],
+                "detected_format": eeg_file["detected_format"],
+            },
+            "metadata_review": {
+                "status": "accepted_for_smoke",
+                "channel_count": metadata.get("channel_count"),
+                "duration_sec": metadata.get("duration_sec"),
+            },
+        },
+    )
+    response.raise_for_status()
+    preparation_plan = response.json()
+    preparation_parameters = {
+        "data_preparation_plan_id": preparation_plan["id"],
+        "data_preparation_revision": preparation_plan["revision"],
+        "data_preparation_contract_version": "qlanalyser-data-preparation-v0.2",
+    }
+
     results = {}
     modules = [
         ("qc", "metadata_qc", {}),
-        ("psd", "resting_psd", {"fmin": 1, "fmax": 40}),
-        ("erp", "erp_p300", {"tmin": -0.2, "tmax": 0.6, "baseline": [None, 0]}),
+        ("psd", "resting_psd", {"fmin": 1, "fmax": 40, **preparation_parameters}),
+        ("erp", "erp_p300", {"tmin": -0.2, "tmax": 0.6, "baseline": [None, 0], **preparation_parameters}),
     ]
     for module, workflow, params in modules:
         response = client.post(
@@ -101,7 +129,7 @@ def main() -> None:
         },
     )
     assert response.status_code == 422, response.text
-    assert "not enabled in V01" in response.text
+    assert "DATA_PREPARATION_REQUIRED" in response.text
 
     psd_task = results["psd"]["task"]
     response = client.post(
@@ -135,6 +163,8 @@ def main() -> None:
                 "project_id": project["id"],
                 "file_id": eeg_file["id"],
                 "metadata_status": metadata["status"],
+                "data_preparation_plan_id": preparation_plan["id"],
+                "data_preparation_revision": preparation_plan["revision"],
                 "tasks": {key: value["task"]["id"] for key, value in results.items()},
                 "report_id": report["id"],
                 "package": str(package_path),

@@ -1,6 +1,4 @@
-﻿import { createRequire } from "node:module";
-const require = createRequire(import.meta.url);
-const { chromium } = require("../frontend/node_modules/playwright");
+﻿import { chromium, chromiumLaunchOptions } from "./lib/playwright_runtime.mjs";
 const url = "http://127.0.0.1:4174/index.html?customer_demo=auto&api=http%3A%2F%2F127.0.0.1%3A8001%2Fapi";
 const browser = await chromium.launch({ headless: true, channel: "msedge" });
 const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }});

@@ -12,6 +12,9 @@ const LATEST_VERDICT = path.join(ROOT, "work/release_evidence/epilepsy_source_wo
 const API_BASE = process.env.QLANALYSER_API_BASE || "http://127.0.0.1:8001/api";
 const FRONTEND_BASE = process.env.QLANALYSER_FRONTEND_BASE || "http://127.0.0.1:4174";
 const CHROME_EXE = process.env.CHROME_EXE || "C:/Users/XGN/AppData/Local/Google/Chrome/Application/chrome.exe";
+const TARGET_RENDERER = ["canvas", "timechart", "svg"].includes(process.env.QLANALYSER_EPILEPSY_RENDERER)
+  ? process.env.QLANALYSER_EPILEPSY_RENDERER
+  : "timechart";
 
 function latestTaskId() {
   if (process.env.QLANALYSER_EPILEPSY_TASK_ID) return process.env.QLANALYSER_EPILEPSY_TASK_ID;
@@ -27,7 +30,7 @@ function buildUrl() {
   const url = new URL("/epilepsy-workbench.html", FRONTEND_BASE);
   url.searchParams.set("api", API_BASE);
   url.searchParams.set("mode", "ml_epoch_classifier");
-  url.searchParams.set("renderer", "timechart");
+  url.searchParams.set("renderer", TARGET_RENDERER);
   url.searchParams.set("task", latestTaskId());
   return url.toString();
 }
@@ -77,6 +80,38 @@ function reviewWriteCount(snapshot) {
     const actions = (item.value?.reviewActions || []).filter((action) => action.action === "set_stage").length;
     return count + overrides + actions;
   }, 0);
+}
+
+async function waveformLayoutState(page) {
+  return page.evaluate(() => {
+    const rect = (selector) => {
+      const element = document.querySelector(selector);
+      if (!element) return null;
+      const r = element.getBoundingClientRect();
+      return {
+        x: Number(r.x.toFixed(2)),
+        y: Number(r.y.toFixed(2)),
+        width: Number(r.width.toFixed(2)),
+        height: Number(r.height.toFixed(2)),
+        right: Number(r.right.toFixed(2)),
+        bottom: Number(r.bottom.toFixed(2)),
+      };
+    };
+    return {
+      viewport_width: window.innerWidth,
+      viewport_height: window.innerHeight,
+      scroll_x: Number(window.scrollX.toFixed(2)),
+      scroll_y: Number(window.scrollY.toFixed(2)),
+      document_scroll_width: document.documentElement.scrollWidth,
+      document_client_width: document.documentElement.clientWidth,
+      statusbar_rect: rect('[data-testid="epilepsy-waveform-statusbar"]'),
+      toolbar_rect: rect(".waveform-toolbar"),
+      frame_rect: rect('[data-testid="epilepsy-waveform-frame"]'),
+      canvas_rect: rect('[data-testid="epilepsy-main-preview-canvas"]'),
+      stale_banner_rect: rect(".waveform-stale-banner"),
+      stale_banner_visible: Boolean(document.querySelector(".waveform-stale-banner")),
+    };
+  });
 }
 
 async function waitForWaveformAction(page, action) {
@@ -146,19 +181,26 @@ async function runCase(browser, name, options = {}) {
     await waveformResponsePromise;
     evidence.waveform_window_response_ms = Date.now() - waveformStarted;
 
-    await page.waitForFunction((forceFallback) => {
+    await page.waitForFunction(({ forceFallback, targetRenderer }) => {
       const metrics = window.__QLANALYSER_EPILEPSY_TIMECHART__;
+      const mainPreview = window.__QLANALYSER_EPILEPSY_MAIN_PREVIEW__;
+      const canvas = document.querySelector('[data-testid="epilepsy-main-preview-canvas"]');
+      const frameText = document.querySelector('[data-testid="epilepsy-waveform-frame"]')?.innerText || "";
       const traceCount = document.querySelectorAll('[data-testid="epilepsy-waveform-frame"] .waveform-line, [data-testid="epilepsy-waveform-frame"] .waveform-envelope').length;
+      if (targetRenderer === "canvas") return Boolean((mainPreview?.renderer === "main_canvas" && Number(mainPreview.point_count || 0) > 0) || (canvas && canvas.width > 0 && canvas.height > 0 && /Canvas/.test(frameText)));
+      if (targetRenderer === "svg") return traceCount > 0;
       if (forceFallback) return Boolean(metrics?.fallback && traceCount > 0);
       if (metrics?.renderer === "timechart" && Number(metrics.point_count || 0) > 0) return true;
       return Boolean(metrics?.fallback && traceCount > 0);
-    }, Boolean(options.forceFallback), { timeout: 70000 });
+    }, { forceFallback: Boolean(options.forceFallback), targetRenderer: TARGET_RENDERER }, { timeout: 70000 });
     await page.screenshot({ path: path.join(outDir, "02_timechart_or_fallback.png"), fullPage: true });
     evidence.screenshots.timechart_or_fallback = path.join(outDir, "02_timechart_or_fallback.png");
 
     evidence.timechart_metrics = await page.evaluate(() => window.__QLANALYSER_EPILEPSY_TIMECHART__ || null);
+    evidence.main_preview_metrics = await page.evaluate(() => window.__QLANALYSER_EPILEPSY_MAIN_PREVIEW__ || null);
     evidence.dom = await page.evaluate(() => {
       const host = document.querySelector('[data-testid="epilepsy-timechart-host"]');
+      const canvas = document.querySelector('[data-testid="epilepsy-main-preview-canvas"]');
       const svg = document.querySelector('[data-testid="epilepsy-waveform-frame"] .waveform-svg');
       const epochCells = Array.from(document.querySelectorAll("[data-epoch]"));
       const traceCount = document.querySelectorAll('[data-testid="epilepsy-waveform-frame"] .waveform-line, [data-testid="epilepsy-waveform-frame"] .waveform-envelope').length;
@@ -166,9 +208,14 @@ async function runCase(browser, name, options = {}) {
         body_text_sample: document.body.innerText.slice(0, 500),
         host_present: Boolean(host),
         host_rect: host ? host.getBoundingClientRect().toJSON() : null,
+        canvas_present: Boolean(canvas),
+        canvas_rect: canvas ? canvas.getBoundingClientRect().toJSON() : null,
+        canvas_width: canvas?.width || 0,
+        canvas_height: canvas?.height || 0,
         svg_present: Boolean(svg),
         svg_rect: svg ? svg.getBoundingClientRect().toJSON() : null,
         trace_count: traceCount,
+        minimap_viewport_window_count: document.querySelectorAll(".waveform-minimap-window").length,
         renderer_buttons: Array.from(document.querySelectorAll("[data-waveform-renderer]")).map((button) => ({
           renderer: button.dataset.waveformRenderer,
           text: button.textContent.trim(),
@@ -179,9 +226,52 @@ async function runCase(browser, name, options = {}) {
         event_overlay_present: Boolean(document.querySelector(".timechart-event-overlay, .waveform-event-band")),
       };
     });
+    evidence.layout = {
+      desktop_after_render: await waveformLayoutState(page),
+    };
+    if (TARGET_RENDERER === "canvas") {
+      await page.setViewportSize({ width: 599, height: 1272 });
+      await page.waitForTimeout(160);
+      evidence.layout.narrow_canvas = await waveformLayoutState(page);
+      await page.setViewportSize({ width: 1440, height: 1180 });
+      await page.waitForTimeout(160);
+      evidence.layout.desktop_after_narrow_restore = await waveformLayoutState(page);
+    }
 
     const frame = page.locator('[data-testid="epilepsy-waveform-frame"]');
     await frame.focus();
+    if (TARGET_RENDERER === "canvas") {
+      await page.evaluate(() => {
+        document.querySelector(".waveform-toolbar")?.scrollIntoView({ block: "center", inline: "nearest" });
+      });
+      await page.waitForTimeout(160);
+      evidence.layout.toolbar_wheel_before = await waveformLayoutState(page);
+      evidence.layout.toolbar_wheel_before_state = await waveformState(page);
+      const toolbarPoint = await page.evaluate(() => {
+        const target = document.querySelector('[data-waveform-label="filter_preview_figure"]');
+        const r = target.getBoundingClientRect();
+        const x = r.x + r.width / 2;
+        const y = r.y + r.height / 2;
+        const hit = document.elementFromPoint(x, y);
+        return {
+          x,
+          y,
+          hit_tag: hit?.tagName || "",
+          hit_text: (hit?.innerText || hit?.textContent || "").trim(),
+          in_waveform_region: Boolean(hit?.closest?.("[data-waveform-wheel-region]")),
+          in_waveform_frame: Boolean(hit?.closest?.("[data-waveform-interactive='true']")),
+        };
+      });
+      evidence.layout.toolbar_wheel_point = toolbarPoint;
+      await page.mouse.move(toolbarPoint.x, toolbarPoint.y);
+      await page.mouse.wheel(0, 650);
+      await page.waitForTimeout(120);
+      evidence.layout.toolbar_wheel_during = await waveformLayoutState(page);
+      evidence.layout.toolbar_wheel_capture = await page.evaluate(() => window.__QLANALYSER_EPILEPSY_WHEEL_CAPTURE__ || null);
+      await page.waitForTimeout(350);
+      evidence.layout.toolbar_wheel_after = await waveformLayoutState(page);
+      evidence.layout.toolbar_wheel_after_state = await waveformState(page);
+    }
     evidence.interaction = {
       initial: await waveformState(page),
       review_before_browse_shortcut: await reviewSnapshot(page),
@@ -314,17 +404,32 @@ async function runCase(browser, name, options = {}) {
       page_loaded: true,
       event_rows_present: await page.locator('[data-testid="epilepsy-event-table"] tbody tr').count() > 0,
       waveform_window_fast_enough: evidence.waveform_window_response_ms < 2000,
-      renderer_buttons_present: evidence.dom.renderer_buttons.length === 2,
+      renderer_buttons_present: evidence.dom.renderer_buttons.length === 3,
       timechart_or_fallback_nonblank: Boolean(
-        (evidence.timechart_metrics?.renderer === "timechart" && Number(evidence.timechart_metrics?.point_count || 0) > 0)
+        (TARGET_RENDERER === "canvas" && evidence.dom.canvas_present && evidence.dom.canvas_width > 0 && evidence.dom.canvas_height > 0)
+        || (TARGET_RENDERER === "svg" && evidence.dom.trace_count > 0)
+        || (evidence.timechart_metrics?.renderer === "timechart" && Number(evidence.timechart_metrics?.point_count || 0) > 0)
         || evidence.dom.trace_count > 0,
       ),
-      fallback_recorded_when_forced: !options.forceFallback || Boolean(evidence.timechart_metrics?.fallback && evidence.dom.trace_count > 0),
+      main_canvas_renderer_nonblank: TARGET_RENDERER !== "canvas" || (evidence.dom.canvas_present && evidence.dom.canvas_width > 0 && evidence.dom.canvas_height > 0),
+      main_canvas_narrow_no_document_horizontal_overflow: TARGET_RENDERER !== "canvas"
+        || evidence.layout.narrow_canvas.document_scroll_width <= evidence.layout.narrow_canvas.viewport_width + 2,
+      main_canvas_narrow_frame_fits_viewport: TARGET_RENDERER !== "canvas"
+        || evidence.layout.narrow_canvas.frame_rect.right <= evidence.layout.narrow_canvas.viewport_width + 2,
+      toolbar_wheel_does_not_scroll_page: TARGET_RENDERER !== "canvas"
+        || Math.abs(evidence.layout.toolbar_wheel_after.scroll_y - evidence.layout.toolbar_wheel_before.scroll_y) < 2,
+      toolbar_wheel_does_not_pan_waveform: TARGET_RENDERER !== "canvas"
+        || Math.abs(evidence.layout.toolbar_wheel_after_state.start_sec - evidence.layout.toolbar_wheel_before_state.start_sec) < 0.05,
+      stale_banner_does_not_shift_canvas: TARGET_RENDERER !== "canvas"
+        || !evidence.layout.toolbar_wheel_during.stale_banner_visible
+        || Math.abs(evidence.layout.toolbar_wheel_during.canvas_rect.y - evidence.layout.toolbar_wheel_before.canvas_rect.y) < 2,
+      fallback_recorded_when_forced: !options.forceFallback || TARGET_RENDERER !== "timechart" || Boolean(evidence.timechart_metrics?.fallback && evidence.dom.trace_count > 0),
       svg_current_still_works: svgInfo.visible && svgInfo.path_count > 0,
       stage_code_discrete_dom: evidence.dom.epoch_class_domain_ok && evidence.dom.epoch_count > 0,
       event_overlay_present: evidence.dom.event_overlay_present || svgInfo.event_band_count > 0,
       waveform_statusbar_present: evidence.interaction.initial.statusbar_present,
       waveform_minimap_present: evidence.interaction.initial.minimap_present,
+      waveform_minimap_has_no_moving_viewport_window: evidence.dom.minimap_viewport_window_count === 0,
       wheel_pans_start: Math.abs(evidence.interaction.after_wheel_pan.start_sec - evidence.interaction.initial.start_sec) > 0.05,
       wheel_does_not_zoom_time: Math.abs(evidence.interaction.after_wheel_pan.duration_sec - evidence.interaction.initial.duration_sec) < 0.15,
       ctrl_wheel_zooms_duration: Math.abs(evidence.interaction.after_ctrl_wheel_zoom.duration_sec - evidence.interaction.after_wheel_pan.duration_sec) > 0.05,

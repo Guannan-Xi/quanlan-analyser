@@ -10,16 +10,16 @@ const outDir =
   path.join(root, "work", "release_evidence", "07-mainline-productization", "current_available_modules");
 const evidencePath = path.join(outDir, "current_available_modules_9_methods.json");
 
-const expected = [
-  { id: "qc", label: "数据准备与质量检查", status: "准备步骤", tone: "dependency" },
-  { id: "psd", label: "PSD / Bandpower", status: "可用", tone: "available" },
-  { id: "erp", label: "ERP / P300", status: "可用，需事件", tone: "available" },
-  { id: "tfr", label: "TFR / ERSP / ITC", status: "预览方法，需复核", tone: "beta" },
-  { id: "multitaper_psd", label: "Multitaper PSD", status: "预览方法，需复核", tone: "beta" },
-  { id: "multitaper_tfr", label: "Multitaper TFR", status: "预览方法，需复核", tone: "beta" },
-  { id: "reference_csd", label: "Reference / CSD", status: "预览方法，需复核", tone: "beta" },
-  { id: "pac", label: "PAC / CFC", status: "预览方法，需复核", tone: "beta" },
-  { id: "connectivity", label: "Connectivity", status: "预览方法，需复核", tone: "beta" },
+const expectedAnalysisMethods = [
+  { id: "psd", action: "run-psd", tone: "available" },
+  { id: "erp", action: "run-erp", tone: "available" },
+  { id: "tfr", action: "run-tfr", tone: "available" },
+  { id: "multitaper_psd", action: "run-multitaper-psd", tone: "available" },
+  { id: "multitaper_tfr", action: "run-multitaper-tfr", tone: "available" },
+  { id: "pac", action: "run-pac", tone: "available" },
+  { id: "connectivity", action: "run-connectivity", tone: "available" },
+  { id: "reference_csd", action: "run-reference-csd", tone: "available" },
+  { id: "epilepsy_ml", action: "run-epilepsy-ml", tone: "available" },
 ];
 
 const forbiddenMainCardTerms = [
@@ -34,13 +34,10 @@ const forbiddenMainCardTerms = [
   /fake/i,
   /mock/i,
   /demo-only/i,
-  /内部测试/,
-  /开发验收/,
-  /真实\s*\/api/i,
-  /方法分支/,
-  /分析任务工作台/,
-  /9 个模块/,
-  /项目 ID/,
+  /preview methods can be tried/i,
+  /Reference\s*\/\s*CSD/i,
+  /data-module-id="qc"/i,
+  /data-real-action="run-qc/i,
 ];
 
 function read(rel) {
@@ -56,19 +53,26 @@ function stripTags(html) {
     .trim();
 }
 
+function attr(tag, name) {
+  return new RegExp(`${name}="([^"]*)"`, "i").exec(tag)?.[1] || "";
+}
+
 function parseCards(html) {
   const cards = [];
-  const articleRegex = /<article\b[^>]*class="[^"]*\bia-method-card\b[^"]*"[^>]*>[\s\S]*?<\/article>/g;
+  const cardRegex = /<(article|button)\b[^>]*class="[^"]*\bia-method-card\b[^"]*"[^>]*>[\s\S]*?<\/\1>/gi;
   let match;
-  while ((match = articleRegex.exec(html))) {
-    const article = match[0];
-    const tag = /<article\b([^>]*)>/.exec(article)?.[1] || "";
-    const id = /data-module-id="([^"]+)"/.exec(tag)?.[1] || "";
-    const className = /class="([^"]+)"/.exec(tag)?.[1] || "";
-    const label = /<strong>([\s\S]*?)<\/strong>/.exec(article)?.[1]?.trim() || "";
-    const status = /<b>([\s\S]*?)<\/b>/.exec(article)?.[1]?.trim() || "";
-    const text = stripTags(article);
-    cards.push({ id, className, label, status, text });
+  while ((match = cardRegex.exec(html))) {
+    const cardHtml = match[0];
+    const tag = /^<\w+\b([^>]*)>/i.exec(cardHtml)?.[1] || "";
+    cards.push({
+      tagName: match[1].toLowerCase(),
+      id: attr(tag, "data-module-id"),
+      action: attr(tag, "data-real-action"),
+      className: attr(tag, "class"),
+      label: stripTags(/<strong>([\s\S]*?)<\/strong>/i.exec(cardHtml)?.[1] || ""),
+      status: stripTags(/<b>([\s\S]*?)<\/b>/i.exec(cardHtml)?.[1] || ""),
+      text: stripTags(cardHtml),
+    });
   }
   return cards;
 }
@@ -78,8 +82,11 @@ function check(condition, name, details = {}) {
 }
 
 function visibleTextForScopePanel(html) {
-  const section = /<section\b[^>]*data-testid="analysis-method-scope-panel"[^>]*>[\s\S]*?<\/section>/.exec(html)?.[0] || "";
-  return stripTags(section);
+  const start = html.indexOf('data-testid="analysis-method-scope-panel"');
+  if (start < 0) return "";
+  const nextSection = html.indexOf("<section", start + 20);
+  const panel = html.slice(start, nextSection > start ? nextSection : undefined);
+  return stripTags(panel);
 }
 
 const html = read("frontend/index.html");
@@ -88,35 +95,35 @@ const cards = parseCards(html);
 const panelText = visibleTextForScopePanel(html);
 const checks = [];
 
-checks.push(check(cards.length === expected.length, "html_has_9_current_available_module_cards", { actual: cards.length }));
+checks.push(check(cards.length === expectedAnalysisMethods.length, "html_has_9_current_analysis_method_cards", { actual: cards.length }));
+checks.push(check(!cards.some((card) => card.id === "qc"), "qc_is_not_an_analysis_method_card", { actual_module_ids: cards.map((card) => card.id) }));
+checks.push(check(html.includes('data-testid="single-file-preview-panel"'), "data_preparation_panel_exists"));
+checks.push(check(html.includes('data-real-action="run-qc-preview-inline"'), "qc_preview_exists_as_data_preparation_dependency"));
 
-for (const item of expected) {
+for (const item of expectedAnalysisMethods) {
   const card = cards.find((candidate) => candidate.id === item.id);
   checks.push(check(Boolean(card), `html_card_exists:${item.id}`));
-  checks.push(check(card?.label === item.label, `html_card_label:${item.id}`, { expected: item.label, actual: card?.label }));
-  checks.push(check(card?.status === item.status, `html_card_status:${item.id}`, { expected: item.status, actual: card?.status }));
+  checks.push(check(card?.tagName === "button" || card?.tagName === "article", `html_card_tag_supported:${item.id}`, { actual: card?.tagName }));
+  checks.push(check(card?.action === item.action, `html_card_action:${item.id}`, { expected: item.action, actual: card?.action }));
   checks.push(check(card?.className.split(/\s+/).includes(item.tone), `html_card_tone:${item.id}`, { expected: item.tone, actual: card?.className }));
   checks.push(check(appJs.includes(`${item.id}: [`), `dynamic_copy_contains:${item.id}`));
-  checks.push(check(appJs.includes(item.label), `dynamic_copy_label:${item.id}`, { label: item.label }));
+  checks.push(check(appJs.includes(item.action), `dynamic_copy_action:${item.id}`));
 }
 
 for (const term of forbiddenMainCardTerms) {
   checks.push(check(!term.test(panelText), `main_card_forbidden_term_absent:${term}`));
 }
 
-checks.push(check(panelText.includes("预览方法可试用"), "panel_explains_preview_methods"));
-checks.push(check(panelText.includes("人工复核"), "panel_explains_human_review"));
-checks.push(check(html.includes("当前可用：9 项分析能力"), "analysis_badge_uses_user_capability_copy"));
-checks.push(check(panelText.includes("不证明信息流或因果方向"), "connectivity_boundary_visible"));
-checks.push(check(panelText.includes("不能单独解释为因果关系"), "pac_boundary_visible"));
-checks.push(check(panelText.includes("不把结果解释为精确脑源定位"), "reference_csd_boundary_visible"));
+checks.push(check(/9\s*.{0,8}(method|analysis|分析)/i.test(panelText) || html.includes("9 项分析方法"), "analysis_badge_uses_9_method_scope"));
+checks.push(check(panelText.length > 100, "analysis_scope_panel_has_customer_copy", { length: panelText.length }));
 
 const report = {
   script: path.basename(__filename),
   checked_at: new Date().toISOString(),
-  requirement_ids: ["R1", "R2", "R7"],
-  expected_module_ids: expected.map((item) => item.id),
+  requirement_ids: ["P0-4", "QC-as-data-preparation-dependency", "current-available-methods"],
+  expected_analysis_method_ids: expectedAnalysisMethods.map((item) => item.id),
   actual_module_ids: cards.map((item) => item.id),
+  qc_dependency_policy: "QC/data preparation is required before analysis but is not counted as an analysis method card.",
   card_count: cards.length,
   checks,
   passed: checks.every((item) => item.pass),

@@ -1,21 +1,18 @@
-﻿import { createRequire } from "node:module";
+import { chromium, chromiumLaunchOptions } from "./lib/playwright_runtime.mjs";
 import fs from "node:fs";
 import path from "node:path";
-const require = createRequire(import.meta.url);
-const { chromium } = require("../frontend/node_modules/playwright");
 const API_BASE = process.env.QLANALYSER_API_BASE_URL || "http://127.0.0.1:8001/api";
-const FRONTEND_URL = process.env.QLANALYSER_FRONTEND_URL || `http://127.0.0.1:4174/index.html?customer_demo=auto&api=${encodeURIComponent(API_BASE)}`;
+const FRONTEND_URL = process.env.QLANALYSER_FRONTEND_URL || `http://127.0.0.1:4174/index.html?customer_demo=auto&teaching_demo=auto&api=${encodeURIComponent(API_BASE)}`;
 const OUT_DIR = path.resolve("work/release_evidence/20260627-teaching-sandbox-mode");
 const OUT_JSON = path.join(OUT_DIR, "teaching_sandbox_mode_e2e.json");
 const SCREENSHOT = path.join(OUT_DIR, "teaching_sandbox_after_guide.png");
-function localBrowserExecutable(){return ["C:/Program Files/Microsoft/Edge/Application/msedge.exe","C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe"].find(fs.existsSync)||"";}
 const checks=[]; const add=(name,pass,details={})=>checks.push({name,pass:Boolean(pass),details});
 fs.mkdirSync(OUT_DIR,{recursive:true});
-const browser=await chromium.launch({headless:true,...(localBrowserExecutable()?{executablePath:localBrowserExecutable()}:{})});
+const browser=await chromium.launch({headless:true,...chromiumLaunchOptions()});
 const page=await browser.newPage({viewport:{width:1440,height:1000}});
 try{
  await page.goto(FRONTEND_URL,{waitUntil:"domcontentloaded",timeout:60000});
- await page.waitForSelector("#appShell, #loginScreen",{timeout:30000});
+ await page.waitForFunction(()=>{ const shell=document.querySelector("#appShell"); const login=document.querySelector("#loginScreen"); return Boolean((shell&&!shell.hidden)||(login&&!login.hidden)); },null,{timeout:30000});
  if(await page.locator("#customerLoginBtn").isVisible().catch(()=>false)) await page.click("#customerLoginBtn");
  await page.waitForSelector("#appShell:not([hidden]), .main",{timeout:30000});
  await page.click("#teachingModeBtn");

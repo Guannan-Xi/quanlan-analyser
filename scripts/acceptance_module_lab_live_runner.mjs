@@ -1,9 +1,7 @@
 ﻿import fs from "node:fs";
 import path from "node:path";
-import { createRequire } from "node:module";
+import { chromium, chromiumLaunchOptions } from "./lib/playwright_runtime.mjs";
 
-const require = createRequire(import.meta.url);
-const { chromium } = require("../frontend/node_modules/playwright");
 
 const FRONTEND_URL = process.env.QLANALYSER_FRONTEND_URL || "http://127.0.0.1:4174/module-lab.html?api=http://127.0.0.1:8001/api&acceptance=customer-file-runner-6";
 const SAMPLE_FIF = process.env.QLANALYSER_UI_SAMPLE || path.resolve("work/acceptance/ui_with_events_raw.fif");
@@ -200,7 +198,7 @@ const evidence = {
 };
 
 async function run() {
-  const browser = await chromium.launch();
+  const browser = await chromium.launch(chromiumLaunchOptions());
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
   page.on("request", (request) => {
     const url = request.url();

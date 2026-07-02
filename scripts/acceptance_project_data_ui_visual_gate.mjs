@@ -1,9 +1,7 @@
-import { createRequire } from "node:module";
+import { chromium, chromiumLaunchOptions } from "./lib/playwright_runtime.mjs";
 import fs from "node:fs";
 import path from "node:path";
 
-const require = createRequire(import.meta.url);
-const { chromium } = require("../frontend/node_modules/playwright");
 
 const FRONTEND_URL = process.env.QLANALYSER_FRONTEND_URL || "http://127.0.0.1:4174/?customer_demo=login&api=http://127.0.0.1:8001/api";
 const OUT_DIR = process.env.QLANALYSER_PROJECT_DATA_UI_GATE_DIR || path.resolve("work/release_evidence/ui_interaction_review/project_data_ui_gate");
@@ -136,7 +134,7 @@ function checkSelectedProject(state) {
 
 async function run() {
   ensureDir();
-  const browser = await chromium.launch();
+  const browser = await chromium.launch(chromiumLaunchOptions());
   const report = {
     requirement_id: "QLANALYSER_PROJECT_DATA_UI_CODE_VISUAL_GATE",
     review_owner_model: "GPT-5.5/Codex",

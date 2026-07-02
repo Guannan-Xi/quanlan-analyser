@@ -1,6 +1,4 @@
-import { createRequire } from "node:module";
-const require = createRequire(import.meta.url);
-const { chromium } = require("../frontend/node_modules/playwright");
+import { chromium, chromiumLaunchOptions } from "./lib/playwright_runtime.mjs";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -91,7 +89,7 @@ async function main() {
   Object.entries(manifest.sampleData || {}).forEach(([key, value]) => assertFile(value, `sample ${key}`));
   Object.entries(manifest.shared || {}).forEach(([key, value]) => assertFile(value, `shared ${key}`));
 
-  const browser = await chromium.launch({ headless: true });
+  const browser = await chromium.launch({ headless: true, ...chromiumLaunchOptions() });
 
   const home = await browser.newPage();
   const homeBody = await pageOk(home, `${BASE_URL}/index.html`, { skipImages: true });

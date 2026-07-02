@@ -1,6 +1,4 @@
-import { createRequire } from "node:module";
-const require = createRequire(import.meta.url);
-const { chromium } = require("../frontend/node_modules/playwright");
+import { chromium, chromiumLaunchOptions } from "./lib/playwright_runtime.mjs";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -269,7 +267,7 @@ async function runPageCoverage(browser, evidence) {
 
 async function main() {
   ensureDir();
-  const browser = await chromium.launch();
+  const browser = await chromium.launch(chromiumLaunchOptions());
   const evidence = {
     status: "failed",
     policy: "Click-only user test: no direct backend API calls; browser clicks, inputs, uploads, and visible download links only.",

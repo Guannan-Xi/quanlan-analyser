@@ -1,9 +1,7 @@
-import { createRequire } from "node:module";
+import { chromium, chromiumLaunchOptions } from "./lib/playwright_runtime.mjs";
 import fs from "node:fs";
 import path from "node:path";
 
-const require = createRequire(import.meta.url);
-const { chromium } = require("../frontend/node_modules/playwright");
 
 const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1")), "..");
 const CHROME_EXE = "C:/Users/XGN/AppData/Local/Google/Chrome/Application/chrome.exe";

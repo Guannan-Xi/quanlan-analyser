@@ -1,10 +1,13 @@
-import { createRequire } from "node:module";
+import {
+  chromium,
+  chromiumLaunchOptions,
+  classifyAcceptanceFailure,
+  isAcceptancePassedStatus,
+} from "./lib/playwright_runtime.mjs";
 import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 
-const require = createRequire(import.meta.url);
-const { chromium } = require("../frontend/node_modules/playwright");
 
 const FRONTEND_URL = process.env.QLANALYSER_FRONTEND_URL || "http://127.0.0.1:4174/?customer_demo=login&api=http://127.0.0.1:8001/api";
 const SAMPLE_EDF = process.env.QLANALYSER_UI_SAMPLE_EDF || path.resolve("frontend/assets/teaching_oddball.edf");
@@ -254,6 +257,7 @@ async function main() {
   ensureDir();
   const evidence = {
     status: "running",
+    acceptance_verdict: "running",
     policy: "UI-only product path: login, click, upload teaching EDF sample, run preparation/analysis, create and download report ZIP. No direct API task mutation.",
     frontendUrl: FRONTEND_URL,
     sampleEdf: SAMPLE_EDF,
@@ -278,7 +282,7 @@ async function main() {
   }
   evidence.sampleEdfBytes = fs.statSync(SAMPLE_EDF).size;
 
-  const browser = await chromium.launch();
+  const browser = await chromium.launch(chromiumLaunchOptions());
   const context = await browser.newContext({ acceptDownloads: true, viewport: { width: 1440, height: 1000 } });
   const page = await context.newPage();
   page.on("request", (request) => {
@@ -576,7 +580,7 @@ async function main() {
     finalizeServiceHealthChecks(evidence);
     await screenshot(page, "05-report-downloaded", evidence);
 
-    evidence.status = evidence.checks.uploadedEdfDetected
+    const productChecksPassed = evidence.checks.uploadedEdfDetected
       && evidence.qcTask.status === "completed"
       && evidence.metadataQcTask.status === "completed"
       && evidence.plan.status === "confirmed"
@@ -593,11 +597,15 @@ async function main() {
       && evidence.checks.pdfOcrArtifactQaPassed
       && evidence.checks.backendHealthSamplesOk
       && evidence.checks.backendProcessStable
-      && evidence.errors.length === 0
-      ? "passed"
-      : "failed";
+      && evidence.errors.length === 0;
+    evidence.status = productChecksPassed ? "passed" : "product_failed";
+    evidence.acceptance_verdict = productChecksPassed ? "passed" : "failed";
+    if (!productChecksPassed) evidence.failure_class = "product_failed";
   } catch (error) {
-    evidence.status = "failed";
+    const classified = classifyAcceptanceFailure(error, evidence);
+    evidence.status = classified;
+    evidence.acceptance_verdict = "failed";
+    evidence.failure_class = classified;
     evidence.errors.push(error.message);
     await sampleHealth(evidence, "after-failure").catch(() => null);
     finalizeServiceHealthChecks(evidence, true);
@@ -621,12 +629,22 @@ async function main() {
     writeEvidence(evidence);
   }
   console.log(stringifyEvidence(evidence));
-  if (evidence.status !== "passed") process.exit(1);
+  if (!isAcceptancePassedStatus(evidence.status)) process.exit(1);
 }
 
 main().catch((error) => {
   ensureDir();
-  writeEvidence({ status: "failed", error: error.message });
+  const status = classifyAcceptanceFailure(error);
+  writeEvidence({
+    status,
+    acceptance_verdict: "failed",
+    failure_class: status,
+    error: error.message,
+    generatedAt: new Date().toISOString(),
+    frontendUrl: FRONTEND_URL,
+    apiBaseUrl: API_BASE_URL,
+    sampleEdf: SAMPLE_EDF,
+  });
   console.error(error);
   process.exit(1);
 });

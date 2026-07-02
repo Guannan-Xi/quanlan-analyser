@@ -1,9 +1,7 @@
-import { createRequire } from "node:module";
+import { chromium, chromiumLaunchOptions } from "./lib/playwright_runtime.mjs";
 import fs from "node:fs";
 import path from "node:path";
 
-const require = createRequire(import.meta.url);
-const { chromium } = require("../frontend/node_modules/playwright");
 
 const FRONTEND_URL = process.env.QLANALYSER_FRONTEND_URL || "http://127.0.0.1:4174/?api=http://127.0.0.1:8001/api";
 const API_BASE = process.env.QLANALYSER_API_URL || "http://127.0.0.1:8001/api";
@@ -48,7 +46,7 @@ async function run() {
   const suffix = Date.now();
   const email = `ui-${suffix}@example.com`;
   const password = "StrongPass123";
-  const browser = await chromium.launch({ headless: true });
+  const browser = await chromium.launch({ headless: true, ...chromiumLaunchOptions() });
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
   const consoleErrors = [];
   const protectedRequests = [];

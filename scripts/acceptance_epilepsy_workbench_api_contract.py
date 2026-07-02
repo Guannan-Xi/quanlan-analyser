@@ -149,9 +149,38 @@ def main() -> int:
             result["timings_ms"]["export_review_session"] = round(export_ms, 2)
             required_export_keys = {"reviewed_epoch_scores_csv", "reviewed_events_csv", "review_actions_jsonl", "review_session_manifest", "source_artifacts", "non_medical_scope"}
             assert_ok(required_export_keys.issubset(export.keys()), "EXPORT_KEYS_MISSING", sorted(set(export.keys())))
+            v01_export_keys = {
+                "epoch_predictions_csv",
+                "candidate_events_csv",
+                "manual_corrections_csv",
+                "final_review_events_csv",
+                "summary_json",
+                "parameters_json",
+                "model_manifest_json",
+                "review_revision_json",
+                "scope_contract_json",
+            }
+            assert_ok(v01_export_keys.issubset(export.keys()), "V01_EXPORT_KEYS_MISSING", sorted(set(export.keys())))
+            registered_labels = {item.get("label") for item in export.get("registered_artifacts", [])}
+            expected_v01_labels = {
+                "epoch_predictions.csv",
+                "candidate_events.csv",
+                "manual_corrections.csv",
+                "final_review_events.csv",
+                "summary.json",
+                "parameters.json",
+                "model_manifest.json",
+                "review_revision.json",
+                "scope_contract.json",
+            }
+            assert_ok(expected_v01_labels.issubset(registered_labels), "V01_EXPORT_ARTIFACTS_MISSING", sorted(registered_labels))
+            assert_ok("Stage_Code" in export.get("epoch_predictions_csv", ""), "V01_EPOCH_PREDICTIONS_INVALID", export.get("epoch_predictions_csv", "")[:160])
+            assert_ok("review_status" in export.get("candidate_events_csv", ""), "V01_CANDIDATE_EVENTS_INVALID", export.get("candidate_events_csv", "")[:160])
+            assert_ok("algorithm_workflow_id" in export.get("manual_corrections_csv", ""), "V01_MANUAL_CORRECTIONS_INVALID", export.get("manual_corrections_csv", "")[:160])
+            assert_ok(export.get("scope_contract_json", {}).get("scope_contract") == "research_screening_support_only", "V01_SCOPE_CONTRACT_INVALID", export.get("scope_contract_json"))
             assert_ok("review_stage_code" in export.get("reviewed_epoch_scores_csv", ""), "EXPORT_EPOCH_CSV_INVALID", export.get("reviewed_epoch_scores_csv", "")[:120])
             assert_ok(export.get("review_session_manifest", {}).get("immutability", {}).get("source_artifacts_readonly") is True, "EXPORT_IMMUTABILITY_MISSING", export.get("review_session_manifest"))
-            record("review_export_contract", "passed", {"keys": sorted(required_export_keys), "source_artifact_count": len(export.get("source_artifacts", []))})
+            record("review_export_contract", "passed", {"keys": sorted(required_export_keys), "v01_keys": sorted(v01_export_keys), "source_artifact_count": len(export.get("source_artifacts", []))})
 
             (evidence_dir / "dataset.json").write_text(json.dumps(dataset, ensure_ascii=False, indent=2), encoding="utf-8")
             (evidence_dir / "task.json").write_text(json.dumps(task, ensure_ascii=False, indent=2), encoding="utf-8")

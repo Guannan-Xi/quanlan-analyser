@@ -1,9 +1,7 @@
-import { createRequire } from "node:module";
+import { chromium, chromiumLaunchOptions } from "./lib/playwright_runtime.mjs";
 import fs from "node:fs";
 import path from "node:path";
 
-const require = createRequire(import.meta.url);
-const { chromium } = require("../frontend/node_modules/playwright");
 
 const DEFAULT_TARGET_URL = "http://127.0.0.1:4174/?customer_demo=login&api=http://127.0.0.1:8001/api";
 const TARGET_URL = process.env.QLANALYSER_TARGET_URL || process.env.QLANALYSER_FRONTEND_URL || DEFAULT_TARGET_URL;
@@ -179,7 +177,7 @@ async function run() {
     `Start the backend API for ${apiBase} before running this acceptance script.`,
   );
 
-  const browser = await chromium.launch();
+  const browser = await chromium.launch(chromiumLaunchOptions());
   const page = await browser.newPage();
   const pageErrors = [];
   const consoleErrors = [];

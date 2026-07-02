@@ -1,9 +1,7 @@
-import { createRequire } from "node:module";
+import { chromium, chromiumLaunchOptions } from "./lib/playwright_runtime.mjs";
 import fs from "node:fs";
 import path from "node:path";
 
-const require = createRequire(import.meta.url);
-const { chromium } = require("../frontend/node_modules/playwright");
 
 const DEFAULT_URL = "http://127.0.0.1:4174/?customer_demo=login&api=http://127.0.0.1:8001/api";
 const TARGET_URL = process.env.QLANALYSER_TARGET_URL || process.env.QLANALYSER_FRONTEND_URL || DEFAULT_URL;
@@ -431,7 +429,7 @@ const rounds = [
 
 async function main() {
   ensureDir();
-  const browser = await chromium.launch();
+  const browser = await chromium.launch(chromiumLaunchOptions());
   const evidence = {
     status: "running",
     targetUrl: TARGET_URL,

@@ -1,6 +1,4 @@
-import { createRequire } from "node:module";
-const require = createRequire(import.meta.url);
-const { chromium } = require("../frontend/node_modules/playwright");
+import { chromium, chromiumLaunchOptions } from "./lib/playwright_runtime.mjs";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -24,7 +22,7 @@ async function waitForApi(page, label, predicate, action, timeout = 30000) {
   return response;
 }
 
-const browser = await chromium.launch();
+const browser = await chromium.launch(chromiumLaunchOptions());
 const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
 const evidence = {
   status: "failed",

@@ -31,11 +31,11 @@ function stripTags(html) {
 function parseCards(html) {
   const section = /<section\b[^>]*data-testid="analysis-method-scope-panel"[^>]*>[\s\S]*?<\/section>/i.exec(html)?.[0] || "";
   const cards = [];
-  const articleRegex = /<article\b[^>]*class="[^"]*\bia-method-card\b[^"]*"[^>]*>[\s\S]*?<\/article>/gi;
+  const articleRegex = /<(article|button)\b[^>]*class="[^"]*\bia-method-card\b[^"]*"[^>]*>[\s\S]*?<\/\1>/gi;
   let match;
   while ((match = articleRegex.exec(section))) {
     const article = match[0];
-    const tag = /<article\b([^>]*)>/i.exec(article)?.[1] || "";
+    const tag = /^<\w+\b([^>]*)>/i.exec(article)?.[1] || "";
     cards.push({
       id: /data-module-id="([^"]+)"/i.exec(tag)?.[1] || "",
       className: /class="([^"]+)"/i.exec(tag)?.[1] || "",
@@ -68,6 +68,7 @@ const expected = [
   { id: "pac", label: "PAC 相位-振幅耦合" },
   { id: "connectivity", label: "Connectivity 连接性分析" },
   { id: "reference_csd", label: "CSD 电流源密度计算" },
+  { id: "epilepsy_ml", label: "癫痫样事件筛查" },
 ];
 const forbiddenVisible = [
   "预览方法",
@@ -78,7 +79,7 @@ const forbiddenVisible = [
 ];
 const checks = [];
 
-checks.push(check(cards.length === expected.length, "current_analysis_method_card_count_is_8", { actual: cards.length }));
+checks.push(check(cards.length === expected.length, "current_analysis_method_card_count_is_9", { actual: cards.length }));
 for (const item of expected) {
   const card = cards.find((candidate) => candidate.id === item.id);
   checks.push(check(Boolean(card), `method_card_exists:${item.id}`));
@@ -89,6 +90,7 @@ checks.push(check(sectionText.includes("当前可用分析方法"), "section_ren
 checks.push(check(sectionText.includes("传感器空间滤波") && sectionText.includes("不是源定位或诊断"), "csd_boundary_visible"));
 checks.push(check(sectionText.includes("不能单独解释为因果机制"), "pac_boundary_visible"));
 checks.push(check(sectionText.includes("不证明信息流或因果方向"), "connectivity_boundary_visible"));
+checks.push(check(sectionText.includes("科研筛查") && sectionText.includes("复核工作台"), "epilepsy_non_medical_workbench_boundary_visible"));
 
 const customerVisibleSource = [html, appJs].join("\n");
 for (const term of forbiddenVisible) {

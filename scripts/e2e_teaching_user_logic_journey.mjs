@@ -1,8 +1,6 @@
 ﻿import fs from 'node:fs/promises';
 import path from 'node:path';
-import { createRequire } from 'node:module';
-const require = createRequire(import.meta.url);
-const { chromium } = require('../frontend/node_modules/playwright');
+import { chromium, chromiumLaunchOptions } from './lib/playwright_runtime.mjs';
 
 const repo = process.cwd();
 const outDir = path.join(repo, 'work', 'release_evidence', '20260627-teaching-user-logic-journey');
@@ -17,7 +15,7 @@ for (const candidate of edgeCandidates) {
   try { await fs.access(candidate); executablePath = candidate; break; } catch {}
 }
 
-const browser = await chromium.launch({ headless: true, executablePath });
+const browser = await chromium.launch({ headless: true, ...chromiumLaunchOptions(executablePath ? { executablePath } : {}) });
 const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
 const requests = [];
 page.on('request', req => {

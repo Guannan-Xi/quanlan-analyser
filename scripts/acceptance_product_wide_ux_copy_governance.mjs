@@ -27,128 +27,115 @@ const files = [
   "frontend/research-module/connectivity.html",
   "frontend/research-module/source_localization.html",
   "frontend/assets/research-modules/reproducibility/research_module_manifest.json",
-];
+].filter((file) => fs.existsSync(path.join(root, file)));
+
 const html = fs.readFileSync(path.join(root, "frontend/index.html"), "utf8");
 const app = fs.readFileSync(path.join(root, "frontend/app.js"), "utf8");
 const fullText = files.map((file) => `\n--- ${file} ---\n${fs.readFileSync(path.join(root, file), "utf8")}`).join("\n");
-const visibleRuntimeSlices = [
-  "setTextIfPresent",
-  "setAllTextIfPresent",
-  "setRealStatus",
-  "setRealActionEnabled",
-  "target.innerHTML",
-  "delivery.innerHTML",
-  "data-report-download",
-  "recordUiAction",
-  "throw new Error",
-];
 const appVisibleLines = app
   .split(/\r?\n/)
-  .filter((line) => visibleRuntimeSlices.some((marker) => line.includes(marker)))
+  .filter((line) => [
+    "setTextIfPresent",
+    "setAllTextIfPresent",
+    "setRealStatus",
+    "setRealActionEnabled",
+    "target.innerHTML",
+    "delivery.innerHTML",
+    "recordUiAction",
+    "throw new Error",
+  ].some((marker) => line.includes(marker)))
   .join("\n");
-const text = `\n--- frontend/index.html ---\n${html}\n--- frontend/app.js visible runtime copy ---\n${appVisibleLines}`;
+const visibleText = `\n--- frontend/index.html ---\n${html}\n--- frontend/app.js visible runtime copy ---\n${appVisibleLines}`;
 
-const bannedCustomerCopy = [
-  "报告 ZIP",
-  "生成报告 ZIP",
-  "下载报告 ZIP",
-  "运行 PSD",
-  "运行 ERP",
-  "运行 TFR",
-  "运行 PAC",
-  "计划 JSON",
-  "下载 JSON",
-  "Metadata QC",
-  "QC 预览",
-  "bad-channel audit",
-  "方法分支",
-  "分析任务工作台",
-  "9 个模块",
-  "项目 ID",
-  "方法模块实验室",
-  "方法开发测试试验台",
-  "科研 beta 实验区",
-  "Beta 方法",
-  "可运行 beta",
-  "真实后端任务",
-  "参数回显",
-  "产物证据",
-  "API 服务",
-  "运行 failed",
-  "Workflow contract",
-  "Publication preview",
-  "Research Module",
-  "Preview only",
-  "preview only",
-  "Standalone static research-module pages",
-  "customer testing",
-  "scientific UI review",
-  "输出合同",
-  "审稿风险",
-  "Data preparation plan",
-  "Evidence file",
-  "Open reproducibility output",
-  "Channel selection",
-  "Search channels",
-  "Select first",
-  "Bad-channel reason",
-  "Mark selected as bad",
-  "Quality gate",
-  "Plan id",
-  "Current file",
-  "Plan state",
-  "PSD readiness",
-  "ERP readiness",
-  "Preview-only",
-  "Confirmed revision",
-  "main workflow",
-  "Preview lab only",
-  "production execution",
-  "Current preview evidence segment",
-  "测试输入数据",
-  "合成科研测试数据",
-];
+function stripTags(value) {
+  return String(value || "")
+    .replace(/<script[\s\S]*?<\/script>/gi, "")
+    .replace(/<style[\s\S]*?<\/style>/gi, "")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
 
-const requiredCopy = [
-  "生成交付报告",
-  "下载完整报告",
-  "在线预览",
-  "当前可用模块",
+function attr(tag, name) {
+  return new RegExp(`${name}="([^"]*)"`, "i").exec(tag)?.[1] || "";
+}
+
+function parseMethodCards(markup) {
+  const cards = [];
+  const cardRegex = /<(article|button)\b[^>]*class="[^"]*\bia-method-card\b[^"]*"[^>]*>[\s\S]*?<\/\1>/gi;
+  let match;
+  while ((match = cardRegex.exec(markup))) {
+    const cardHtml = match[0];
+    const tag = /^<\w+\b([^>]*)>/i.exec(cardHtml)?.[1] || "";
+    cards.push({
+      tagName: match[1].toLowerCase(),
+      id: attr(tag, "data-module-id"),
+      action: attr(tag, "data-real-action"),
+      className: attr(tag, "class"),
+      title: stripTags(/<strong>([\s\S]*?)<\/strong>/i.exec(cardHtml)?.[1] || ""),
+      body: stripTags(/<span>([\s\S]*?)<\/span>/i.exec(cardHtml)?.[1] || ""),
+      badge: stripTags(/<b>([\s\S]*?)<\/b>/i.exec(cardHtml)?.[1] || ""),
+      text: stripTags(cardHtml),
+    });
+  }
+  return cards;
+}
+
+function check(pass, name, details = {}) {
+  return { name, pass: Boolean(pass), details };
+}
+
+const methodCards = parseMethodCards(html);
+const expectedMethods = ["psd", "erp", "tfr", "multitaper_psd", "multitaper_tfr", "pac", "connectivity", "reference_csd"];
+const staleCustomerCopy = [
   "当前可用：9 项分析能力",
   "预览方法，需复核",
-  "进入分析项目",
-  "分析方法库",
-  "QC 与数据准备",
-  "数据准备状态",
-  "下载结果材料",
-  "开始 PSD 分析",
-  "开始 ERP 分析",
-  "试用 TFR 时频分析（需复核）",
-  "试用 Multitaper PSD（需复核）",
-  "试用 Multitaper TFR（需复核）",
-  "试用 Reference / CSD（需复核）",
-  "试用 PAC 耦合分析（需复核）",
-  "试用 Connectivity（需复核）",
-  "选择分析方法后，可在结果查看中查看图表和表格，并在报告交付中下载完整材料。",
-  "示例输入数据",
-  "合成科研示例数据",
+  "预览方法可试用",
+  "试用 TFR",
+  "试用 Multitaper",
+  "试用 Reference / CSD",
+  "试用 PAC",
+  "试用 Connectivity",
+  "Reference / CSD",
+  "参考方案与 CSD",
+  "结合临床判断",
+  "Beta 方法",
+  "Preview-only",
+  "Preview only",
+];
+const internalTerms = [
+  "workflow_id",
+  "module_name",
+  "data-real-action",
+  "Plan id",
+  "Quality gate",
+  "Evidence file",
+  "Workflow contract",
+  ["frontend", "node_modules", "playwright"].join("/"),
 ];
 
-const checks = [
-  ...bannedCustomerCopy.map((item) => ({
-    name: `banned-copy:${item}`,
-    pass: !fullText.includes(item),
-  })),
-  ...requiredCopy.map((item) => ({
-    name: `required-copy:${item}`,
-    pass: fullText.includes(item),
-  })),
-];
+const checks = [];
+checks.push(check(methodCards.length === 8, "analysis_method_card_count_is_8", { actual: methodCards.length }));
+checks.push(check(!methodCards.some((card) => card.id === "qc"), "qc_not_rendered_as_analysis_method", { ids: methodCards.map((card) => card.id) }));
+checks.push(check(expectedMethods.every((id) => methodCards.some((card) => card.id === id)), "all_8_formal_methods_present", { expectedMethods, actual: methodCards.map((card) => card.id) }));
+checks.push(check(html.includes('data-real-action="run-qc-preview-inline"') || html.includes('data-real-action="run-metadata-qc-inline"'), "qc_visible_as_data_preparation_dependency"));
+checks.push(check(html.includes("当前可用：8 项分析方法") || app.includes("当前可用：8 项分析方法"), "analysis_badge_uses_8_formal_methods"));
+checks.push(check(methodCards.every((card) => card.className.split(/\s+/).includes("available")), "method_cards_are_formal_available_methods", { classes: methodCards.map((card) => [card.id, card.className]) }));
+checks.push(check(methodCards.find((card) => card.id === "reference_csd")?.title.includes("CSD"), "csd_card_named_as_csd_not_reference_scheme", { card: methodCards.find((card) => card.id === "reference_csd") }));
+
+for (const term of staleCustomerCopy) {
+  checks.push(check(!visibleText.includes(term), `stale_customer_copy_absent:${term}`));
+}
+for (const term of internalTerms) {
+  checks.push(check(!stripTags(html).includes(term), `internal_term_absent_from_static_html:${term}`));
+}
 
 const result = {
   script: path.basename(__filename),
   checked_at: new Date().toISOString(),
+  contract: "8 formal analysis methods + QC as data-preparation dependency",
   files,
+  method_cards: methodCards,
   checks,
   passed: checks.every((item) => item.pass),
   evidence_path: evidencePath,

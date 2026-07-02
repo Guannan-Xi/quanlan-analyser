@@ -1,22 +1,28 @@
-import { createRequire } from "node:module";
 import fs from "node:fs";
 import path from "node:path";
 
-const require = createRequire(import.meta.url);
-const { chromium } = require("../frontend/node_modules/playwright");
+const { chromium } = await import("playwright");
 
 const FRONTEND_URL = process.env.QLANALYSER_FRONTEND_URL || "http://127.0.0.1:4174/?customer_demo=login&api=http://127.0.0.1:8001/api";
 const SAMPLE_EDF = process.env.QLANALYSER_UI_SAMPLE_EDF || path.resolve("frontend/assets/teaching_oddball.edf");
 const OUT_DIR = process.env.QLANALYSER_MAIN_WORKBENCH_CLICK_E2E_DIR
   || path.resolve("work/release_evidence/07-mainline-productization/main_workbench_clickthrough_e2e");
 const EVIDENCE_PATH = path.join(OUT_DIR, "main_workbench_direct_method_clickthrough_e2e.json");
+const EDGE_PATHS = [
+  "C:/Program Files/Microsoft/Edge/Application/msedge.exe",
+  "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe",
+];
+
+function localBrowserExecutable() {
+  return EDGE_PATHS.find((candidate) => fs.existsSync(candidate)) || "";
+}
 
 const ACTIONS = [
   { action: "run-psd", uiModule: "psd", backendModule: "psd", workflow: "resting_psd" },
   { action: "run-erp", uiModule: "erp", backendModule: "erp", workflow: "erp_p300" },
   { action: "run-tfr", uiModule: "tfr", backendModule: "tfr", workflow: "tfr_ersp_itc" },
-  { action: "run-multitaper-psd", uiModule: "multitaper_psd", backendModule: "multitaper_psd_tfr", workflow: "multitaper_psd_tfr" },
-  { action: "run-multitaper-tfr", uiModule: "multitaper_tfr", backendModule: "multitaper_psd_tfr", workflow: "multitaper_psd_tfr" },
+  { action: "run-multitaper-psd", uiModule: "multitaper_psd", backendModule: "multitaper_psd_tfr", workflow: "multitaper_psd_tfr", analysisFamily: "psd" },
+  { action: "run-multitaper-tfr", uiModule: "multitaper_tfr", backendModule: "multitaper_psd_tfr", workflow: "multitaper_psd_tfr", analysisFamily: "tfr" },
   { action: "run-reference-csd", uiModule: "reference_csd", backendModule: "reference_csd", workflow: "reference_csd" },
   { action: "run-pac", uiModule: "pac", backendModule: "pac", workflow: "pac_cfc" },
   { action: "run-connectivity", uiModule: "connectivity", backendModule: "connectivity", workflow: "connectivity" },
@@ -167,6 +173,9 @@ async function runAction(page, item) {
       workflow: requestPayload.workflow_id === item.workflow,
       taskCompleted: task.status === "completed",
       planLinked: Boolean(requestPayload.parameters_json?.data_preparation_plan_id),
+      planRevisionLinked: Number.isFinite(Number(requestPayload.parameters_json?.data_preparation_revision)),
+      preparationContractVersion: requestPayload.parameters_json?.data_preparation_contract_version === "qlanalyser-data-preparation-v0.2",
+      analysisFamily: item.analysisFamily ? requestPayload.parameters_json?.analysis_family === item.analysisFamily : true,
     },
   };
 }
@@ -189,7 +198,7 @@ if (!fs.existsSync(SAMPLE_EDF)) {
   process.exit(1);
 }
 
-const browser = await chromium.launch();
+const browser = await chromium.launch({ headless: true, ...(localBrowserExecutable() ? { executablePath: localBrowserExecutable() } : {}) });
 const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
 page.on("pageerror", (error) => evidence.errors.push(error.message));
 page.on("console", (msg) => {

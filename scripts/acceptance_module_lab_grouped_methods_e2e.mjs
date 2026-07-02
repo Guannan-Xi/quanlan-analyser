@@ -1,9 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
-import { createRequire } from "node:module";
+import { chromium, chromiumLaunchOptions } from "./lib/playwright_runtime.mjs";
 
-const require = createRequire(import.meta.url);
-const { chromium } = require("../frontend/node_modules/playwright");
 
 const FRONTEND_URL = process.env.QLANALYSER_FRONTEND_URL || "http://127.0.0.1:4174/module-lab.html?api=http://127.0.0.1:8001/api&acceptance=grouped-methods-e2e";
 const SAMPLE_EDF = process.env.QLANALYSER_GROUPED_METHODS_EDF || path.resolve("work/release_evidence/20260625-module-lab-grouped-methods-e2e/module_lab_grouped_methods_local.edf");

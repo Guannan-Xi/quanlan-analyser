@@ -87,7 +87,7 @@ const packet = {
   timechart_integrated: false,
   blocked_or_unverified: [
     "Full release suite for all analysis modules was not rerun in this slice.",
-    "Existing Playwright scripts originally expected frontend/node_modules/playwright; fallback was added, but direct CLI execution still needs NODE_PATH or the bundled runtime until project dependencies are restored.",
+    "Active Playwright scripts use scripts/lib/playwright_runtime.mjs with package import, optional QLANALYSER_PLAYWRIGHT_MODULE_DIR, and system Edge fallback; QA machines still need a resolvable Playwright package or configured module directory.",
     "Browser-level slow-response simulation for stale preview overwrite was not separately rerun; static requestSeq guard was verified.",
   ],
   next_real_artifact: "Codex/C0 final acceptance can rerun this evidence folder and then fold the result into the release gate.",

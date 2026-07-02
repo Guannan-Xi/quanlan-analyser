@@ -1,14 +1,12 @@
-import { createRequire } from "node:module";
+import { chromium, chromiumLaunchOptions } from "./lib/playwright_runtime.mjs";
 import fs from "node:fs";
 import path from "node:path";
 
-const require = createRequire(import.meta.url);
-const { chromium } = require("../frontend/node_modules/playwright");
 
 const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1")), "..");
 const CHROME_EXE = "C:/Users/XGN/AppData/Local/Google/Chrome/Application/chrome.exe";
 const FRONTEND_URL = process.env.QLANALYSER_EPILEPSY_WORKBENCH_URL
-  || "http://127.0.0.1:4174/epilepsy-workbench.html?api=http://127.0.0.1:8001/api&mode=ml_epoch_classifier";
+  || "http://127.0.0.1:4174/epilepsy-workbench.html?lab=1&api=http://127.0.0.1:8001/api&mode=ml_epoch_classifier";
 const OUT_DIR = process.env.QLANALYSER_EPILEPSY_WORKBENCH_EVIDENCE_DIR
   || path.join(ROOT, "work/e2e_epilepsy_workbench/ui_e2e");
 const EVIDENCE_PATH = path.join(OUT_DIR, "epilepsy_workbench_e2e.json");
@@ -75,7 +73,9 @@ async function main() {
     const eventRows = await page.locator('[data-testid="epilepsy-event-table"] tbody tr').count();
     ensure(eventRows >= 1, "No candidate event rows rendered.");
 
-    await page.click("#markNormalBtn");
+    await page.click('[data-testid="epilepsy-waveform-mode-correct"]');
+    await page.waitForFunction(() => !document.querySelector("#applyStageNormalBtn")?.disabled, null, { timeout: 30000 });
+    await page.click("#applyStageNormalBtn");
     await page.waitForFunction(() => document.body.innerText.includes("0 个候选事件"), null, { timeout: 30000 });
     const correctedState = await page.evaluate(() => {
       const keys = Object.keys(localStorage).filter((key) => key.startsWith("qlanalyser.epilepsy.review.v1."));
@@ -90,7 +90,7 @@ async function main() {
     const restoredEventRows = await page.locator('[data-testid="epilepsy-event-table"] tbody tr').count();
     ensure(restoredEventRows >= 1, "Undo did not restore candidate event rows.");
 
-    await page.click("#markSeizureBtn");
+    await page.click("#applyStageSeizureBtn");
     await page.waitForFunction(() => document.body.innerText.includes("Seizure"), null, { timeout: 30000 });
     const reviewState = await page.evaluate(() => {
       const keys = Object.keys(localStorage).filter((key) => key.startsWith("qlanalyser.epilepsy.review.v1."));
@@ -98,17 +98,34 @@ async function main() {
     });
     evidence.reviewState = reviewState;
 
-    const waveformTaskPromise = page.waitForResponse(
-      (response) => response.url().endsWith("/api/tasks")
-        && response.request().method() === "POST"
-        && (response.request().postData() || "").includes('"workflow_id":"qc_waveform_preview"'),
+    const waveformWindowPromise = page.waitForResponse(
+      (response) => response.url().includes("/api/eeg/files/")
+        && response.url().includes("/waveform-window")
+        && response.request().method() === "GET",
       { timeout: 120000 },
     );
     await page.click("#runWaveformBtn");
-    const waveformTask = await (await waveformTaskPromise).json();
-    evidence.waveformTask = waveformTask;
-    ensure(waveformTask.status === "completed", `Waveform task not completed: ${waveformTask.status}`);
-    await page.waitForSelector('[data-testid="epilepsy-waveform-frame"] img', { timeout: 60000 });
+    const waveformWindow = await (await waveformWindowPromise).json();
+    const waveformPointCount = (waveformWindow.channels || []).reduce((sum, channel) => {
+      return sum
+        + (Array.isArray(channel.values) ? channel.values.length : 0)
+        + (Array.isArray(channel.min_values) ? channel.min_values.length : 0)
+        + (Array.isArray(channel.max_values) ? channel.max_values.length : 0);
+    }, 0);
+    evidence.waveformWindow = {
+      start_sec: waveformWindow.start_sec,
+      stop_sec: waveformWindow.stop_sec,
+      points: waveformPointCount,
+      channels: waveformWindow.channels?.length || 0,
+      filter_profile_id: waveformWindow.filter_profile_id,
+    };
+    ensure(evidence.waveformWindow.channels > 0 && evidence.waveformWindow.points > 0, "Waveform window did not return channel values.");
+    await page.waitForFunction(() => {
+      const canvas = document.querySelector('[data-testid="epilepsy-main-preview-canvas"]');
+      const svg = document.querySelector('[data-testid="epilepsy-waveform-frame"] svg');
+      const image = document.querySelector('[data-testid="epilepsy-waveform-frame"] img');
+      return Boolean((canvas && canvas.width > 0 && canvas.height > 0) || svg || image);
+    }, null, { timeout: 60000 });
 
     await page.screenshot({ path: path.join(OUT_DIR, "02_after_workbench_run.png"), fullPage: true });
     evidence.screenshots.after_run = path.join(OUT_DIR, "02_after_workbench_run.png");
@@ -122,17 +139,17 @@ async function main() {
       eventRows,
       correctedEventRowsAfterNormal: 0,
       restoredEventRows,
-      reviewSaved: Object.values(reviewState).some((text) => String(text).includes("seizure_candidate")),
+      reviewSaved: Object.values(reviewState).some((text) => String(text).includes('"reviewActions"') && String(text).includes('"set_stage"')),
       epochCorrectionSaved: Object.values(correctedState).some((text) => String(text).includes('"epochOverrides"')),
       stageActionRecorded: Object.values(correctedState).some((text) => String(text).includes('"set_stage"')),
-      waveformCompleted: waveformTask.status === "completed",
-      waveformImageVisible: await page.locator('[data-testid="epilepsy-waveform-frame"] img').count() > 0,
+      waveformWindowReturned: evidence.waveformWindow.channels > 0 && evidence.waveformWindow.points > 0,
+      waveformPreviewVisible: await page.locator('[data-testid="epilepsy-main-preview-canvas"], [data-testid="epilepsy-waveform-frame"] svg, [data-testid="epilepsy-waveform-frame"] img').count() > 0,
       nonMedicalBoundary: bodyText.includes("不用于诊断"),
     };
-    ensure(evidence.checks.reviewSaved, "Manual review was not saved to localStorage.");
+    ensure(evidence.checks.reviewSaved, "Manual stage review action was not saved to localStorage.");
     ensure(evidence.checks.epochCorrectionSaved, "Epoch-level correction was not saved to localStorage.");
     ensure(evidence.checks.stageActionRecorded, "Epoch-level correction action was not recorded.");
-    ensure(evidence.checks.waveformImageVisible, "Waveform preview image is not visible.");
+    ensure(evidence.checks.waveformPreviewVisible, "Waveform preview is not visible.");
     ensure(evidence.checks.nonMedicalBoundary, "Non-medical boundary not visible.");
 
     evidence.status = "PASS";
@@ -141,7 +158,7 @@ async function main() {
       status: evidence.status,
       evidence_path: EVIDENCE_PATH,
       task_id: epilepsyTask.id,
-      waveform_task_id: waveformTask.id,
+      waveform_window: evidence.waveformWindow,
       event_rows: eventRows,
       screenshots: evidence.screenshots,
     }, null, 2));

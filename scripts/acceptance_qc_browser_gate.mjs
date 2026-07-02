@@ -1,6 +1,4 @@
-import { createRequire } from "node:module";
-const require = createRequire(import.meta.url);
-const { chromium } = require("../frontend/node_modules/playwright");
+import { chromium, chromiumLaunchOptions } from "./lib/playwright_runtime.mjs";
 
 import fs from "node:fs";
 import os from "node:os";
@@ -53,7 +51,7 @@ async function main() {
   const outDir = ensureDir(argValue("out", DEFAULT_OUT));
   const url = `${frontendBase}/qc-lab.html?api=${encodeURIComponent(apiBase)}`;
 
-  const browser = await chromium.launch({ headless: true });
+  const browser = await chromium.launch({ headless: true, ...chromiumLaunchOptions() });
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, deviceScaleFactor: 1 });
 
   let verdict;

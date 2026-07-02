@@ -1,9 +1,8 @@
-﻿import { createRequire } from 'node:module';
+﻿import { chromium, chromiumLaunchOptions } from './lib/playwright_runtime.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
-const require=createRequire(import.meta.url); const { chromium }=require('../frontend/node_modules/playwright');
 const outDir=path.resolve('work/release_evidence/20260627-login-shell-probe'); fs.mkdirSync(outDir,{recursive:true});
-const browser=await chromium.launch({headless:true, executablePath:'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe'});
+const browser=await chromium.launch({headless:true, ...chromiumLaunchOptions()});
 const page=await browser.newPage({viewport:{width:1440,height:1000}});
 const requests=[]; page.on('response', async r=>{ if(r.url().includes('/api/')) requests.push({url:r.url(),status:r.status(),method:r.request().method()}); });
 const url='http://127.0.0.1:4174/index.html?customer_demo=auto&api=http%3A%2F%2F127.0.0.1%3A8001%2Fapi';

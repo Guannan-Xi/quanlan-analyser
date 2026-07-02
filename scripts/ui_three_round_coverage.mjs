@@ -3,8 +3,7 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 
-const require = createRequire(import.meta.url);
-const { chromium } = require("../frontend/node_modules/playwright");
+import { chromium, chromiumLaunchOptions } from "./lib/playwright_runtime.mjs";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const ROOT = path.resolve(__dirname, "..");
@@ -217,7 +216,7 @@ async function coverLab(page, round) {
 }
 
 (async () => {
-  const browser = await chromium.launch();
+  const browser = await chromium.launch(chromiumLaunchOptions());
   const all = [];
   for (let round = 1; round <= 3; round += 1) {
     const desktop = await browser.newPage({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 });

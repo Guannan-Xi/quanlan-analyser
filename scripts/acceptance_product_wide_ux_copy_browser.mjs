@@ -1,9 +1,7 @@
-import { createRequire } from "node:module";
+import { chromium, chromiumLaunchOptions } from "./lib/playwright_runtime.mjs";
 import fs from "node:fs";
 import path from "node:path";
 
-const require = createRequire(import.meta.url);
-const { chromium } = require("../frontend/node_modules/playwright");
 
 const TARGET_URL =
   process.env.QLANALYSER_FRONTEND_URL ||
@@ -23,7 +21,7 @@ async function bodyText(page) {
 
 async function run() {
   fs.mkdirSync(OUT_DIR, { recursive: true });
-  const browser = await chromium.launch({ headless: true });
+  const browser = await chromium.launch({ headless: true, ...chromiumLaunchOptions() });
   try {
     const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
     const consoleErrors = [];

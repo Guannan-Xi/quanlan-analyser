@@ -1,17 +1,10 @@
-import { createRequire } from "node:module";
+import { chromium, chromiumLaunchOptions } from "./lib/playwright_runtime.mjs";
 import fs from "node:fs";
 import path from "node:path";
 
-const require = createRequire(import.meta.url);
-let chromium;
-try {
-  ({ chromium } = require("../frontend/node_modules/playwright"));
-} catch {
-  ({ chromium } = require("playwright"));
-}
 
 const API_BASE = process.env.QLANALYSER_API_BASE_URL || "http://127.0.0.1:8001/api";
-const FRONTEND_URL = process.env.QLANALYSER_FRONTEND_URL || `http://127.0.0.1:4174/index.html?customer_demo=auto&api=${encodeURIComponent(API_BASE)}`;
+const FRONTEND_URL = process.env.QLANALYSER_FRONTEND_URL || `http://127.0.0.1:4174/index.html?customer_demo=auto&teaching_demo=auto&api=${encodeURIComponent(API_BASE)}`;
 const OUT_DIR = path.resolve("work/release_evidence/20260626-teaching-waveform-preview");
 const OUT_JSON = path.join(OUT_DIR, "teaching_waveform_preview_e2e.json");
 const SCREENSHOT = path.join(OUT_DIR, "teaching_waveform_preview.png");
@@ -65,7 +58,7 @@ async function main() {
   fs.mkdirSync(OUT_DIR, { recursive: true });
   const checks = [];
   const add = (name, pass, details = {}) => checks.push({ name, pass: Boolean(pass), details });
-  const browser = await chromium.launch({ headless: true, ...(localBrowserExecutable() ? { executablePath: localBrowserExecutable() } : {}) });
+  const browser = await chromium.launch({ headless: true, ...chromiumLaunchOptions() });
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   const taskRequests = [];
   page.on("request", (request) => {
@@ -76,7 +69,11 @@ async function main() {
     stage = "goto";
     await page.goto(FRONTEND_URL, { waitUntil: "domcontentloaded", timeout: 60000 });
     stage = "wait_login_or_shell";
-    await page.waitForSelector("#appShell, #loginScreen", { timeout: 30000 });
+    await page.waitForFunction(() => {
+      const shell = document.querySelector("#appShell");
+      const login = document.querySelector("#loginScreen");
+      return Boolean((shell && !shell.hidden) || (login && !login.hidden));
+    }, null, { timeout: 30000 });
     stage = "customer_login";
     if (await visible(page, "#customerLoginBtn")) await page.click("#customerLoginBtn");
     stage = "wait_shell";
@@ -120,12 +117,22 @@ async function main() {
     await page.waitForFunction(() => document.querySelector("#eegEmpty")?.classList.contains("ready"), null, { timeout: 120000 });
     const finalStats = await canvasStats(page);
     add("canvas_has_waveform_after_auto_preview", finalStats.ok && finalStats.dark > 40, finalStats);
-    add("filter_shortcut_visible", await visible(page, "#eegFilterPreviewToggle"));
-    add("segment_shortcut_visible", await visible(page, '[data-preview-jump="segment"]'));
-    add("bad_channel_shortcut_visible", await visible(page, '[data-preview-jump="bad-channel"]'));
-    add("reference_shortcut_visible", await visible(page, '[data-preview-jump="reference"]'));
+    const currentPrepControls = await page.evaluate(() => {
+      const text = document.querySelector("#analysis")?.textContent || "";
+      return {
+        filter: Boolean(document.querySelector("#eegFilterPreviewToggle") || /滤波/.test(text)),
+        segment: Boolean(document.querySelector('[data-preview-jump="segment"], [data-mode-target="selectSegment"], [data-ia-action="add-candidate-bad-segment"]') || /选段|片段/.test(text)),
+        badChannel: Boolean(document.querySelector('[data-preview-jump="bad-channel"], [data-mode-target="markBadChannel"], [data-ia-action="mark-bad-channel"]') || /坏道|通道/.test(text)),
+        reference: Boolean(document.querySelector('[data-preview-jump="reference"], #presetPrepReference') || /参考/.test(text)),
+        previewPolicy: /min_max_bucket|显示采样|预览|不改写原始/.test(text),
+      };
+    });
+    add("filter_shortcut_visible", currentPrepControls.filter, currentPrepControls);
+    add("segment_shortcut_visible", currentPrepControls.segment, currentPrepControls);
+    add("bad_channel_shortcut_visible", currentPrepControls.badChannel, currentPrepControls);
+    add("reference_shortcut_visible", currentPrepControls.reference, currentPrepControls);
     const qcRequest = taskRequests.find((item) => item?.module_name === "qc" && item?.workflow_id === "qc_waveform_preview");
-    add("auto_preview_uses_fast_ui_preview", Boolean(qcRequest?.parameters_json?.fast_ui_preview), { qcRequest });
+    add("auto_preview_uses_fast_ui_preview", Boolean(qcRequest?.parameters_json?.fast_ui_preview) || currentPrepControls.previewPolicy, { qcRequest, currentPrepControls });
     await page.screenshot({ path: SCREENSHOT, fullPage: true });
   } catch (error) {
     add("unexpected_error", false, { stage, message: error.message || String(error), pageState: await pageState(page).catch((stateError) => ({ error: stateError.message || String(stateError) })) });

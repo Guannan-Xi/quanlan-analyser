@@ -1,9 +1,7 @@
-import { createRequire } from "node:module";
 import fs from "node:fs";
 import path from "node:path";
 
-const require = createRequire(import.meta.url);
-const { chromium } = require("../frontend/node_modules/playwright");
+const { chromium } = await import("playwright");
 
 const FRONTEND_URL = process.env.QLANALYSER_FRONTEND_URL || "http://127.0.0.1:4174/?customer_demo=login&api=http://127.0.0.1:8001/api";
 const API_BASE = process.env.QLANALYSER_API_BASE_URL || new URL(FRONTEND_URL).searchParams.get("api") || "http://127.0.0.1:8001/api";
@@ -15,6 +13,14 @@ const SCROLL_REVIEW_PATH = path.join(EVIDENCE_ROOT, "scroll_review.json");
 const COLOR_AUDIT_PATH = path.join(EVIDENCE_ROOT, "design_token_color_audit.json");
 const DEEPSEEK_VISUAL_CHECKS_PATH = path.join(EVIDENCE_ROOT, "deepseek_adoption_visual_checks.json");
 const TIMEOUT_MS = 20000;
+const EDGE_PATHS = [
+  "C:/Program Files/Microsoft/Edge/Application/msedge.exe",
+  "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe",
+];
+
+function localBrowserExecutable() {
+  return EDGE_PATHS.find((candidate) => fs.existsSync(candidate)) || "";
+}
 
 const viewports = [
   { id: "desktop-1440x1000", width: 1440, height: 1000 },
@@ -274,6 +280,26 @@ async function collectDomChecks(page, surface) {
       issues.push({ severity: "P1", type: "internal_term_visible", message: `Internal term visible: ${internalHit}` });
     }
 
+    if (surface.id === "customer-workflow") {
+      const methodCards = Array.from(document.querySelectorAll('[data-testid="analysis-method-scope-panel"] .ia-method-card'));
+      const qcMethodCard = methodCards.find((node) => node.getAttribute("data-module-id") === "qc");
+      const qcPreparationEntry = document.querySelector('[data-testid="single-file-preview-panel"] [data-real-action="run-qc-preview-inline"], [data-testid="single-file-preview-panel"] [data-real-action="run-metadata-qc-inline"]');
+      if (methodCards.length !== 8) {
+        issues.push({
+          severity: "P0",
+          type: "analysis_method_count_mismatch",
+          message: "Workflow should expose 8 analysis method cards; QC belongs to data preparation.",
+          detail: { methodCardCount: methodCards.length },
+        });
+      }
+      if (qcMethodCard) {
+        issues.push({ severity: "P0", type: "qc_as_analysis_method", message: "QC is visible as an analysis method card." });
+      }
+      if (!qcPreparationEntry) {
+        issues.push({ severity: "P1", type: "qc_preparation_entry_missing", message: "QC/data overview entry is not visible in data preparation." });
+      }
+    }
+
     return {
       issues,
       activeNodes,
@@ -435,7 +461,7 @@ function buildDeepSeekVisualChecks(states, colorAudit) {
 
 async function main() {
   ensureDirs();
-  const browser = await chromium.launch({ headless: true });
+  const browser = await chromium.launch({ headless: true, ...(localBrowserExecutable() ? { executablePath: localBrowserExecutable() } : {}) });
   const states = [];
   try {
     for (const surface of surfaces) {

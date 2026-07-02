@@ -1,6 +1,4 @@
-import { createRequire } from "node:module";
-const require = createRequire(import.meta.url);
-const { chromium } = require("../frontend/node_modules/playwright");
+import { chromium, chromiumLaunchOptions } from "./lib/playwright_runtime.mjs";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -298,7 +296,7 @@ async function run() {
 
   if (!evidence.fixture.exists) throw new Error(`Fixture missing: ${FIXTURE}`);
 
-  const browser = await chromium.launch({ headless: true });
+  const browser = await chromium.launch({ headless: true, ...chromiumLaunchOptions() });
   const context = await browser.newContext({ acceptDownloads: true, viewport: { width: 1440, height: 1000 } });
   await context.tracing.start({ screenshots: true, snapshots: true, sources: false });
   const page = await context.newPage();

@@ -1,8 +1,6 @@
-﻿import { createRequire } from "node:module";
+﻿import { chromium, chromiumLaunchOptions } from "./lib/playwright_runtime.mjs";
 import fs from "node:fs";
 import path from "node:path";
-const require = createRequire(import.meta.url);
-const { chromium } = require("../frontend/node_modules/playwright");
 const API_BASE = process.env.QLANALYSER_API_BASE_URL || "http://127.0.0.1:8001/api";
 const FRONTEND_URL = process.env.QLANALYSER_FRONTEND_URL || `http://127.0.0.1:4174/index.html?customer_demo=auto&api=${encodeURIComponent(API_BASE)}`;
 const OUT_DIR = path.resolve("work/release_evidence/20260627-data-preparation-workbench");

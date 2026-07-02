@@ -1,6 +1,4 @@
-import { createRequire } from "node:module";
-const require = createRequire(import.meta.url);
-const { chromium } = require("../frontend/node_modules/playwright");
+import { chromium, chromiumLaunchOptions } from "./lib/playwright_runtime.mjs";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -100,7 +98,7 @@ async function run() {
     throw new Error(`Sample FIF not found: ${SAMPLE_FIF}. Generate it with scripts/acceptance_v01_full.py or the documented MNE snippet.`);
   }
 
-  const browser = await chromium.launch({ headless: true });
+  const browser = await chromium.launch({ headless: true, ...chromiumLaunchOptions() });
   const page = await browser.newPage();
   const pageErrors = [];
   const apiResponses = [];

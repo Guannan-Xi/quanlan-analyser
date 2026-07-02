@@ -1,6 +1,4 @@
-import { createRequire } from "node:module";
-const require = createRequire(import.meta.url);
-const { chromium } = require("../frontend/node_modules/playwright");
+import { chromium, chromiumLaunchOptions } from "./lib/playwright_runtime.mjs";
 import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
@@ -89,7 +87,7 @@ async function run() {
     boundary: "PAC beta evidence only; no diagnosis, p-value, significance, group comparison, causality, brain-region communication, or source localization claim.",
   };
 
-  const browser = await chromium.launch({ headless: true });
+  const browser = await chromium.launch({ headless: true, ...chromiumLaunchOptions() });
   const context = await browser.newContext({ acceptDownloads: true, viewport: { width: 1440, height: 1000 } });
   await context.tracing.start({ screenshots: true, snapshots: true, sources: false });
   const page = await context.newPage();

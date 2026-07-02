@@ -1,9 +1,7 @@
-import { createRequire } from "node:module";
+import { chromium, chromiumLaunchOptions } from "./lib/playwright_runtime.mjs";
 import fs from "node:fs";
 import path from "node:path";
 
-const require = createRequire(import.meta.url);
-const { chromium } = require("../frontend/node_modules/playwright");
 
 const FRONTEND_URL = process.env.QLANALYSER_FRONTEND_URL || "http://127.0.0.1:4174/index.html?customer_demo=auto&api=http%3A%2F%2F127.0.0.1%3A8001%2Fapi";
 const OUT_DIR = process.env.QLANALYSER_WORKFLOW_PAGES_UI_GATE_DIR || path.resolve("work/release_evidence/ui_interaction_review/workflow_pages_gate");
@@ -203,7 +201,7 @@ async function run() {
     screenshots: [],
   };
 
-  const browser = await chromium.launch({ headless: true });
+  const browser = await chromium.launch({ headless: true, ...chromiumLaunchOptions() });
   try {
     const page = await browser.newPage({ viewport: { width: 1440, height: 920 } });
     await loginIfNeeded(page);

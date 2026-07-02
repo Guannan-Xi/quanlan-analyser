@@ -1,9 +1,7 @@
-import { createRequire } from "node:module";
 import fs from "node:fs";
 import path from "node:path";
 
-const require = createRequire(import.meta.url);
-const { chromium } = require("../frontend/node_modules/playwright");
+const { chromium } = await import("playwright");
 
 const TARGET_URL =
   process.env.QLANALYSER_FRONTEND_URL ||
@@ -12,6 +10,14 @@ const OUT_DIR =
   process.env.QLANALYSER_DATA_PREP_ENTRY_E2E_DIR ||
   path.resolve("work/release_evidence/07-full-product-e2e-pdca/13_data_prep_analysis_entry_consistency/05_browser_e2e");
 const EVIDENCE_PATH = path.join(OUT_DIR, "data_prep_analysis_entry_consistency_e2e.json");
+const EDGE_PATHS = [
+  "C:/Program Files/Microsoft/Edge/Application/msedge.exe",
+  "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe",
+];
+
+function localBrowserExecutable() {
+  return EDGE_PATHS.find((candidate) => fs.existsSync(candidate)) || "";
+}
 
 function check(name, pass, details = {}) {
   return { name, pass: Boolean(pass), details };
@@ -132,7 +138,7 @@ async function run() {
     errors: [],
     status: "running",
   };
-  const browser = await chromium.launch({ headless: true });
+  const browser = await chromium.launch({ headless: true, ...(localBrowserExecutable() ? { executablePath: localBrowserExecutable() } : {}) });
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
   page.setDefaultTimeout(45000);
 
@@ -195,11 +201,14 @@ async function run() {
     await page.locator('[data-view="workflow"]').first().click();
     await page.locator('[data-testid="analysis-method-scope-panel"]').waitFor({ state: "visible", timeout: 30000 });
     const cardCount = await page.locator('[data-testid="analysis-method-scope-panel"] .ia-method-card').count();
+    const qcMethodCardCount = await page.locator('[data-testid="analysis-method-scope-panel"] .ia-method-card[data-module-id="qc"]').count();
+    const qcPreparationEntryCount = await page.locator('[data-testid="single-file-preview-panel"] [data-real-action="run-qc-preview-inline"], [data-testid="single-file-preview-panel"] [data-real-action="run-metadata-qc-inline"]').count();
     const oldPanelCount = await page.locator('[data-testid="analysis-method-run-panel"]').count();
     const cardActions = await page.locator('[data-testid="analysis-method-scope-panel"] .ia-method-card').evaluateAll((nodes) =>
       nodes.map((node) => ({ id: node.getAttribute("data-module-id"), action: node.getAttribute("data-real-action"), disabled: node.disabled, title: node.getAttribute("title") || "" })),
     );
     evidence.checks.push(check("only_card_method_entries_visible", cardCount === 8 && oldPanelCount === 0, { cardCount, oldPanelCount }));
+    evidence.checks.push(check("qc_is_preparation_dependency_not_analysis_method", qcMethodCardCount === 0 && qcPreparationEntryCount >= 1, { qcMethodCardCount, qcPreparationEntryCount }));
     evidence.checks.push(check("method_cards_have_actions", cardActions.length === 8 && cardActions.every((item) => item.action), { cardActions }));
     evidence.checks.push(check("method_cards_enabled_after_data_preparation_confirmation", cardActions.length === 8 && cardActions.every((item) => !item.disabled), { cardActions }));
     evidence.checks.push(check("analysis_page_no_horizontal_overflow", (await viewportNoHorizontalOverflow(page)).ok, await viewportNoHorizontalOverflow(page)));
