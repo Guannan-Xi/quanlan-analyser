@@ -14,6 +14,7 @@ from eeg_core.analysis.epilepsy import run_epilepsy
 from eeg_core.analysis.epilepsy_ml import run_epilepsy_ml
 from eeg_core.analysis.multitaper_psd_tfr import run_multitaper_psd_tfr
 from eeg_core.analysis.pac import run_pac
+from eeg_core.analysis.pac_v2 import run_pac_v2
 from eeg_core.analysis.psd import run_psd
 from eeg_core.analysis.reference_csd import run_reference_csd
 from eeg_core.analysis.tfr import run_tfr
@@ -342,6 +343,26 @@ def _merge_plan_into_task_parameters(module_name: str, parameters: dict, plan) -
 
 def create_task(payload: AnalysisTaskCreate) -> AnalysisTaskRead:
     eeg_file = storage_service.get_eeg_file(payload.input_file_id)
+    
+    # P0-TASK-01 FIX: Implement idempotency key to prevent duplicate charges
+    # Generate idempotency key from task parameters
+    idempotency_data = f"{payload.project_id}:{payload.input_file_id}:{payload.module_name}:{payload.workflow_id}:{hashlib.sha256(str(payload.parameters_json).encode()).hexdigest()}"
+    idempotency_key = hashlib.sha256(idempotency_data.encode()).hexdigest()
+    
+    # Check for existing task with same idempotency key within last hour
+    from datetime import timedelta
+    one_hour_ago = utc_now() - timedelta(hours=1)
+    _refresh_tasks()
+    for existing_task in _tasks.values():
+        if (existing_task.owner_user_id == payload.owner_user_id and 
+            existing_task.created_at > one_hour_ago):
+            # Generate idempotency key for existing task
+            existing_data = f"{existing_task.project_id}:{existing_task.input_file_id}:{existing_task.module_name}:{existing_task.workflow_id}:{hashlib.sha256(str(existing_task.parameters_json).encode()).hexdigest()}"
+            existing_key = hashlib.sha256(existing_data.encode()).hexdigest()
+            if existing_key == idempotency_key:
+                # Return existing task to prevent duplicate charge
+                return existing_task
+    
     strict_workflow = _STRICT_WORKFLOW_BY_MODULE.get(payload.module_name)
     if strict_workflow and payload.workflow_id != strict_workflow:
         raise HTTPException(
@@ -466,6 +487,8 @@ def create_task(payload: AnalysisTaskCreate) -> AnalysisTaskRead:
             result_paths = run_connectivity(eeg_file.stored_path, output_dir, payload.parameters_json)
         elif payload.module_name == "pac":
             result_paths = run_pac(eeg_file.stored_path, output_dir, payload.parameters_json)
+        elif payload.module_name == "pac_v2":
+            result_paths = run_pac_v2(eeg_file.stored_path, output_dir, payload.parameters_json)
         elif payload.module_name in {"qc", "preprocess"}:
             if payload.workflow_id in {"qc_waveform_preview", "qc_filter_preview", "qc_snapshot"}:
                 result_paths = run_qc_preview(eeg_file.stored_path, output_dir, payload.parameters_json)
@@ -489,6 +512,11 @@ def create_task(payload: AnalysisTaskCreate) -> AnalysisTaskRead:
         task.updated_at = task.finished_at
         _tasks[task.id] = task
         state_store.upsert_item("tasks", task)
+        
+        # P0-DATA-01 FIX: Do NOT refund on failure
+        # Current billing model: charge AFTER success, so no refund needed on failure
+        # (Previous code incorrectly refunded, causing balance increase)
+        
         audit_service.record_event(
             action="analysis_task.failed",
             object_type="analysis_task",
@@ -509,6 +537,20 @@ def create_task(payload: AnalysisTaskCreate) -> AnalysisTaskRead:
         task.updated_at = task.finished_at
         _tasks[task.id] = task
         state_store.upsert_item("tasks", task)
+        
+        # P0-DATA-01 FIX: Do NOT refund on failure
+        # Current billing model: charge AFTER success, so no refund needed on failure
+        
+        audit_service.record_event(
+                    action="billing.refund.failed",
+                    object_type="analysis_task",
+                    object_id=task.id,
+                    organization_id=task.organization_id,
+                    project_id=task.project_id,
+                    actor_user_id=task.owner_user_id,
+                    metadata_json={"error": str(refund_exc), "original_error": str(exc)},
+                )
+        
         audit_service.record_event(
             action="analysis_task.failed",
             object_type="analysis_task",
@@ -580,16 +622,48 @@ def create_task(payload: AnalysisTaskCreate) -> AnalysisTaskRead:
     return task
 
 
-def get_task(task_id: str) -> AnalysisTaskRead:
+def get_task(task_id: str, requesting_user_id: str | None = None) -> AnalysisTaskRead:
+    """Get task by ID with optional permission check.
+    
+    Args:
+        task_id: The task ID to retrieve
+        requesting_user_id: If provided, check that the user owns the task
+        
+    Raises:
+        HTTPException: 404 if task not found, 403 if permission denied
+    """
     _refresh_tasks()
     try:
-        return _tasks[task_id]
+        task = _tasks[task_id]
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Task not found") from exc
+    
+    # P0-SEC-01 FIX: Add ownership check to prevent cross-user access
+    if requesting_user_id is not None and task.owner_user_id != requesting_user_id:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code": "PERMISSION_DENIED",
+                "message": "You do not have permission to access this task"
+            }
+        )
+    
+    return task
 
 
-def list_tasks() -> list[AnalysisTaskRead]:
+def list_tasks(owner_user_id: str | None = None) -> list[AnalysisTaskRead]:
+    """List tasks with optional filtering by owner.
+    
+    Args:
+        owner_user_id: If provided, only return tasks owned by this user
+        
+    Returns:
+        List of tasks matching the criteria
+    """
     _refresh_tasks()
+    # P0-SEC-01 FIX: Filter tasks by owner to prevent cross-user access
+    if owner_user_id is not None:
+        return [task for task in _tasks.values() if task.owner_user_id == owner_user_id]
     return list(_tasks.values())
 
 

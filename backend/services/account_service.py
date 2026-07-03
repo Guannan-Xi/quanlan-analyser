@@ -1,5 +1,6 @@
 import hashlib
 import hmac
+import os
 import secrets
 from datetime import datetime, timedelta, timezone
 
@@ -16,7 +17,11 @@ DEMO_EMAIL = "demo.customer@quanlan.cn"
 DEMO_PASSWORD = "demo123456"
 ADMIN_EMAIL = "ops@quanlan.cn"
 ADMIN_PASSWORD = "ops-demo-2026"
-SANDBOX_CODE = "000000"
+
+# SEC-P0-04 FIX: Only allow sandbox code in development
+SANDBOX_MODE = os.getenv("QLANALYSER_SANDBOX_MODE", "false").lower() == "true"
+SANDBOX_CODE = "000000" if SANDBOX_MODE else None
+
 DEMO_CUSTOMER_NAME = "\u5ba2\u6237\u8d26\u6237"
 DEMO_CUSTOMER_ORG = "\u5168\u6f9c\u8111\u79d1\u5b66"
 
@@ -110,10 +115,17 @@ def request_verification_code(payload: VerificationCodeRequest) -> dict:
         raise HTTPException(status_code=422, detail="Verification channel must be email or phone")
     if not target:
         raise HTTPException(status_code=422, detail="Verification target is required")
+    
+    # SEC-P0-04 FIX: Generate random code in production
+    if SANDBOX_MODE:
+        code = SANDBOX_CODE
+    else:
+        code = f"{secrets.randbelow(1000000):06d}"
+    
     item = VerificationCodeRead(
         channel=channel,
         target=target,
-        code=SANDBOX_CODE,
+        code=code,
         expires_at=datetime.now(timezone.utc) + timedelta(minutes=10),
     )
     state_store.upsert_item(VERIFICATION_CODES, item)
@@ -123,26 +135,38 @@ def request_verification_code(payload: VerificationCodeRequest) -> dict:
         object_id=item.id,
         metadata_json={"target": target, "provider_mode": item.provider_mode},
     )
+    
+    # In production, send real SMS/email (not implemented yet)
+    # if not SANDBOX_MODE:
+    #     send_verification_code(channel, target, code)
+    
     return {
         "status": "sent",
         "channel": channel,
         "target": target,
         "provider_mode": item.provider_mode,
-        "sandbox_code": SANDBOX_CODE,
+        "sandbox_code": code if SANDBOX_MODE else None,  # Only expose code in sandbox
         "expires_at": item.expires_at.isoformat(),
     }
 
 
 def _assert_verification(channel: str, target: str, code: str) -> None:
-    if code == SANDBOX_CODE:
+    # SEC-P0-04 FIX: Sandbox code only works in SANDBOX_MODE
+    if SANDBOX_MODE and code == SANDBOX_CODE:
         return
+    
     now = datetime.now(timezone.utc)
-    for item in _load_codes().values():
+    codes = _load_codes()
+    
+    for item in codes.values():
         expires_at = item.expires_at
         if expires_at.tzinfo is None:
             expires_at = expires_at.replace(tzinfo=timezone.utc)
         if item.channel == channel and item.target == target and item.code == code and expires_at > now:
+            # SEC-P0-04 FIX: Delete code after successful use (prevent replay)
+            state_store.delete_item(VERIFICATION_CODES, item.id)
             return
+    
     raise HTTPException(status_code=422, detail="Verification code is invalid or expired")
 
 

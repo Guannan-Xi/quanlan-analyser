@@ -49,12 +49,21 @@ def create_project(payload: ProjectCreate, current: AccountRead = Depends(accoun
 
 @router.get("/projects", response_model=list[ProjectRead])
 def list_projects(current: AccountRead = Depends(account_service.require_current_account)) -> list[ProjectRead]:
-    return storage_service.list_projects()
+    # SEC-P0-02 FIX: Filter projects by user ownership
+    if current.role == "admin":
+        return storage_service.list_projects()
+    # Non-admin users only see their own projects
+    all_projects = storage_service.list_projects()
+    return [p for p in all_projects if getattr(p, "owner_user_id", None) == current.id or p.id in _TEACHING_PROJECT_IDS]
 
 
 @router.get("/projects/{project_id}", response_model=ProjectRead)
 def get_project(project_id: str, current: AccountRead = Depends(account_service.require_current_account)) -> ProjectRead:
-    return storage_service.get_project(project_id)
+    project = storage_service.get_project(project_id)
+    # SEC-P0-01 FIX: Verify user has access to this project
+    if current.role != "admin" and getattr(project, "owner_user_id", None) != current.id and project.id not in _TEACHING_PROJECT_IDS:
+        raise HTTPException(status_code=403, detail="You do not have permission to access this project")
+    return project
 
 
 @router.patch("/projects/{project_id}", response_model=ProjectRead)

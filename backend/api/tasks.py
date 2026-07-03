@@ -32,11 +32,14 @@ def create_task(payload: AnalysisTaskCreate, current: AccountRead = Depends(acco
 
 @router.get("/tasks/{task_id}", response_model=AnalysisTaskRead)
 def get_task(task_id: str, current: AccountRead = Depends(account_service.require_current_account)) -> AnalysisTaskRead:
-    return task_service.get_task(task_id)
+    # SEC-P0-01 FIX: Add ownership verification
+    return task_service.get_task(task_id, requesting_user_id=current.id)
 
 
 @router.get("/tasks/{task_id}/artifacts", response_model=list[ArtifactRead])
 def get_task_artifacts(task_id: str, current: AccountRead = Depends(account_service.require_current_account)) -> list[ArtifactRead]:
+    # SEC-P0-01 FIX: Verify task ownership before returning artifacts
+    task_service.get_task(task_id, requesting_user_id=current.id)
     return task_service.list_task_artifacts(task_id)
 
 

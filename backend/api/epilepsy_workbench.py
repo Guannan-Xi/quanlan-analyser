@@ -20,6 +20,9 @@ from backend.models.base import new_id, utc_now
 from backend.services import state_store, storage_service, task_service
 from eeg_core.io.readers import read_raw
 
+# P0-EPILEPSY-PHASE1: Import phase validator for staged release
+from backend.api.epilepsy_phase_validator import validate_by_file_id, get_phase_roadmap
+
 
 router = APIRouter()
 
@@ -303,6 +306,15 @@ def create_review_session(task_id: str, payload: CreateReviewSessionRequest) -> 
     task_params = _task_parameters(task)
     inherited_context = _validate_inherited_context(payload, task_params)
     input_file_id = payload.input_file_id or _task_input_file_id(task)
+    
+    # P0-EPILEPSY-PHASE1: Validate file constraints before creating review session
+    validation_result = validate_by_file_id(
+        input_file_id, 
+        storage_service, 
+        read_raw, 
+        enforce=True  # Raises HTTPException if validation fails
+    )
+    
     workflow_id = payload.workflow_id or getattr(task, "workflow_id", "") or "epilepsy_workbench"
     epoch_artifact = _artifact_id_by_label(
         task_id,
@@ -1229,6 +1241,15 @@ def _register_or_get_evidence_artifact(task_id: str, png_path: Path, label: str,
     )
     state_store.upsert_item("artifacts", artifact)
     return artifact
+
+
+@router.get("/epilepsy-workbench/phase-roadmap")
+def get_epilepsy_phase_roadmap():
+    """
+    获取癫痫分析阶段发布路线图
+    用于前端展示当前阶段限制和未来支持计划
+    """
+    return get_phase_roadmap()
 
 
 @router.post("/epilepsy-workbench/{task_id}/evidence-package")
