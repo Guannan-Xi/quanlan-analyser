@@ -16,7 +16,7 @@
   --color-action-primary-hover: var(--brand-blue-650);
   --color-selection-bg: #eef6ff;
   --color-selection-border: var(--brand-blue-500);
-  --color-focus-ring: rgba(44, 150, 220, 0.28);
+  --color-focus-ring: rgba(44, 150, 220, 0.45);
   --teal: var(--color-action-primary);
   --teal-soft: var(--color-selection-bg);
   --coral: #c94d36;
@@ -30,7 +30,7 @@
   --workspace-padding-x: 24px;
   --section-gap: 20px;
   --panel-gap: 16px;
-  --control-height: 38px;
+  --control-height: 40px;
   --compact-row-height: 48px;
   --detail-panel-min-width: 360px;
   --surface-page: #f6f8fb;
@@ -49,6 +49,31 @@
   --radius-panel: 8px;
   --radius-control: 6px;
   --focus-ring: 0 0 0 3px var(--color-focus-ring);
+  
+  /* P1-UI-01,02,03,04 FIX: Design system tokens */
+  /* Spacing scale */
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 32px;
+  
+  /* Typography scale */
+  --text-xs: 12px;
+  --text-sm: 13px;
+  --text-base: 14px;
+  --text-lg: 16px;
+  --text-xl: 18px;
+  
+  /* Button heights */
+  --btn-height: 40px;
+  --btn-height-compact: 36px;
+  --btn-height-large: 44px;
+  
+  /* Border radius */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
 }
 
 * {
@@ -604,22 +629,31 @@ label span {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  min-height: 42px;
-  padding: 0 16px;
+  gap: var(--space-sm);
+  min-height: var(--btn-height);
+  padding: 0 var(--space-md);
   white-space: nowrap;
+  font-size: var(--text-sm);
+  border-radius: var(--radius-md);
+  transition: all 0.18s ease;
 }
 
 .primary-btn {
   color: white;
-  background: var(--teal);
+  background: var(--brand-blue-700, #155C9C);
+  border: 1px solid var(--brand-blue-700, #155C9C);
   box-shadow: 0 12px 26px rgba(21, 92, 156, 0.24);
+}
+
+.primary-btn:hover {
+  background: var(--brand-blue-650, #1468AD);
+  border-color: var(--brand-blue-650, #1468AD);
 }
 
 .ghost-btn,
 .lab-entry-btn {
-  color: var(--teal);
-  background: var(--teal-soft);
+  color: var(--brand-blue-700, #155C9C);
+  background: var(--teal-soft, #EBF8FF);
   border: 1px solid rgba(44, 150, 220, 0.22);
 }
 
@@ -1982,8 +2016,10 @@ select {
     order: 3;
   }
 
+  /* P0-UI-03 FIX: Mobile layout fix */
   .eeg-toolbar {
-    gap: 8px;
+    grid-template-columns: 1fr;
+    gap: 10px;
   }
 
   .waveform-main-column {
@@ -2010,6 +2046,7 @@ select {
   .eeg-toolbar > label,
   .eeg-toolbar .eeg-tool-group {
     min-width: 100%;
+    grid-column: 1;
   }
 
   .waveform-mode-group .tool-button-row,
@@ -2017,9 +2054,14 @@ select {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+  
+  .eeg-tool-group .tool-button-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 
   .eeg-viewer canvas {
     height: 420px;
+    width: 100% !important;
   }
 
   .preview-edit-workbench {
@@ -2032,6 +2074,18 @@ select {
 
   .preprocessing-side-panel .real-actions {
     grid-template-columns: minmax(0, 1fr);
+  }
+  
+  /* Additional mobile fixes */
+  .eeg-toolbar label span,
+  .tool-group-title {
+    font-size: 11px;
+  }
+  
+  .eeg-toolbar input[type="number"],
+  .eeg-toolbar select {
+    min-height: 36px;
+    font-size: 12px;
   }
 }
 
@@ -7504,18 +7558,8 @@ body,
   opacity: 0.72;
 }
 
-.primary-btn,
-.next-action-strip .primary-btn {
-  color: #ffffff;
-  border: 1px solid var(--ql-primary);
-  background: linear-gradient(180deg, #1d6fb5 0%, var(--ql-primary) 100%);
-  box-shadow: 0 10px 22px rgba(21, 92, 156, 0.22);
-}
-
-.primary-btn:hover,
-.next-action-strip .primary-btn:hover {
-  background: linear-gradient(180deg, #1a65a6 0%, var(--ql-primary-hover) 100%);
-}
+/* P0-UI-01 FIX: Removed duplicate primary-btn definition */
+/* Primary button styles are now unified at line 613-620 */
 
 .ghost-btn,
 .icon-btn,
@@ -8579,3 +8623,217 @@ body.teaching-sandbox-active .main {
   color: white;
 }
 /* ===== End Global Loading ===== */
+
+/* ===== P1/P2 UI Fixes ===== */
+
+/* P1-UI-06: Enhanced focus state */
+*:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--color-focus-ring);
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--brand-blue-500);
+  outline-offset: 2px;
+}
+
+/* P1-UI-09: Tablet breakpoint */
+@media (min-width: 768px) and (max-width: 1024px) {
+  .app-shell {
+    grid-template-columns: 200px 1fr;
+  }
+  
+  .workspace {
+    padding: var(--space-md);
+  }
+  
+  .artifacts-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  
+  .eeg-toolbar {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--space-sm);
+  }
+  
+  .result-toolbar {
+    flex-direction: row;
+  }
+}
+
+/* P1-UI-10: Table scroll indicator */
+.table-wrap {
+  position: relative;
+}
+
+.table-wrap::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 30px;
+  background: linear-gradient(to left, rgba(0,0,0,0.08), transparent);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.table-wrap.scrollable::after {
+  opacity: 1;
+}
+
+/* P2: Transition animations */
+.view {
+  transition: opacity 0.2s ease-out;
+}
+
+.view:not(.active) {
+  opacity: 0;
+}
+
+.view.active {
+  opacity: 1;
+}
+
+button,
+.nav-item,
+.card {
+  transition: all 0.18s ease;
+}
+
+/* P2: Tooltip support */
+[data-tooltip] {
+  position: relative;
+}
+
+[data-tooltip]::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 6px 10px;
+  background: rgba(15, 23, 42, 0.92);
+  color: white;
+  font-size: var(--text-xs);
+  white-space: nowrap;
+  border-radius: var(--radius-sm);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s;
+  z-index: 1000;
+}
+
+[data-tooltip]:hover::after {
+  opacity: 1;
+}
+
+/* P2: Empty state enhancement */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-md);
+  padding: var(--space-xl);
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.empty-state svg {
+  width: 64px;
+  height: 64px;
+  opacity: 0.5;
+}
+
+/* P2: Loading skeleton */
+.skeleton {
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: skeleton-loading 1.5s infinite;
+  border-radius: var(--radius-sm);
+}
+
+@keyframes skeleton-loading {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* P3: Print styles */
+@media print {
+  .nav, .topbar, .sidebar, button, .ghost-btn {
+    display: none !important;
+  }
+  
+  .view {
+    display: block !important;
+  }
+  
+  body {
+    background: white;
+  }
+}
+
+/* P2: Improved contrast for accessibility */
+.text-muted {
+  color: var(--steel);
+}
+
+small,
+.small-text {
+  font-size: var(--text-xs);
+  line-height: 1.5;
+}
+
+/* P2: Consistent border radius */
+.card,
+.panel,
+.modal,
+.dropdown {
+  border-radius: var(--radius-md);
+}
+
+input,
+select,
+textarea,
+button {
+  border-radius: var(--radius-sm);
+}
+
+/* P2: Hover states */
+.card:hover,
+.nav-item:hover {
+  background: var(--surface-subtle);
+}
+
+a:hover {
+  color: var(--brand-blue-500);
+  text-decoration: underline;
+}
+
+/* P1-UI-11: Upload progress (placeholder for future integration) */
+.upload-progress {
+  position: relative;
+  height: 4px;
+  background: var(--line);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-top: var(--space-sm);
+}
+
+.upload-progress-bar {
+  height: 100%;
+  background: var(--brand-blue-700);
+  transition: width 0.3s ease;
+}
+
+/* P1-UI-12: Consistent date format (handled in JS) */
+time,
+.timestamp {
+  font-variant-numeric: tabular-nums;
+}
+/* ===== End P1/P2 UI Fixes ===== */
