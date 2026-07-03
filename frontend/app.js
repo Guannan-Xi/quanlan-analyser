@@ -6368,12 +6368,56 @@ async function fetchTaskArtifacts(taskId) {
   }
 }
 
-function showToast(message) {
+function showGlobalLoading(message = "处理中...") {
+  let overlay = qs("#globalLoadingOverlay");
+  if (!overlay) {
+    overlay = document.createElement("div");
+    overlay.id = "globalLoadingOverlay";
+    overlay.className = "global-loading-overlay";
+    overlay.setAttribute("role", "status");
+    overlay.setAttribute("aria-live", "polite");
+    overlay.innerHTML = `
+      <div class="global-loading-card">
+        <div class="global-loading-spinner" aria-hidden="true"></div>
+        <span class="global-loading-message"></span>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+  }
+  const text = overlay.querySelector(".global-loading-message");
+  if (text) text.textContent = cleanRuntimeMessage(message);
+  overlay.hidden = false;
+  overlay.classList.add("show");
+}
+
+function hideGlobalLoading() {
+  const overlay = qs("#globalLoadingOverlay");
+  if (!overlay) return;
+  overlay.classList.remove("show");
+  window.setTimeout(() => {
+    if (!overlay.classList.contains("show")) overlay.hidden = true;
+  }, 180);
+}
+
+function friendlyRuntimeMessage(message) {
+  const text = cleanRuntimeMessage(message || "");
+  const lower = text.toLowerCase();
+  if (lower.includes("failed to fetch") || lower.includes("network")) return "网络连接失败，请检查网络后重试。";
+  if (lower.includes("413") || lower.includes("too large")) return "文件过大，请确认文件大小符合上传限制。";
+  if (lower.includes("401") || lower.includes("unauthorized")) return "登录状态已过期，请重新登录。";
+  if (lower.includes("403") || lower.includes("permission")) return "当前账号没有权限执行此操作。";
+  if (lower.includes("404") || lower.includes("not found")) return "未找到对应资源，请刷新页面后重试。";
+  if (lower.includes("timeout")) return "操作超时，请稍后重试或缩小数据范围。";
+  return text || "操作失败，请重试。";
+}
+
+function showToast(message, tone = "info") {
   const toast = qs("#toast");
   if (!toast) return;
-  toast.textContent = cleanRuntimeMessage(message);
+  toast.textContent = friendlyRuntimeMessage(message);
+  toast.dataset.tone = tone;
   toast.classList.add("show");
-  window.setTimeout(() => toast.classList.remove("show"), 2400);
+  window.setTimeout(() => toast.classList.remove("show"), tone === "error" ? 4200 : 2400);
 }
 
 function openModal(kind) {
