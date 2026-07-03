@@ -4252,7 +4252,140 @@ function renderEvidenceBadges(moduleName, task, artifacts = []) {
   return `<div class="evidence-chain ${escapeHtml(stateItem.tone)}">${chips.map((chip) => `<b>${escapeHtml(chip)}</b>`).join("")}<small>${escapeHtml(stateItem.note)}</small></div>`;
 }
 
+function getResultViewMode() {
+  return state.resultViewMode || "grid";
+}
+
+function setResultViewMode(mode) {
+  state.resultViewMode = mode;
+  try {
+    localStorage.setItem("qlanalyser_result_view_mode", mode);
+  } catch (e) {}
+  renderRealResultReview();
+}
+
+function initResultViewMode() {
+  if (!state.resultViewMode) {
+    try {
+      state.resultViewMode = localStorage.getItem("qlanalyser_result_view_mode") || "grid";
+    } catch (e) {
+      state.resultViewMode = "grid";
+    }
+  }
+}
+
+function renderResultToolbar() {
+  const mode = getResultViewMode();
+  return `
+    <div class="result-toolbar" data-testid="result-toolbar">
+      <div class="result-view-switcher">
+        <button type="button" class="view-mode-btn ${mode === "grid" ? "active" : ""}" data-view-mode="grid" title="网格视图">
+          <i data-lucide="grid-2x2"></i><span>网格</span>
+        </button>
+        <button type="button" class="view-mode-btn ${mode === "list" ? "active" : ""}" data-view-mode="list" title="列表视图">
+          <i data-lucide="list"></i><span>列表</span>
+        </button>
+        <button type="button" class="view-mode-btn ${mode === "classic" ? "active" : ""}" data-view-mode="classic" title="经典视图">
+          <i data-lucide="layout-list"></i><span>经典</span>
+        </button>
+      </div>
+    </div>
+  `;
+}
+
+function renderArtifactCard(artifact) {
+  const label = readableArtifactLabel(artifact);
+  const downloadUrl = artifactDownloadUrl(artifact);
+  const mime = String(artifact.mime_type || artifact.mimeType || "").toLowerCase();
+  const path = String(artifact.path || artifact.object_key || artifact.filename || "").toLowerCase();
+  const isImage = mime.startsWith("image/") || /\.(svg|png|jpg|jpeg|webp)$/.test(path);
+  const isSvg = mime === "image/svg+xml" || path.endsWith(".svg");
+  const isPng = mime === "image/png" || path.endsWith(".png");
+  
+  if (!downloadUrl) return "";
+  
+  return `
+    <div class="artifact-card" data-artifact-id="${escapeHtml(artifact.id || '')}" data-artifact-type="${isImage ? "image" : "file"}">
+      <div class="artifact-card-preview">
+        ${isImage 
+          ? `<img src="${escapeHtml(downloadUrl)}" alt="${escapeHtml(label)}" loading="lazy" />`
+          : `<div class="artifact-card-icon"><i data-lucide="file-text"></i></div>`}
+      </div>
+      <div class="artifact-card-content">
+        <h4 class="artifact-card-title">${escapeHtml(label)}</h4>
+        <p class="artifact-card-meta">${escapeHtml(artifact.mime_type || "file")}</p>
+      </div>
+      <div class="artifact-card-actions">
+        <a class="artifact-action-btn" href="${escapeHtml(downloadUrl)}" download title="下载原图">
+          <i data-lucide="download"></i>
+        </a>
+        ${isSvg ? `<button type="button" class="artifact-action-btn" data-artifact-svg-download="${escapeHtml(artifact.id || '')}" title="下载 SVG">
+          <i data-lucide="file-code"></i>
+        </button>` : ""}
+        ${isPng ? `<button type="button" class="artifact-action-btn" data-artifact-png-download="${escapeHtml(artifact.id || '')}" title="下载 PNG">
+          <i data-lucide="image"></i>
+        </button>` : ""}
+        <a class="artifact-action-btn" href="${escapeHtml(downloadUrl)}" target="_blank" rel="noreferrer" title="新窗口打开">
+          <i data-lucide="external-link"></i>
+        </a>
+      </div>
+    </div>
+  `;
+}
+
+function renderArtifactsGrid(artifacts = []) {
+  if (!artifacts.length) return "<p class='artifact-empty-state'>暂无结果文件</p>";
+  return `
+    <div class="artifacts-grid" data-testid="artifacts-grid">
+      ${artifacts.map(artifact => renderArtifactCard(artifact)).join("")}
+    </div>
+  `;
+}
+
+function renderArtifactsList(artifacts = []) {
+  if (!artifacts.length) return "<p class='artifact-empty-state'>暂无结果文件</p>";
+  return `
+    <div class="artifacts-list" data-testid="artifacts-list">
+      ${artifacts.map(artifact => {
+        const label = readableArtifactLabel(artifact);
+        const downloadUrl = artifactDownloadUrl(artifact);
+        const mime = artifact.mime_type || artifact.mimeType || "file";
+        if (!downloadUrl) return "";
+        return `
+          <div class="artifact-list-item">
+            <div class="artifact-list-icon"><i data-lucide="file"></i></div>
+            <div class="artifact-list-content">
+              <strong>${escapeHtml(label)}</strong>
+              <span>${escapeHtml(mime)}</span>
+            </div>
+            <div class="artifact-list-actions">
+              <a class="ghost-btn compact-btn" href="${escapeHtml(downloadUrl)}" download>
+                <i data-lucide="download"></i><span>下载</span>
+              </a>
+            </div>
+          </div>
+        `;
+      }).join("")}
+    </div>
+  `;
+}
+
+function renderModuleBatchActions(moduleName, artifacts = []) {
+  if (!artifacts.length) return "";
+  const task = state.real.tasks?.[moduleName];
+  if (!task?.id) return "";
+  
+  return `
+    <div class="module-batch-actions">
+      <button type="button" class="ghost-btn compact-btn" data-module-batch-download="${escapeHtml(moduleName)}" title="批量下载本模块所有文件为 ZIP">
+        <i data-lucide="download"></i><span>批量下载 (ZIP)</span>
+      </button>
+    </div>
+  `;
+}
+
 function renderRealResultReview() {
+  initResultViewMode();
   const target = qs("#realResultReview");
   if (!target) return;
   const modules = Object.entries(state.real.tasks || {}).filter(([, task]) => task?.id);
@@ -4261,22 +4394,49 @@ function renderRealResultReview() {
     renderEpilepsyResultReviewV3Panel();
     return;
   }
+  
+  const viewMode = getResultViewMode();
+  const toolbar = renderResultToolbar();
+  
   const resultItems = modules.map(([moduleName, task]) => {
     const artifacts = state.real.artifacts?.[moduleName] || [];
     const links = renderArtifactDetailLinks(artifacts);
-    return `
-      <article class="result-item" data-result-module="${escapeHtml(moduleName)}">
-        <strong>${escapeHtml(moduleDisplayName(moduleName))} - ${escapeHtml(taskStatusLabelReadable(task))}</strong>
-        <span>${escapeHtml(artifactSummaryLabel(artifacts))}</span>
+    
+    let contentHtml = "";
+    if (viewMode === "grid") {
+      contentHtml = `
+        ${renderModuleBatchActions(moduleName, artifacts)}
+        ${renderArtifactsGrid(artifacts)}
+      `;
+    } else if (viewMode === "list") {
+      contentHtml = `
+        ${renderModuleBatchActions(moduleName, artifacts)}
+        ${renderArtifactsList(artifacts)}
+      `;
+    } else {
+      contentHtml = `
         ${renderEvidenceBadges(moduleName, task, artifacts)}
         ${renderResultImagePreview(artifacts)}
         <details class="technical-details artifact-details">
           <summary>查看结果文件明细</summary>
           <div class="artifact-link-grid">${links}</div>
         </details>
+      `;
+    }
+    
+    return `
+      <article class="result-item" data-result-module="${escapeHtml(moduleName)}" data-view-mode="${escapeHtml(viewMode)}">
+        <div class="result-item-header">
+          <strong>${escapeHtml(moduleDisplayName(moduleName))} - ${escapeHtml(taskStatusLabelReadable(task))}</strong>
+          <span>${escapeHtml(artifactSummaryLabel(artifacts))}</span>
+        </div>
+        <div class="result-item-content">
+          ${contentHtml}
+        </div>
       </article>
     `;
   }).join("");
+  
   const task = latestAnalysisTask();
   const reportAction = task && !state.real.report
     ? `
@@ -4289,9 +4449,102 @@ function renderRealResultReview() {
       </article>
     `
     : "";
-  target.innerHTML = `${resultItems}${reportAction}`;
+  
+  target.innerHTML = `${toolbar}${resultItems}${reportAction}`;
+  attachResultViewEventListeners();
   if (window.lucide) window.lucide.createIcons();
   renderEpilepsyResultReviewV3Panel();
+}
+
+function attachResultViewEventListeners() {
+  document.querySelectorAll(".view-mode-btn").forEach(btn => {
+    btn.addEventListener("click", (e) => {
+      const mode = e.currentTarget.dataset.viewMode;
+      if (mode) setResultViewMode(mode);
+    });
+  });
+  
+  document.querySelectorAll("[data-artifact-svg-download]").forEach(btn => {
+    btn.addEventListener("click", async (e) => {
+      const artifactId = e.currentTarget.dataset.artifactSvgDownload;
+      await downloadArtifactAs(artifactId, "svg");
+    });
+  });
+  
+  document.querySelectorAll("[data-artifact-png-download]").forEach(btn => {
+    btn.addEventListener("click", async (e) => {
+      const artifactId = e.currentTarget.dataset.artifactPngDownload;
+      await downloadArtifactAs(artifactId, "png");
+    });
+  });
+  
+  document.querySelectorAll("[data-module-batch-download]").forEach(btn => {
+    btn.addEventListener("click", async (e) => {
+      const moduleName = e.currentTarget.dataset.moduleBatchDownload;
+      await batchDownloadModuleArtifacts(moduleName);
+    });
+  });
+}
+
+async function downloadArtifactAs(artifactId, format) {
+  try {
+    const allArtifacts = Object.values(state.real.artifacts || {}).flat();
+    const artifact = allArtifacts.find(a => a.id === artifactId);
+    if (!artifact) throw new Error("找不到指定的文件");
+    
+    const url = artifactDownloadUrl(artifact);
+    if (!url) throw new Error("文件下载链接无效");
+    
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`下载失败: ${response.statusText}`);
+    
+    const blob = await response.blob();
+    const filename = `${artifact.label || artifactId}.${format}`;
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(link.href);
+    
+    showToast(`已下载 ${filename}`);
+  } catch (error) {
+    showToast(`下载失败: ${error.message}`);
+  }
+}
+
+async function batchDownloadModuleArtifacts(moduleName) {
+  try {
+    const task = state.real.tasks?.[moduleName];
+    if (!task?.id) throw new Error("任务不存在");
+    
+    const projectId = state.real.project?.id;
+    if (!projectId) throw new Error("项目不存在");
+    
+    showToast("正在准备批量下载...");
+    
+    const url = `${state.apiBase}/projects/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(task.id)}/artifacts/batch`;
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" }
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`批量下载失败: ${response.statusText} - ${errorText}`);
+    }
+    
+    const blob = await response.blob();
+    const filename = `${moduleName}_artifacts_${task.id.substring(0, 8)}.zip`;
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(link.href);
+    
+    showToast(`已下载 ${filename}`);
+  } catch (error) {
+    showToast(`批量下载失败: ${error.message}`);
+  }
 }
 
 function addReportDownload(report) {
