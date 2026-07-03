@@ -8837,3 +8837,266 @@ time,
   font-variant-numeric: tabular-nums;
 }
 /* ===== End P1/P2 UI Fixes ===== */
+
+/* ===== Workspace Progress Bar ===== */
+.workspace-progress-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  margin-bottom: var(--space-md);
+  background: var(--surface-panel);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  overflow-x: auto;
+}
+
+.workspace-progress-bar[hidden] {
+  display: none !important;
+}
+
+.progress-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  background: var(--surface-subtle);
+  border: 1px solid transparent;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.progress-step:hover {
+  background: var(--color-selection-bg);
+  color: var(--brand-blue-700);
+}
+
+.progress-step.active {
+  background: var(--brand-blue-700);
+  color: #fff;
+  font-weight: 600;
+}
+
+.progress-step.completed {
+  color: var(--status-success);
+  background: rgba(21, 115, 71, 0.08);
+}
+
+.progress-step .step-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  font-size: 11px;
+  background: rgba(255,255,255,0.2);
+}
+
+.progress-step.completed .step-num {
+  background: var(--status-success);
+  color: #fff;
+}
+
+.progress-step-divider {
+  color: var(--text-muted);
+  opacity: 0.5;
+}
+
+@media (max-width: 760px) {
+  .workspace-progress-bar {
+    padding: var(--space-xs) var(--space-sm);
+    gap: 4px;
+  }
+  .progress-step {
+    padding: 4px 8px;
+    font-size: var(--text-xs);
+  }
+  .progress-step .step-num {
+    width: 16px;
+    height: 16px;
+    font-size: 10px;
+  }
+}
+
+/* ===== Analysis Methods Grouped ===== */
+.method-group {
+  margin-bottom: var(--space-lg);
+}
+
+.method-group-title {
+  font-size: var(--text-base);
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 0 var(--space-sm);
+  padding-bottom: var(--space-xs);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.method-group-title .method-group-count {
+  font-size: var(--text-sm);
+  font-weight: 400;
+  color: var(--text-muted);
+  margin-left: var(--space-sm);
+}
+
+.method-group-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: var(--space-md);
+}
+
+@media (max-width: 760px) {
+  .method-group-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ===== Workbench Status Placeholder ===== */
+.workbench-status-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 320px;
+  padding: var(--space-xl) var(--space-md);
+  text-align: center;
+  background: var(--surface-subtle);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-lg);
+  gap: var(--space-md);
+}
+
+.workbench-status-placeholder[hidden] {
+  display: none !important;
+}
+
+.workbench-status-placeholder .status-icon {
+  width: 56px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--color-selection-bg);
+  color: var(--brand-blue-700);
+}
+
+.workbench-status-placeholder .status-icon svg {
+  width: 28px;
+  height: 28px;
+}
+
+.workbench-status-placeholder .status-title {
+  font-size: var(--text-lg);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.workbench-status-placeholder .status-message {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  max-width: 420px;
+  line-height: 1.6;
+}
+
+.workbench-status-placeholder .status-actions {
+  display: flex;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+/* ===== Action Card (空状态恢复卡) ===== */
+.action-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-md);
+  padding: var(--space-xl) var(--space-lg);
+  text-align: center;
+  background: var(--surface-panel);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  max-width: 520px;
+  margin: var(--space-lg) auto;
+}
+
+.action-card .action-card-title {
+  font-size: var(--text-lg);
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.action-card .action-card-message {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin: 0;
+}
+
+.action-card .action-card-actions {
+  display: flex;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+/* ===== Personal Center Tabs ===== */
+.user-center-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 2px solid var(--border-subtle);
+  margin-bottom: var(--space-lg);
+  overflow-x: auto;
+}
+
+.user-center-tab {
+  padding: 10px 18px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  white-space: nowrap;
+  transition: all 0.18s ease;
+}
+
+.user-center-tab:hover {
+  color: var(--brand-blue-700);
+  background: var(--color-selection-bg);
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+}
+
+.user-center-tab.active {
+  color: var(--brand-blue-700);
+  border-bottom-color: var(--brand-blue-700);
+  font-weight: 600;
+}
+
+.user-center-tab-panel {
+  display: none;
+}
+
+.user-center-tab-panel.active {
+  display: block;
+}
+
+@media (max-width: 760px) {
+  .user-center-tabs {
+    gap: 2px;
+  }
+  .user-center-tab {
+    padding: 8px 12px;
+    font-size: var(--text-xs);
+  }
+}
+/* ===== End Workspace Logic UI ===== */

@@ -63,6 +63,7 @@ const state = {
   visibleEpochCount: "All",
   epochWindowStart: 0,
   selectedEventId: "",
+  eventPagination: { currentPage: 1, itemsPerPage: 100 },
   reviews: {},
   epochOverrides: {},
   reviewActions: [],
@@ -730,6 +731,66 @@ function scoreLabel() {
     ? "probability"
     : "mean RMS";
 }
+function renderEpilepsyWorkbenchStatus() {
+  const container = document.getElementById('epilepsyWorkbenchStatus');
+  if (!container) return;
+  const file = selectedFile() || (typeof window.currentWorkspaceFile === 'function' ? window.currentWorkspaceFile() : null) || window.state?.real?.eegFile;
+  if (!file || !file.id) {
+    container.hidden = false;
+    container.innerHTML = `
+      <div class="status-icon"><svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div>
+      <div class="status-title">请先选择 EEG 数据</div>
+      <div class="status-message">癫痫样事件分析台需要先选择 EEG 数据文件。<br/>请先到数据管理上传或选择一个 EDF 文件，完成数据准备后再进入癫痫分析。</div>
+      <div class="status-actions">
+        <button class="primary-btn" type="button" data-workbench-goto="storage"><span>去数据管理</span></button>
+        <button class="ghost-btn" type="button" data-workbench-goto="workflow"><span>返回分析任务</span></button>
+      </div>
+    `;
+    container.querySelectorAll('[data-workbench-goto]').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var view = btn.dataset.workbenchGoto;
+        if (typeof window.setView === 'function') window.setView(view);
+        else window.location.hash = view;
+      });
+    });
+    return;
+  }
+  if (!state.task?.id && state.epochRows.length === 0) {
+    container.hidden = false;
+    container.innerHTML = `
+      <div class="status-icon"><svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg></div>
+      <div class="status-title">数据已就绪，请运行初筛</div>
+      <div class="status-message">已选择文件 <strong>${h(file.original_filename || file.filename || file.id)}</strong>，但尚未运行癫痫样事件初筛。请在参数面板确认参数后点击「开始初筛」。</div>
+      <div class="status-actions">
+        <button class="primary-btn" type="button" data-workbench-action="run-task"><span>开始初筛</span></button>
+      </div>
+    `;
+    container.querySelectorAll('[data-workbench-action="run-task"]').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        if (typeof runEpilepsyTask === 'function') runEpilepsyTask();
+      });
+    });
+    return;
+  }
+  container.hidden = true;
+  container.innerHTML = '';
+}
+
+function renderEpilepsyStandaloneEmptyState() {
+  const demoBtn = state.demoFixture?.status === "ready" || state.files.length
+    ? `<button class="primary-btn" type="button" id="emptyStateLoadFixtureBtn"><span>选实验室数据</span></button>`
+    : `<span class="status-message">正在准备实验室数据，请稍候……</span>`;
+  return `<div class="workbench-status-placeholder" data-testid="epilepsy-workbench-empty-state" style="margin-bottom:18px;">
+    <div class="status-icon"><svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div>
+    <div class="status-title">请先选择 EEG 数据</div>
+    <div class="status-message">尚未选择 EEG 数据文件。可点击「选实验室数据」加载癫痫示例 EDF，或在左侧上传/选择文件后运行初筛。</div>
+    <div class="status-actions">
+      ${demoBtn}
+      <button class="ghost-btn" type="button" id="emptyStateUploadFocusBtn"><span>去左侧上传</span></button>
+    </div>
+  </div>`;
+}
+
 function syncIcons() { if (window.lucide) window.lucide.createIcons(); }
 
 async function request(path, options = {}) {
@@ -1028,6 +1089,7 @@ function setMessage(message, error = false) {
 
 function render() {
   const root = document.querySelector("#epilepsyWorkbench");
+  renderEpilepsyWorkbenchStatus();
   if (!EMBED_MODE && !LAB_MODE) {
     root.innerHTML = renderContextBlocked();
     syncIcons();
@@ -1055,6 +1117,7 @@ function render() {
         </aside>`}
         <main>
           ${EMBED_MODE ? renderEmbeddedScreeningPanel() : ""}
+          ${!selectedFile() && !EMBED_MODE ? renderEpilepsyStandaloneEmptyState() : ""}
           ${renderRunSummary()}
           ${renderSourceReplicaToolbar()}
           ${renderTimelinePanel()}
@@ -1494,11 +1557,59 @@ function renderWaveformWindow(payload) {
   </div>`;
 }
 
+function paginateEvents() {
+  const { currentPage, itemsPerPage } = state.eventPagination;
+  const total = state.eventRows.length;
+  const totalPages = Math.ceil(total / itemsPerPage) || 1;
+  const validPage = Math.max(1, Math.min(currentPage, totalPages));
+  
+  const startIndex = (validPage - 1) * itemsPerPage;
+  const endIndex = Math.min(startIndex + itemsPerPage, total);
+  const items = state.eventRows.slice(startIndex, endIndex);
+  
+  return {
+    items,
+    currentPage: validPage,
+    itemsPerPage,
+    totalPages,
+    totalItems: total,
+    startIndex: startIndex + 1,
+    endIndex,
+    hasPrev: validPage > 1,
+    hasNext: validPage < totalPages
+  };
+}
+
+function goToEventPage(page) {
+  const pagination = paginateEvents();
+  const targetPage = Math.max(1, Math.min(Number(page) || 1, pagination.totalPages));
+  state.eventPagination.currentPage = targetPage;
+  render();
+}
+
+function nextEventPage() {
+  const pagination = paginateEvents();
+  if (pagination.hasNext) {
+    state.eventPagination.currentPage++;
+    render();
+  }
+}
+
+function prevEventPage() {
+  const pagination = paginateEvents();
+  if (pagination.hasPrev) {
+    state.eventPagination.currentPage--;
+    render();
+  }
+}
+
 function renderEventsPanel() {
   if (!state.eventRows.length) {
     return `<section class="panel"><div class="panel-head"><h2>${icon("list-checks")}候选事件与人工矫正</h2><span class="badge warn" data-testid="epilepsy-event-count">0 个候选事件</span></div><div class="empty">当前矫正后的 Stage_Code 没有形成连续 >=2 个 Seizure epoch，因此没有候选事件。可以 Undo 或把 epoch 范围重新标为 Seizure。</div></section>`;
   }
-  const rows = state.eventRows.map((event) => {
+  
+  const pagination = paginateEvents();
+  const rows = pagination.items.map((event) => {
     const id = String(event.event_id);
     const review = state.reviews[id] || {};
     const active = id === state.selectedEventId;
@@ -1511,6 +1622,30 @@ function renderEventsPanel() {
       <td><span class="badge ${review.status ? "" : "warn"}">${h(reviewLabel(review.status))}</span></td>
     </tr>`;
   }).join("");
+  
+  const paginationHtml = pagination.totalPages > 1 ? `
+    <div class="pagination" style="display: flex; align-items: center; justify-content: space-between; padding: 12px; background: #f8fafc; border-top: 1px solid #e2e8f0;">
+      <div style="display: flex; gap: 8px;">
+        <button class="btn btn-sm" onclick="prevEventPage()" ${!pagination.hasPrev ? 'disabled' : ''}>
+          ${icon("chevron-left")} 上一页
+        </button>
+        <button class="btn btn-sm" onclick="nextEventPage()" ${!pagination.hasNext ? 'disabled' : ''}>
+          下一页 ${icon("chevron-right")}
+        </button>
+      </div>
+      <div style="display: flex; align-items: center; gap: 12px; font-size: 14px; color: #64748b;">
+        <span>第 <strong>${pagination.currentPage}</strong> / ${pagination.totalPages} 页</span>
+        <span>显示 ${pagination.startIndex}-${pagination.endIndex} / 共 ${pagination.totalItems} 个事件</span>
+        <div style="display: flex; align-items: center; gap: 4px;">
+          <label for="gotoPage" style="font-size: 13px;">跳转:</label>
+          <input type="number" id="gotoPage" min="1" max="${pagination.totalPages}" value="${pagination.currentPage}" 
+                 style="width: 60px; padding: 4px 8px; border: 1px solid #cbd5e1; border-radius: 4px;"
+                 onchange="goToEventPage(this.value)" />
+        </div>
+      </div>
+    </div>
+  ` : '';
+  
   const selected = selectedEvent();
   const selectedReview = selected ? (state.reviews[String(selected.event_id)] || {}) : {};
   const correctionReady = correctionModeActive();
@@ -1536,6 +1671,7 @@ function renderEventsPanel() {
             <tbody>${rows}</tbody>
           </table>
         </div>
+        ${paginationHtml}
       </div>
       <aside class="review-item active">
         <div class="review-status">
@@ -1682,6 +1818,8 @@ function reviewLabel(status) {
 function bindEvents() {
   document.querySelector("#refreshFilesBtn")?.addEventListener("click", loadFiles);
   document.querySelector("#refreshFilesTopBtn")?.addEventListener("click", loadFiles);
+  document.querySelector("#emptyStateLoadFixtureBtn")?.addEventListener("click", selectLatestEpilepsyFixture);
+  document.querySelector("#emptyStateUploadFocusBtn")?.addEventListener("click", () => document.querySelector("#uploadInput")?.focus());
   document.querySelector("#loadLatestEpilepsyFileBtn")?.addEventListener("click", selectLatestEpilepsyFixture);
   document.querySelector("#selectEpilepsyFixtureBtn")?.addEventListener("click", selectLatestEpilepsyFixture);
   document.querySelector("#algorithmModeSelect")?.addEventListener("change", (event) => {
@@ -2045,6 +2183,24 @@ async function uploadFile(event) {
     render();
     return;
   }
+  
+  // P0-EPILEPSY-PHASE1: Pre-upload file size check
+  const fileSizeMB = file.size / (1024 * 1024);
+  const PHASE1_MAX_SIZE_MB = 500;
+  
+  if (fileSizeMB > PHASE1_MAX_SIZE_MB) {
+    setMessage(
+      `文件大小 ${fileSizeMB.toFixed(1)}MB 超过当前版本限制 ${PHASE1_MAX_SIZE_MB}MB。\n` +
+      `超大文件支持将在2周内上线。您可以：\n` +
+      `1. 先分析较小的文件\n` +
+      `2. 等待完整支持后再分析\n` +
+      `3. 联系技术支持获取Beta测试资格`,
+      true
+    );
+    render();
+    return;
+  }
+  
   state.uploadInFlight = true;
   setMessage("正在上传 EEG 文件……", false);
   render();
@@ -2101,7 +2257,28 @@ async function runEpilepsyTask() {
     if (state.selectedEventId) selectEvent(state.selectedEventId, false);
     setMessage(`工作台分析完成：${state.task.id}，候选事件 ${state.eventRows.length} 个。`, false);
   } catch (error) {
-    setMessage(`运行失败：${error.message || error}`, true);
+    // P0-EPILEPSY-PHASE1: Enhanced error handling for phase limitations
+    let errorMessage = `运行失败：${error.message || error}`;
+    
+    // Check if error is related to phase validation
+    if (error.message && (error.message.includes("EpilepsyFileTooLarge") || 
+                          error.message.includes("EpilepsyDurationTooLong") ||
+                          error.message.includes("超过当前版本限制"))) {
+      try {
+        const errorDetail = JSON.parse(error.message);
+        if (errorDetail.code === "EpilepsyFileTooLarge") {
+          errorMessage = `文件大小超限：${errorDetail.file_size_mb}MB 超过当前版本限制 ${errorDetail.current_phase?.max_size_mb}MB\n\n` +
+                        `${errorDetail.workaround || "建议等待后续版本发布"}`;
+        } else if (errorDetail.code === "EpilepsyDurationTooLong") {
+          errorMessage = `数据时长超限：${errorDetail.file_duration_h}h 超过当前版本限制 ${errorDetail.current_phase?.max_duration_h}h\n\n` +
+                        `${errorDetail.workaround || "建议等待后续版本发布"}`;
+        }
+      } catch (parseError) {
+        // Keep original error message if parsing fails
+      }
+    }
+    
+    setMessage(errorMessage, true);
   } finally {
     state.runInFlight = false;
     render();

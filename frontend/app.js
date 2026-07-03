@@ -5933,6 +5933,35 @@ function drawInlineEpilepsySpectrogram() {
 }
 
 function renderInlineEpilepsyWorkbench() {
+  // P0-UI-LOGIC-04 FIX: 在 inline 入口渲染工作台状态占位
+  try {
+    const statusContainer = qs('#epilepsyWorkbenchStatus');
+    if (statusContainer) {
+      const file = currentWorkspaceFile() || state.real.eegFile || {};
+      const plan = state.real.plan || {};
+      const hasFile = Boolean(file.id);
+      const planReady = hasConfirmedPlan();
+      if (!hasFile) {
+        statusContainer.hidden = false;
+        statusContainer.innerHTML = `
+          <div class="status-icon"><svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div>
+          <div class="status-title">请先选择 EEG 数据</div>
+          <div class="status-message">癫痫样事件分析台需要先选择 EEG 数据文件。<br/>请先到数据管理上传或选择一个 EDF 文件，完成数据准备后再进入癫痫分析。</div>
+          <div class="status-actions">
+            <button class="primary-btn" type="button" data-workbench-goto="storage"><span>去数据管理</span></button>
+            <button class="ghost-btn" type="button" data-workbench-goto="workflow"><span>返回分析任务</span></button>
+          </div>`;
+        statusContainer.querySelectorAll('[data-workbench-goto]').forEach(function(btn) {
+          btn.addEventListener('click', function() {
+            setView(btn.dataset.workbenchGoto);
+          });
+        });
+        return; // 有状态占位时不渲染详细面板
+      }
+      statusContainer.hidden = true;
+    }
+  } catch (e) { console.warn('epilepsyWorkbenchStatus render error:', e); }
+
   const file = currentWorkspaceFile() || state.real.eegFile || {};
   const plan = state.real.plan || {};
   const task = inlineEpilepsyTask();
@@ -6704,6 +6733,86 @@ async function refreshInbox() {
   }
 }
 
+/* ── Workspace progress bar (P0-1) ─────────────────────────────────── */
+const PROGRESS_STEPS = [
+  { id: 'project', label: '创建项目', view: 'dashboard' },
+  { id: 'data', label: '上传数据', view: 'storage' },
+  { id: 'preparation', label: '数据准备', view: 'analysis' },
+  { id: 'analysis', label: '运行分析', view: 'workflow' },
+  { id: 'results', label: '查看结果', view: 'statistics' },
+  { id: 'report', label: '生成报告', view: 'publication' },
+];
+
+function getWorkspaceProgressState() {
+  return {
+    hasProject: Boolean(state.real.project?.id),
+    hasFile: Boolean(state.real.eegFile?.id),
+    hasPreparationPlan: Boolean(state.real.plan?.id || state.real.epochSet?.epoch_set_id),
+    hasCompletedTask: Boolean(latestAnalysisTask()?.id),
+    hasReport: Boolean(state.real.report?.id),
+  };
+}
+
+function getCurrentProgressStep(progress) {
+  if (!progress.hasProject) return 'project';
+  if (!progress.hasFile) return 'data';
+  if (!progress.hasPreparationPlan) return 'preparation';
+  if (!progress.hasCompletedTask) return 'analysis';
+  if (!progress.hasReport) return 'results';
+  return 'report';
+}
+
+function getStepState(stepId, progress) {
+  const order = ['project', 'data', 'preparation', 'analysis', 'results', 'report'];
+  const idx = order.indexOf(stepId);
+  if (idx < 0) return 'pending';
+  const checks = [progress.hasProject, progress.hasFile, progress.hasPreparationPlan, progress.hasCompletedTask, progress.hasReport];
+  // A step is completed if all checks up to and including that step are true
+  for (let i = 0; i <= idx; i++) {
+    if (!checks[i]) return 'pending';
+  }
+  return 'completed';
+}
+
+function renderWorkspaceProgressBar() {
+  try {
+    const bar = qs('#workspaceProgressBar');
+    if (!bar) return;
+
+    if (state.role !== 'customer') {
+      bar.hidden = true;
+      return;
+    }
+    // 个人中心/账号页不属于工作流，隐藏流程条
+    const currentViewId = document.querySelector('.view.active')?.id;
+    const nonWorkflowViews = new Set(['userCenter', 'login', 'register']);
+    if (nonWorkflowViews.has(currentViewId)) {
+      bar.hidden = true;
+      return;
+    }
+    bar.hidden = false;
+
+    const progress = getWorkspaceProgressState();
+    const currentStep = getCurrentProgressStep(progress);
+    const currentView = currentViewId;
+
+    bar.innerHTML = PROGRESS_STEPS.map((step, i) => {
+      const stepState = getStepState(step.id, progress);
+      const isActive = step.view === currentView || step.id === currentStep;
+      return `<button type="button" class="progress-step ${isActive ? 'active' : ''} ${stepState === 'completed' ? 'completed' : ''}" data-progress-view="${step.view}">
+        <span class="step-num">${stepState === 'completed' ? '✓' : i + 1}</span>
+        <span>${step.label}</span>
+      </button>${i < PROGRESS_STEPS.length - 1 ? '<span class="progress-step-divider">→</span>' : ''}`;
+    }).join('');
+
+    bar.querySelectorAll('[data-progress-view]').forEach(btn => {
+      btn.addEventListener('click', () => setView(btn.dataset.progressView));
+    });
+  } catch (e) {
+    console.warn('[progress-bar] render failed:', e);
+  }
+}
+
 function setView(viewName) {
   const aliases = {
     billing: "userCenter",
@@ -6759,6 +6868,10 @@ function setView(viewName) {
       });
     }
   }
+  renderWorkspaceProgressBar();
+  if (targetView === 'analysis') applyAnalysisPageStateGate();
+  if (targetView === 'workflow') setTimeout(regroupAnalysisMethods, 100);
+  if (targetView === 'epilepsyWorkbenchInline') renderInlineEpilepsyWorkbench();
 }
 
 function renderAdminCustomerProfile() {
@@ -8241,6 +8354,7 @@ function renderProjectDataManagement() {
   renderStorageManagement();
   applyCleanVisibleCopy();
   applyCustomerTrialAnalysisSurfaceCleanup();
+  applyProjectDashboardEmptyState();
 }
 
 function updateDashboardSummaryCards({ project, file, plan, epochSet, projectFiles = [], files = [] }) {
@@ -8266,6 +8380,172 @@ function updateDashboardSummaryCards({ project, file, plan, epochSet, projectFil
   setTextIfPresent("#dashboard .metric-grid .metric:nth-child(4) span", "下一步");
   setTextIfPresent("#dashboard .metric-grid .metric:nth-child(4) strong", nextText);
   setTextIfPresent("#dashboard .metric-grid .metric:nth-child(4) small", nextNote);
+}
+
+/* ── Dashboard empty-state consolidation (P0-2) ─────────────────── */
+function applyProjectDashboardEmptyState() {
+  try {
+    const hasProject = Boolean(state.real.project?.id || (state.workspace.projects || []).length > 0);
+    // When no project exists and none is selected, hide secondary panels
+    // to avoid repeating "you haven't started" across 6+ sections.
+    const targets = [
+      '#dashboard [data-testid="project-data-crud-panel"]',
+      '#dashboard #prepContextSummary',
+      '#dashboard #prepRevisionState',
+      '#dashboard #prepDataQueue',
+      '#dashboard .ia-data-upload-row',
+      '#dashboard .ia-data-actions',
+      '#dashboard #iaDataRows',
+      '#dashboard #iaDataEmptyState',
+    ];
+    targets.forEach((sel) => {
+      const el = qs(sel);
+      if (el) el.style.display = hasProject ? '' : 'none';
+    });
+
+    // Simplify metric-grid: only show project metric when no projects
+    const metricGrid = qs('#dashboard .metric-grid');
+    if (metricGrid) {
+      const metrics = metricGrid.querySelectorAll('.metric');
+      metrics.forEach((m, idx) => {
+        if (idx > 0 && !hasProject) {
+          // Hide "当前数据", "准备状态" metrics; keep "下一步" as guidance
+          if (idx < 3) m.style.display = 'none';
+        } else {
+          m.style.display = '';
+        }
+      });
+    }
+
+    // Hide upload authorization row in storage when no project
+    const uploadAuth = qs('.storage-upload-authorization');
+    if (uploadAuth) uploadAuth.style.display = hasProject ? '' : 'none';
+  } catch (e) {
+    console.warn('[empty-state] dashboard consolidation failed:', e);
+  }
+}
+
+/* ── Analysis page state gate (P0-3) ────────────────────────────── */
+function applyAnalysisPageStateGate() {
+  try {
+    const hasFile = Boolean(state.real.eegFile?.id || currentWorkspaceFile()?.id);
+    const analysisView = qs('#analysis');
+    if (!analysisView) return;
+
+    const waveformControls = qs('#analysis .eeg-toolbar');
+    const prepSettings = qs('[data-testid="preprocessing-inline-panel"]') || qs('.preprocessing-side-panel');
+    const editWorkbench = qs('[data-testid="preview-edit-workbench"]');
+    const previewPanel = qs('[data-testid="single-file-preview-panel"]');
+
+    // Determine where to render the placeholder
+    let placeholder = qs('#analysisEmptyPlaceholder');
+    const placeholderParent = previewPanel || analysisView;
+
+    if (!hasFile) {
+      if (waveformControls) waveformControls.style.display = 'none';
+      if (prepSettings) prepSettings.style.display = 'none';
+      if (editWorkbench) editWorkbench.style.display = 'none';
+
+      if (!placeholder && placeholderParent) {
+        placeholder = document.createElement('div');
+        placeholder.id = 'analysisEmptyPlaceholder';
+        placeholder.className = 'analysis-empty-placeholder';
+        placeholder.innerHTML = '<strong>请先选择数据</strong><span>在项目管理或数据管理选择一份 EEG 数据后，波形预览与预处理控件会显示在这里。</span><button class="primary-btn mini" type="button" data-view-jump="storage">去选择数据</button>';
+        placeholderParent.prepend(placeholder);
+      }
+      if (placeholder) placeholder.style.display = '';
+    } else {
+      if (waveformControls) waveformControls.style.display = '';
+      if (prepSettings) prepSettings.style.display = '';
+      if (editWorkbench) editWorkbench.style.display = '';
+      if (placeholder) placeholder.style.display = 'none';
+    }
+  } catch (e) {
+    console.warn('[analysis-gate] apply failed:', e);
+  }
+}
+
+/* ── Workflow analysis methods grouping (P0-4) ──────────────────── */
+function groupAnalysisMethods() {
+  const methods = [
+    { id: 'psd', label: 'PSD 频谱与频段功率', group: 'recommended' },
+    { id: 'erp', label: 'ERP 事件相关电位', group: 'needs_events', condition: '需要事件标记' },
+    { id: 'tfr', label: 'TFR 时频分析', group: 'needs_events', condition: '需要事件标记' },
+    { id: 'multitaper_psd', label: 'Multitaper PSD', group: 'advanced' },
+    { id: 'multitaper_tfr', label: 'Multitaper TFR', group: 'advanced' },
+    { id: 'pac', label: 'PAC 相位-振幅耦合', group: 'advanced' },
+    { id: 'connectivity', label: 'Connectivity 连接性分析', group: 'advanced' },
+    { id: 'reference_csd', label: 'CSD 电流源密度', group: 'advanced', condition: '需要通道位置' },
+    { id: 'epilepsy_ml', label: '癫痫样事件分析台', group: 'special' },
+  ];
+
+  const groups = {
+    recommended: { title: '推荐运行', methods: [] },
+    needs_events: { title: '需要事件标记', methods: [] },
+    advanced: { title: '高级方法', methods: [] },
+    special: { title: '专项工作台', methods: [] },
+  };
+
+  methods.forEach(m => groups[m.group].methods.push(m));
+  return groups;
+}
+
+function regroupAnalysisMethods() {
+  try {
+    const container = qs('#analysisMethodsGrouped');
+    if (!container) return;
+
+    // Find existing method cards in the scope panel
+    const scopePanel = qs('[data-testid="analysis-method-scope-panel"]');
+    const existingCards = scopePanel ? qsa('.ia-method-contract-grid .ia-method-card, .ia-method-contract-grid button[data-module-id]') : [];
+
+    if (!existingCards.length) return;
+
+    const groups = groupAnalysisMethods();
+    const groupOrder = ['recommended', 'needs_events', 'advanced', 'special'];
+
+    container.innerHTML = groupOrder.map(key => {
+      const g = groups[key];
+      if (!g.methods.length) return '';
+      return `
+        <div class="method-group" data-method-group="${key}">
+          <h3 class="method-group-title">${g.title}<span class="method-group-count">${g.methods.length} 项</span></h3>
+          <div class="method-group-grid"></div>
+        </div>
+      `;
+    }).join('');
+
+    // Map module IDs to their group
+    const moduleToGroup = {};
+    groups.recommended.methods.forEach(m => moduleToGroup[m.id] = 'recommended');
+    groups.needs_events.methods.forEach(m => moduleToGroup[m.id] = 'needs_events');
+    groups.advanced.methods.forEach(m => moduleToGroup[m.id] = 'advanced');
+    groups.special.methods.forEach(m => moduleToGroup[m.id] = 'special');
+
+    // Move existing cards into the grouped container
+    const cardByModule = {};
+    existingCards.forEach(card => {
+      const moduleId = card.dataset.moduleId;
+      if (moduleId) cardByModule[moduleId] = card;
+    });
+
+    Object.entries(cardByModule).forEach(([moduleId, card]) => {
+      const groupKey = moduleToGroup[moduleId];
+      if (!groupKey) return;
+      const grid = container.querySelector(`[data-method-group="${groupKey}"] .method-group-grid`);
+      if (grid) {
+        grid.appendChild(card);
+      }
+    });
+
+    // Hide the original flat grid if it is now empty
+    const flatGrid = scopePanel?.querySelector('.ia-method-contract-grid');
+    if (flatGrid && !flatGrid.children.length) {
+      flatGrid.style.display = 'none';
+    }
+  } catch (e) {
+    console.warn('[method-group] regroup failed:', e);
+  }
 }
 
 function applyProductPageStructureCleanup() {

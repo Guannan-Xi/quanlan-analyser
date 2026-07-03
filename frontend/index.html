@@ -112,6 +112,8 @@
           </div>
         </header>
 
+        <nav class="workspace-progress-bar" id="workspaceProgressBar" data-testid="workspace-progress-bar" aria-label="工作台进度" hidden></nav>
+
         <section class="view active" id="dashboard">
           <div class="metric-grid">
             <article class="metric"><span>当前项目</span><strong>未选择</strong><small>选择后显示项目名称与状态</small></article>
@@ -380,6 +382,7 @@
           </section>
           <section class="panel" data-testid="analysis-method-scope-panel">
             <div class="panel-head"><div><h2>当前可用分析方法</h2><p>选择一个分析目标，系统会根据当前数据条件提示可运行的方法。</p></div></div>
+            <div id="analysisMethodsGrouped" data-testid="analysis-methods-grouped"></div>
             <div class="ia-method-contract-grid">
               <button class="ia-method-card available" type="button" data-module-id="psd" data-real-action="run-psd"><strong>PSD 频谱与频段功率</strong><span>输出频谱、频段功率和通道级表格，适合查看主要频段分布。</span><b>频谱</b></button>
               <button class="ia-method-card available" type="button" data-module-id="erp" data-real-action="run-erp"><strong>ERP 事件相关电位</strong><span>基于事件分段输出波形、指标和剔除记录，适合事件相关分析。</span><b>需事件</b></button>
@@ -396,6 +399,7 @@
 
         <section class="view" id="epilepsyWorkbenchInline" data-testid="main-epilepsy-workbench-inline">
           <section class="panel epilepsy-inline-context" data-testid="inline-epilepsy-context-header"></section>
+          <div id="epilepsyWorkbenchStatus" class="workbench-status-placeholder" data-testid="epilepsy-workbench-status" hidden></div>
           <div class="epilepsy-inline-grid">
             <main class="epilepsy-inline-main">
               <section class="panel epilepsy-inline-waveform" data-testid="inline-epilepsy-waveform-panel"></section>

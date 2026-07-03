@@ -839,3 +839,47 @@ svg { width: 16px; height: 16px; stroke-width: 2.2; }
     flex-basis: 100%;
   }
 }
+
+/* ===== Workbench Status Placeholder (standalone fallback) ===== */
+.workbench-status-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 220px;
+  padding: 28px 18px;
+  text-align: center;
+  background: var(--soft);
+  border: 1px dashed var(--line);
+  border-radius: var(--radius);
+  gap: 12px;
+}
+.workbench-status-placeholder[hidden] { display: none; }
+.workbench-status-placeholder .status-icon {
+  width: 48px; height: 48px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 50%;
+  background: var(--teal-soft);
+  color: var(--teal-dark);
+}
+.workbench-status-placeholder .status-icon svg { width: 24px; height: 24px; }
+.workbench-status-placeholder .status-title {
+  font-size: 18px; font-weight: 700; color: var(--ink); margin: 0;
+}
+.workbench-status-placeholder .status-message {
+  font-size: 13px; color: var(--muted); max-width: 420px; line-height: 1.6; margin: 0;
+}
+.workbench-status-placeholder .status-message strong { color: var(--ink); }
+.workbench-status-placeholder .status-actions { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; margin-top: 4px; }
+.workbench-status-placeholder .primary-btn,
+.workbench-status-placeholder .ghost-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  min-height: 36px; padding: 8px 16px; border-radius: 8px;
+  font-weight: 800; font-size: 13px; cursor: pointer; border: 1px solid var(--line);
+}
+.workbench-status-placeholder .primary-btn {
+  background: var(--teal); border-color: var(--teal); color: #fff;
+}
+.workbench-status-placeholder .ghost-btn {
+  background: #fff; color: var(--teal-dark);
+}
