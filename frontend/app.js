@@ -2295,6 +2295,16 @@ async function apiJson(path, options = {}) {
     ...options,
     headers: withAuthHeaders({ Accept: "application/json", ...(options.headers || {}) }),
   });
+  
+  // SEC-FIX: Auto-logout on 401 Unauthorized
+  if (response.status === 401 && state.role) {
+    console.warn("API 返回 401，token 已失效，自动登出");
+    clearSession();
+    logout(false);
+    showToast("登录已过期，请重新登录", "warning");
+    throw new Error("Unauthorized: Session expired");
+  }
+  
   const contentType = response.headers.get("content-type") || "";
   const data = contentType.includes("application/json") ? await response.json() : await response.text();
   if (!response.ok) {
@@ -6707,6 +6717,15 @@ function setView(viewName) {
   const customerHiddenViews = new Set(["journey"]);
   const requestedView = String(viewName || "dashboard");
   let targetView = aliases[requestedView] || requestedView;
+  
+  // SEC-FIX: Prevent accessing internal views without login
+  const publicViews = new Set(["login", "register"]);
+  if (!state.role && !publicViews.has(targetView)) {
+    console.warn(`尝试访问 ${targetView} 但未登录，重定向到登录页`);
+    logout(false);
+    return;
+  }
+  
   if (state.role !== "admin" && customerHiddenViews.has(targetView)) {
     targetView = "dashboard";
   }
@@ -6956,7 +6975,7 @@ function collectRegisterPayload() {
   };
 }
 
-function restoreSession() {
+async function restoreSession() {
   const raw = localStorage.getItem(AUTH_KEY) || sessionStorage.getItem(AUTH_KEY);
   if (!raw) {
     logout(false);
@@ -6965,8 +6984,34 @@ function restoreSession() {
   try {
     const session = JSON.parse(raw);
     if (session.role === "admin" || session.role === "customer") {
-      loginAs(session.role, session.role === "customer" ? getStoredCustomer() : null);
-      return;
+      // SEC-FIX: Verify token with backend before restoring UI
+      try {
+        const resp = await fetch(`${state.apiBase}/accounts`, {
+          headers: { "Authorization": `Bearer ${session.token}` }
+        });
+        
+        if (resp.status === 401 || resp.status === 403) {
+          // Token invalid or expired
+          console.warn("Session token验证失败，清除本地session");
+          clearSession();
+          logout(false);
+          return;
+        }
+        
+        if (!resp.ok) {
+          // Other errors, still allow login but log warning
+          console.warn("Token验证请求失败，允许登录但可能需要重新认证");
+        }
+        
+        // Token valid, proceed with login
+        loginAs(session.role, session.role === "customer" ? getStoredCustomer() : null);
+        return;
+      } catch (error) {
+        // Network error, allow offline access but log
+        console.warn("无法验证token（网络错误），允许离线访问:", error);
+        loginAs(session.role, session.role === "customer" ? getStoredCustomer() : null);
+        return;
+      }
     }
   } catch {
     clearSession();
