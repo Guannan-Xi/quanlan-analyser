@@ -5,6 +5,8 @@ const { chromium } = await import("playwright");
 
 const FRONTEND_URL = process.env.QLANALYSER_FRONTEND_URL || "http://127.0.0.1:4174/?customer_demo=login&api=http://127.0.0.1:8001/api";
 const API_BASE = process.env.QLANALYSER_API_BASE_URL || new URL(FRONTEND_URL).searchParams.get("api") || "http://127.0.0.1:8001/api";
+const ADMIN_EMAIL = process.env.QLANALYSER_ADMIN_EMAIL || "ops@quanlan.cn";
+const ADMIN_PASSWORD = process.env.QLANALYSER_ADMIN_PASSWORD || "ops-demo-2026";
 const EVIDENCE_ROOT = process.env.QLANALYSER_FULL_UI_SCROLL_EVIDENCE_ROOT
   || path.resolve("work/release_evidence/07-full-product-e2e-pdca/08_ui_visual_scroll");
 const SCREENSHOT_DIR = path.join(EVIDENCE_ROOT, "screenshots");
@@ -189,8 +191,8 @@ async function loginIfNeeded(page, surface) {
   if (surface.auth === "admin") {
     await page.click('[data-login-tab="adminLogin"]', { timeout: TIMEOUT_MS }).catch(() => {});
     await page.waitForSelector("#adminLoginForm", { state: "visible", timeout: TIMEOUT_MS });
-    await page.fill("#adminEmail", "ops@quanlan.cn");
-    await page.fill("#adminPassword", "ops-demo-2026");
+    await page.fill("#adminEmail", ADMIN_EMAIL);
+    await page.fill("#adminPassword", ADMIN_PASSWORD);
     await Promise.all([
       page.waitForSelector("#appShell", { state: "visible", timeout: TIMEOUT_MS }),
       page.click("#adminLoginForm button[type='submit']", { timeout: TIMEOUT_MS }),

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import time
@@ -13,6 +14,10 @@ from fastapi.testclient import TestClient
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+
+os.environ.setdefault("QLANALYSER_ENV", "test")
+ADMIN_EMAIL = os.getenv("QLANALYSER_ADMIN_EMAIL", "ops@quanlan.cn")
+ADMIN_PASSWORD = os.getenv("QLANALYSER_ADMIN_PASSWORD", "ops-demo-2026")
 
 from backend.main import app  # noqa: E402
 
@@ -194,17 +199,17 @@ def main() -> int:
             client,
             "post",
             "/api/auth/login",
-            payload={"email": "ops@quanlan.cn", "password": "ops-demo-2026"},
+            payload={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD},
             required_keys={"token", "account", "expires_at"},
         )
         smoke_checks.extend([customer_login, admin_login])
 
         customer_token = token_from_login(client, "demo.customer@quanlan.cn", "demo123456")
-        admin_token = token_from_login(client, "ops@quanlan.cn", "ops-demo-2026")
+        admin_token = token_from_login(client, ADMIN_EMAIL, ADMIN_PASSWORD)
 
         smoke_checks.extend(
             [
-                call(client, "get", "/api/projects"),
+                call(client, "get", "/api/projects", token=customer_token),
                 call(client, "get", "/api/billing/wallet", token=customer_token, required_keys={"account", "balance_credits", "payment_provider_mode"}),
                 call(client, "get", "/api/inbox", token=customer_token),
                 call(client, "get", "/api/admin/overview", token=admin_token, required_keys={"accounts", "tasks", "failed_tasks"}),

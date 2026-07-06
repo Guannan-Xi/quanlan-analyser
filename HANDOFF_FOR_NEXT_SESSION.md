@@ -24,7 +24,7 @@ npx http-server . -p 4174 -c-1
 
 前端 URL：`http://127.0.0.1:4174/?api=http://127.0.0.1:8001/api`
 演示账户：`demo.customer@quanlan.cn / demo123456`
-管理账户：`ops@quanlan.cn / ops-demo-2026`
+管理账户：本地/测试环境使用 `QLANALYSER_ADMIN_EMAIL` 与 `QLANALYSER_ADMIN_PASSWORD`；生产环境必须配置非本地默认口令。
 
 ---
 

@@ -15,8 +15,9 @@ VERIFICATION_CODES = "verification_codes"
 PBKDF2_ITERATIONS = 120_000
 DEMO_EMAIL = "demo.customer@quanlan.cn"
 DEMO_PASSWORD = "demo123456"
-ADMIN_EMAIL = "ops@quanlan.cn"
-ADMIN_PASSWORD = "ops-demo-2026"
+ADMIN_EMAIL = os.getenv("QLANALYSER_ADMIN_EMAIL", "ops@quanlan.cn").strip().lower() or "ops@quanlan.cn"
+LOCAL_ADMIN_PASSWORD = "ops-demo-2026"
+LOCAL_SEED_ENVS = {"local", "dev", "development", "test", "ci", "sandbox"}
 
 # SEC-P0-04 FIX: Only allow sandbox code in development
 SANDBOX_MODE = os.getenv("QLANALYSER_SANDBOX_MODE", "false").lower() == "true"
@@ -48,6 +49,39 @@ def _verify_password(password: str, account: AccountRead) -> bool:
     return hmac.compare_digest(digest, account.password_hash)
 
 
+def _app_env() -> str:
+    return os.getenv("QLANALYSER_ENV", "").strip().lower()
+
+
+def _allows_local_admin_seed() -> bool:
+    return _app_env() in LOCAL_SEED_ENVS
+
+
+def _configured_admin_password() -> str:
+    explicit = os.getenv("QLANALYSER_ADMIN_PASSWORD", "").strip()
+    if explicit and (explicit != LOCAL_ADMIN_PASSWORD or _allows_local_admin_seed()):
+        return explicit
+    if _allows_local_admin_seed():
+        return LOCAL_ADMIN_PASSWORD
+    return ""
+
+
+def _is_blocked_default_admin_login(email: str, password: str) -> bool:
+    return (
+        email == ADMIN_EMAIL
+        and password == LOCAL_ADMIN_PASSWORD
+        and not _allows_local_admin_seed()
+    )
+
+
+def _is_unsafe_default_admin_account(account: AccountRead) -> bool:
+    return (
+        account.role == "admin"
+        and not _allows_local_admin_seed()
+        and _verify_password(LOCAL_ADMIN_PASSWORD, account)
+    )
+
+
 def _public_account(account: AccountRead) -> dict:
     payload = account.model_dump(mode="json")
     payload.pop("password_hash", None)
@@ -67,21 +101,30 @@ def _load_sessions() -> dict[str, SessionRead]:
     return state_store.load_registry(SESSIONS, SessionRead)
 
 
+def _revoke_account_sessions(account_id: str) -> None:
+    for session in _load_sessions().values():
+        if session.account_id == account_id and session.status == "active":
+            session.status = "revoked"
+            state_store.upsert_item(SESSIONS, session)
+
+
 def ensure_seed_accounts() -> None:
     accounts = _load_accounts()
     by_email = {account.email: account for account in accounts.values()}
     if DEMO_EMAIL not in by_email:
-        create_account(
-            AccountCreate(
-                register_method="email",
-                email=DEMO_EMAIL,
-                password=DEMO_PASSWORD,
-                name=DEMO_CUSTOMER_NAME,
-                organization_name=DEMO_CUSTOMER_ORG,
-                verification_code=SANDBOX_CODE,
-            ),
+        digest, salt = _hash_password(DEMO_PASSWORD)
+        demo = AccountRead(
+            email=DEMO_EMAIL,
+            name=DEMO_CUSTOMER_NAME,
+            organization_name=DEMO_CUSTOMER_ORG,
+            role="customer",
             trial_credits=100.0,
+            balance_credits=100.0,
+            register_method="email",
+            password_hash=digest,
+            password_salt=salt,
         )
+        state_store.upsert_item(ACCOUNTS, demo)
     else:
         demo = by_email[DEMO_EMAIL]
         if demo.name in {"", "Demo Customer"}:
@@ -92,8 +135,9 @@ def ensure_seed_accounts() -> None:
             demo.balance_credits = 100.0
             demo.trial_credits = max(demo.trial_credits, 100.0)
         update_account(demo)
-    if ADMIN_EMAIL not in by_email:
-        digest, salt = _hash_password(ADMIN_PASSWORD)
+    admin_password = _configured_admin_password()
+    if ADMIN_EMAIL not in by_email and admin_password:
+        digest, salt = _hash_password(admin_password)
         admin = AccountRead(
             email=ADMIN_EMAIL,
             name="Operations Admin",
@@ -106,6 +150,12 @@ def ensure_seed_accounts() -> None:
             password_salt=salt,
         )
         state_store.upsert_item(ACCOUNTS, admin)
+    elif ADMIN_EMAIL in by_email and admin_password:
+        admin = by_email[ADMIN_EMAIL]
+        if not _verify_password(admin_password, admin):
+            admin.password_hash, admin.password_salt = _hash_password(admin_password)
+            update_account(admin)
+            _revoke_account_sessions(admin.id)
 
 
 def request_verification_code(payload: VerificationCodeRequest) -> dict:
@@ -242,10 +292,14 @@ def issue_session(account: AccountRead) -> dict:
 def login(payload: AccountLogin) -> dict:
     ensure_seed_accounts()
     email = _normalize_email(payload.email)
+    if _is_blocked_default_admin_login(email, payload.password):
+        raise HTTPException(status_code=403, detail="Default admin password is disabled outside local/test environments")
     accounts = _load_accounts()
     account = next((item for item in accounts.values() if item.email == email), None)
     if not account or not _verify_password(payload.password, account):
         raise HTTPException(status_code=401, detail="Invalid email or password")
+    if _is_unsafe_default_admin_account(account):
+        raise HTTPException(status_code=403, detail="Default admin password is disabled outside local/test environments")
     if account.status != "active":
         raise HTTPException(status_code=403, detail="Account is not active")
     audit_service.record_event(
@@ -285,6 +339,8 @@ def get_account_by_token(token: str) -> AccountRead:
     account = get_account(session.account_id)
     if account.status != "active":
         raise HTTPException(status_code=403, detail="Account is not active")
+    if _is_unsafe_default_admin_account(account):
+        raise HTTPException(status_code=403, detail="Default admin session is disabled outside local/test environments")
     return account
 
 

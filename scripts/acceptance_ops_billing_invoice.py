@@ -11,6 +11,11 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+os.environ.setdefault("QLANALYSER_ENV", "test")
+os.environ.setdefault("QLANALYSER_SANDBOX_MODE", "true")
+ADMIN_EMAIL = os.getenv("QLANALYSER_ADMIN_EMAIL", "ops@quanlan.cn")
+ADMIN_PASSWORD = os.getenv("QLANALYSER_ADMIN_PASSWORD", "ops-demo-2026")
+
 from backend.main import app
 
 
@@ -96,7 +101,7 @@ def main() -> None:
 
         customer_headers = auth_headers(email_session)
         phone_headers = auth_headers(phone_session)
-        admin_session = post_json(client, "/api/auth/login", {"email": "ops@quanlan.cn", "password": "ops-demo-2026"})
+        admin_session = post_json(client, "/api/auth/login", {"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD})
         admin_headers = auth_headers(admin_session)
 
         unauth_admin = client.get("/api/admin/overview")
@@ -123,7 +128,7 @@ def main() -> None:
             json={"account_id": phone_session["account"]["id"], "amount_credits": 10, "payment_method": "alipay"},
             headers=customer_headers,
         )
-        require(cross_recharge.status_code == 403, "recharge rejects cross-account customer", cross_recharge.text)
+        require(cross_recharge.status_code == 403, "recharge creation rejects customer role", cross_recharge.text)
 
         wallet_before_response = client.get(f"/api/billing/wallet?account_id={email_account['id']}", headers=customer_headers)
         require(wallet_before_response.status_code == 200, "wallet authorized status", wallet_before_response.text)
@@ -134,7 +139,7 @@ def main() -> None:
             client,
             "/api/billing/recharge",
             {"account_id": email_account["id"], "amount_credits": 120, "payment_method": "alipay"},
-            headers=customer_headers,
+            headers=admin_headers,
         )
         require(alipay_order["status"] == "pending" and "alipay" in alipay_order["payment_url"], "alipay order pending", alipay_order)
         cross_confirm = client.post(
@@ -147,7 +152,7 @@ def main() -> None:
             client,
             f"/api/billing/recharge/{alipay_order['id']}/confirm",
             {"status": "paid", "provider_trade_no": f"ALI-{suffix}"},
-            headers=customer_headers,
+            headers=admin_headers,
         )
         require(paid_alipay["status"] == "paid", "alipay paid", paid_alipay)
 
@@ -155,14 +160,14 @@ def main() -> None:
             client,
             "/api/billing/recharge",
             {"account_id": email_account["id"], "amount_credits": 80, "payment_method": "wechat_pay"},
-            headers=customer_headers,
+            headers=admin_headers,
         )
         require(wechat_order["status"] == "pending" and "wechat" in wechat_order["payment_url"], "wechat order pending", wechat_order)
         paid_wechat = post_json(
             client,
             f"/api/billing/recharge/{wechat_order['id']}/confirm",
             {"status": "paid", "provider_trade_no": f"WX-{suffix}"},
-            headers=customer_headers,
+            headers=admin_headers,
         )
         require(paid_wechat["status"] == "paid", "wechat paid", paid_wechat)
 

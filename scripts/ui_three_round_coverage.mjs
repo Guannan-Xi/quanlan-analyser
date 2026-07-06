@@ -10,6 +10,8 @@ const ROOT = path.resolve(__dirname, "..");
 const OUT = path.join(ROOT, "work", "release_evidence", "20260621-ui-three-round-coverage");
 const BASE = "http://127.0.0.1:4174/?api=http://127.0.0.1:8001/api";
 const LAB = "http://127.0.0.1:4174/module-lab.html?api=http://127.0.0.1:8001/api";
+const ADMIN_EMAIL = process.env.QLANALYSER_ADMIN_EMAIL || "ops@quanlan.cn";
+const ADMIN_PASSWORD = process.env.QLANALYSER_ADMIN_PASSWORD || "ops-demo-2026";
 
 fs.mkdirSync(OUT, { recursive: true });
 
@@ -132,8 +134,8 @@ async function loginCustomer(page) {
 async function loginAdmin(page) {
   await page.goto(BASE, { waitUntil: "networkidle" });
   await page.click(".admin-corner");
-  await page.fill("#adminEmail", "ops@quanlan.cn");
-  await page.fill("#adminPassword", "ops-demo-2026");
+  await page.fill("#adminEmail", ADMIN_EMAIL);
+  await page.fill("#adminPassword", ADMIN_PASSWORD);
   await page.click("#adminLoginForm button[type='submit']");
   await page.waitForSelector("#appShell:not([hidden])", { timeout: 10000 });
 }

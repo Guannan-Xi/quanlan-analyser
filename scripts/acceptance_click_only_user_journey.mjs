@@ -3,6 +3,8 @@ import fs from "node:fs";
 import path from "node:path";
 
 const FRONTEND_URL = process.env.QLANALYSER_CLICK_FRONTEND_URL || "http://39.97.248.225/?api=http://39.97.248.225/api";
+const ADMIN_EMAIL = process.env.QLANALYSER_ADMIN_EMAIL || "ops@quanlan.cn";
+const ADMIN_PASSWORD = process.env.QLANALYSER_ADMIN_PASSWORD || "ops-demo-2026";
 const SAMPLE_FIF = process.env.QLANALYSER_UI_SAMPLE || path.resolve("work/acceptance/ui_with_events_raw.fif");
 const OUT_DIR = process.env.QLANALYSER_CLICK_EVIDENCE_DIR || path.resolve("work/release_evidence/20260621-click-only-user-journey");
 const EVIDENCE_PATH = path.join(OUT_DIR, "click_only_user_journey.json");
@@ -235,8 +237,8 @@ async function runPageCoverage(browser, evidence) {
     adminPage = await adminContext.newPage();
     await adminPage.goto(FRONTEND_URL, { waitUntil: "domcontentloaded" });
     await safeClick(adminPage, 'button[data-login-tab="adminLogin"]', "admin entry");
-    await adminPage.locator("#adminEmail").fill("ops@quanlan.cn");
-    await adminPage.locator("#adminPassword").fill("ops-demo-2026");
+    await adminPage.locator("#adminEmail").fill(ADMIN_EMAIL);
+    await adminPage.locator("#adminPassword").fill(ADMIN_PASSWORD);
     await safeClick(adminPage, "#adminLoginForm button[type='submit']", "admin login submit");
     await adminPage.waitForSelector("#appShell:not([hidden])", { timeout: 15000 });
     for (const view of ["adminDashboard", "adminOperations", "adminFinance", "adminSystem"]) {

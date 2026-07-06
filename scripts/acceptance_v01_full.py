@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 import sys
 import tempfile
@@ -8,6 +9,10 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+
+os.environ.setdefault("QLANALYSER_ENV", "test")
+ADMIN_EMAIL = os.getenv("QLANALYSER_ADMIN_EMAIL", "ops@quanlan.cn")
+ADMIN_PASSWORD = os.getenv("QLANALYSER_ADMIN_PASSWORD", "ops-demo-2026")
 
 import mne
 import numpy as np
@@ -323,7 +328,7 @@ def main() -> None:
     customer_headers = auth_headers(customer_session)
     customer_account_id = customer_session["account"]["id"]
     admin_session = assert_status(
-        client.post("/api/auth/login", json={"email": "ops@quanlan.cn", "password": "ops-demo-2026"}),
+        client.post("/api/auth/login", json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD}),
         200,
         "admin auth login",
     ).json()
@@ -334,14 +339,20 @@ def main() -> None:
     wallet = assert_status(client.get(f"/api/billing/wallet?account_id={customer_account_id}", headers=customer_headers), 200, "billing wallet").json()
     record("billing wallet sandbox mode", wallet.get("payment_provider_mode") == "sandbox", json.dumps(wallet, ensure_ascii=False))
     record("billing wallet has customer balance", wallet.get("balance_credits", 0) >= 0, json.dumps(wallet, ensure_ascii=False))
+    customer_recharge = client.post(
+        "/api/billing/recharge",
+        json={"account_id": customer_account_id, "amount_credits": 25, "payment_method": "alipay"},
+        headers=customer_headers,
+    )
+    assert_status(customer_recharge, 403, "billing recharge rejects customer role")
     recharge = assert_status(
         client.post(
             "/api/billing/recharge",
             json={"account_id": customer_account_id, "amount_credits": 25, "payment_method": "alipay"},
-            headers=customer_headers,
+            headers=admin_headers,
         ),
         200,
-        "billing recharge order",
+        "billing admin recharge order",
     ).json()
     record(
         "billing recharge pending",
@@ -352,10 +363,10 @@ def main() -> None:
         client.post(
             f"/api/billing/recharge/{recharge['id']}/confirm",
             json={"status": "paid", "provider_trade_no": "ACCEPTANCE-ALIPAY"},
-            headers=customer_headers,
+            headers=admin_headers,
         ),
         200,
-        "billing recharge confirm",
+        "billing admin recharge confirm",
     ).json()
     record("billing recharge paid", paid.get("status") == "paid", json.dumps(paid, ensure_ascii=False))
     ledger = assert_status(client.get(f"/api/billing/ledger?account_id={customer_account_id}", headers=customer_headers), 200, "billing ledger").json()
