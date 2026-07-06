@@ -92,7 +92,7 @@
       <main class="main">
         <header class="topbar">
           <div>
-            <p class="eyebrow" id="topEyebrow">QLanalyser Online · EEG 数据到报告</p>
+            <p class="eyebrow" id="topEyebrow">QLanalyser Online · EEG 科研数据到复核记录</p>
             <h1 id="viewTitle">项目分析</h1>
           </div>
           <div class="top-actions">
@@ -156,7 +156,7 @@
         <section class="view" id="journey">
           <section class="panel span-2" data-testid="review-validation-workbench">
             <div class="panel-head">
-                <div><h2>交付质检</h2><p>后台检查数据、准备记录、结果文件和报告包是否具备交付条件。</p></div>
+                <div><h2>交付质检</h2><p>后台检查数据、准备记录、结果文件和复核记录包是否具备交付条件。</p></div>
             </div>
           </section>
         </section>
@@ -351,7 +351,7 @@
               <button class="ia-method-card advanced" type="button" data-module-id="pac" data-real-action="run-pac" disabled aria-disabled="true" title="请先保存事件分段"><strong>PAC 相位-振幅耦合</strong><span>查看相位-振幅耦合的描述性图表和表格，不能单独解释为因果机制。</span><b>耦合</b></button>
               <button class="ia-method-card advanced" type="button" data-module-id="connectivity" data-real-action="run-connectivity" disabled aria-disabled="true" title="请先确认至少 4 个通道的数据"><strong>Connectivity 连接性分析</strong><span>查看连接性矩阵和边表，结果用于研究参考，不证明信息流或因果方向。</span><b>连接</b></button>
               <button class="ia-method-card advanced" type="button" data-module-id="reference_csd" data-real-action="run-reference-csd" disabled aria-disabled="true" title="请先确认通道位置或 montage 信息"><strong>CSD 电流源密度计算</strong><span>基于通道位置信息计算头皮电位空间分布变化；这是传感器空间滤波，不是源定位或诊断。</span><b>需通道位置</b></button>
-              <button class="ia-method-card conditional" type="button" data-module-id="epilepsy_ml" data-real-action="open-epilepsy-workbench" disabled aria-disabled="true" title="请先完成数据准备并进入专项复核"><strong>癫痫样候选事件复核台</strong><span>先阅读波形，再运行候选事件初筛，查看波形、同轴 STFT 预览、模型候选标记与候选事件，并进行人工矫正。</span><b>初筛/人工矫正</b></button>
+              <button class="ia-method-card conditional" type="button" data-module-id="epilepsy_ml" data-real-action="open-epilepsy-workbench" disabled aria-disabled="true" title="请先完成数据准备并进入专项复核"><strong>癫痫样候选事件实验室复核预览</strong><span>先阅读波形，再运行候选事件初筛，查看波形、同轴 STFT 预览、候选标记预览与候选事件，并进行人工复核标注。</span><b>预览/人工复核</b></button>
             </div>
           </section>
         </section>
@@ -400,8 +400,8 @@
         <section class="view" id="publication">
           <section class="panel span-2" data-testid="report-delivery-workbench">
             <div class="panel-head">
-              <div><h2>生成和下载报告</h2><p>把结果、图表、参数、方法和复现记录打包交付。</p></div>
-              <button class="primary-btn" type="button" data-real-action="create-report" hidden><i data-lucide="file-output"></i><span>生成报告</span></button>
+              <div><h2>生成和下载复核记录</h2><p>把结果、图表、参数、方法和复现记录打包为科研交付材料。</p></div>
+              <button class="primary-btn" type="button" data-real-action="create-report" hidden><i data-lucide="file-output"></i><span>生成复核记录</span></button>
             </div>
             <div class="delivery-grid" id="realDeliveryLinks"></div>
           </section>
@@ -409,7 +409,7 @@
 
         <section class="view" id="upload">
           <section class="panel">
-            <div class="panel-head"><div><h2>上传数据</h2><p>大文件上传时会自动续传。网络中断后，重新进入页面也可以继续。</p></div></div>
+            <div class="panel-head"><div><h2>上传数据</h2><p>支持分片上传；网络中断后可回到数据页继续检查上传状态。</p></div></div>
             <div class="form-grid">
               <label><span>总数据量</span><div class="with-unit"><input id="uploadSizeGb" type="number" value="12" min="0.1" step="0.1" /><em>GB</em></div></label>
               <label><span>上行带宽</span><div class="with-unit"><input id="uploadMbps" type="number" value="200" min="1" /><em>Mbps</em></div></label>
@@ -461,7 +461,7 @@
           <div class="metric-grid">
             <article class="metric"><span>账户身份</span><strong id="userCenterName">客户账号</strong><small id="userCenterRole">客户账号</small></article>
             <article class="metric"><span>服务状态</span><strong id="userCenterBalance">试用中</strong><small>线下确认后更新</small></article>
-            <article class="metric"><span>交付记录</span><strong>报告页</strong><small>生成后下载</small></article>
+            <article class="metric"><span>交付记录</span><strong>复核记录页</strong><small>生成后下载</small></article>
             <article class="metric"><span>权限范围</span><strong>授权项目</strong><small>按账号权限显示</small></article>
           </div>
 
@@ -488,7 +488,7 @@
               <div class="service-record-list">
                 <span><b>服务状态：</b><em id="balanceMain">试用中</em></span>
                 <span><b>记录状态：</b><em>由运营线下确认后更新</em></span>
-                <span><b>交付记录：</b><em>报告生成后在报告页下载</em></span>
+                <span><b>交付记录：</b><em>复核记录生成后在报告页下载</em></span>
               </div>
               <button class="ghost-btn" id="rechargeBtn" type="button"><i data-lucide="clipboard-check"></i><span>提醒运营确认</span></button>
               <div class="notice" id="rechargeNotice"><i data-lucide="badge-check"></i><span>等待线下确认。</span></div>
@@ -518,7 +518,7 @@
           <div class="metric-grid">
             <article class="metric"><span>项目记录</span><strong>128</strong><small>最近项目变更</small></article>
             <article class="metric"><span>待处理任务</span><strong>42</strong><small>队列运行正常</small></article>
-            <article class="metric"><span>导出队列</span><strong>7</strong><small>报告打包与结果通知</small></article>
+            <article class="metric"><span>草稿导出队列</span><strong>7</strong><small>复核记录打包与结果通知</small></article>
             <article class="metric"><span>待确认事项</span><strong>3</strong><small>任务失败、客户消息与交付提醒</small></article>
           </div>
           <div class="work-grid">
@@ -535,7 +535,7 @@
               <div class="checklist">
                 <label><input type="checkbox" checked /> 客户账号已注册。</label>
                 <label><input type="checkbox" checked /> 示例数据结果已生成。</label>
-                <label><input type="checkbox" checked /> 报告导出队列运行正常。</label>
+                <label><input type="checkbox" checked /> 草稿导出链路演示正常。</label>
                 <label><input type="checkbox" /> 交付提醒等待确认。</label>
               </div>
             </section>
@@ -571,7 +571,7 @@
               <div class="storage-table">
                 <div class="table-row head"><span>记录</span><span>类型</span><span>状态</span><span>交付</span></div>
                 <div class="table-row"><span>SR-202606-START</span><span>试用服务</span><span class="ok">已记录</span><span>线下确认</span></div>
-                <div class="table-row"><span>SR-202606-001</span><span>报告包</span><span class="ok">已生成</span><span>报告页</span></div>
+                <div class="table-row"><span>SR-202606-001</span><span>复核记录包</span><span class="ok">已生成预览</span><span>复核记录页</span></div>
                 <div class="table-row"><span>SR-202606-002</span><span>结果通知</span><span class="ok">已发送</span><span>已交付</span></div>
                 <div class="table-row"><span>NC-202606-003</span><span>¥88.00</span><span class="warn">待审核</span><span>待审核</span></div>
               </div>
@@ -579,7 +579,7 @@
             <section class="panel">
               <div class="panel-head compact"><h2>结算摘要</h2></div>
               <div class="cost-row"><span>服务状态</span><b>试用中</b></div>
-              <div class="cost-row"><span>示例报告</span><b>已生成</b></div>
+              <div class="cost-row"><span>示例复核记录</span><b>已生成预览</b></div>
               <div class="cost-row"><span>线下确认</span><b>待更新</b></div>
               <div class="cost-row"><span>结果通知</span><b class="warn">待确认</b></div>
             </section>

@@ -14,6 +14,11 @@ FRONTEND_DIR = Path(__file__).resolve().parents[1] / "frontend"
 def _env_flag(name: str) -> bool:
     return os.getenv(name, "").strip().lower() in {"1", "true", "yes", "on"}
 
+
+def _local_lab_env_enabled() -> bool:
+    app_env = os.getenv("QLANALYSER_ENV", "").strip().lower()
+    return app_env in {"local", "dev", "development", "test"}
+
 app = FastAPI(
     title="QuanLan Analyser API",
     version="0.1.0",
@@ -57,7 +62,7 @@ app.include_router(health.router, prefix="/api", tags=["health"])
 app.include_router(accounts.router, prefix="/api", tags=["accounts"])
 app.include_router(lab_demo.router, prefix="/api", tags=["lab-demo"])
 app.include_router(lab_edf_reviewer.router, prefix="/api", tags=["lab-edf-reviewer"])
-if _env_flag("QLANALYSER_LAB_EPILEPSY_FULL_FLOW_ENABLED"):
+if _env_flag("QLANALYSER_LAB_EPILEPSY_FULL_FLOW_ENABLED") and _local_lab_env_enabled():
     from backend.api import lab_epilepsy_full_flow
 
     app.include_router(

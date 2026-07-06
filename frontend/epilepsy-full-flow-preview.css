@@ -140,6 +140,31 @@ code {
   transition-timing-function: ease-out;
 }
 
+.ep-flow-btn:focus-visible,
+.ep-flow-file-btn:focus-visible,
+.ep-flow-stepper button:focus-visible,
+.ep-flow-sample-card:focus-visible,
+.ep-flow-event-card:focus-visible,
+.ep-flow-decision:focus-visible,
+.ep-flow-form-grid input:focus-visible,
+.ep-flow-form-grid select:focus-visible,
+.ep-flow-wide-field textarea:focus-visible {
+  outline: 3px solid rgba(15, 118, 110, 0.28);
+  outline-offset: 2px;
+}
+
+.ep-flow-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .ep-flow-btn svg,
 .ep-flow-file-btn svg,
 .ep-flow-decision svg,

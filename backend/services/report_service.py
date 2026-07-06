@@ -114,6 +114,8 @@ def get_report(report_id: str, requesting_user_id: str | None = None) -> ReportR
                 "message": "You do not have permission to access this report",
             },
         )
+    if requesting_user_id is not None:
+        _assert_report_result_reviewed(report, requesting_user_id=requesting_user_id)
     return report
 
 
@@ -125,9 +127,37 @@ def get_report_file(report_id: str, kind: str, requesting_user_id: str | None = 
         path = report.package_path
     else:
         raise HTTPException(status_code=404, detail="Unknown report file kind")
-    if path is None or not Path(path).exists():
+    if path is None:
         raise HTTPException(status_code=410, detail="Report file is not available on disk")
-    return Path(path)
+    resolved = Path(path).resolve()
+    try:
+        resolved.relative_to(REPORT_ROOT.resolve())
+    except ValueError as exc:
+        raise HTTPException(status_code=403, detail="Report file path is outside the allowed directory") from exc
+    if not resolved.exists():
+        raise HTTPException(status_code=410, detail="Report file is not available on disk")
+    return resolved
+
+
+def _assert_report_result_reviewed(report: ReportRead, *, requesting_user_id: str) -> None:
+    reviewed_events = audit_service.list_events(
+        action="result.reviewed",
+        object_type="analysis_task",
+        object_id=report.task_id,
+        actor_user_id=requesting_user_id,
+        project_id=report.project_id,
+    )
+    if reviewed_events:
+        return
+    raise HTTPException(
+        status_code=423,
+        detail={
+            "code": "REPORT_NOT_RELEASED",
+            "message": "Review the analysis result before opening or downloading this report.",
+            "required_action": "result.reviewed",
+            "task_id": report.task_id,
+        },
+    )
 
 
 def _write_report_package(report_dir: Path, report_id: str, html_path: Path, task: dict, task_output_dir: Path, artifacts: list[dict], related_artifacts: list[dict] | None = None, sibling_analyses: list[dict] | None = None) -> Path:

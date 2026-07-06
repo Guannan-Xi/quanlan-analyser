@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import math
 import os
+import re
+from collections import OrderedDict
 from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 from uuid import uuid4
 
 import numpy as np
@@ -17,13 +20,33 @@ from eeg_core.io.readers import read_raw
 router = APIRouter()
 
 LAB_API_ENV = "QLANALYSER_LAB_EPILEPSY_FULL_FLOW_ENABLED"
+APP_ENV = "QLANALYSER_ENV"
 SAMPLE_ROOT_ENV = "QLANALYSER_LAB_HE_SAMPLE_ROOT"
-SHOW_LOCAL_PATHS_ENV = "QLANALYSER_LAB_SHOW_LOCAL_PATHS"
 SAFE_SAMPLE_ROOT = "work/sample_data/epilepsy/"
 SUPPORTED_SUFFIXES = {".edf", ".bdf", ".fif", ".fiff"}
 MAX_WAVEFORM_DURATION_SEC = 120.0
 MAX_WAVEFORM_POINTS = 4000
+MAX_REVIEW_SESSIONS = 50
+MAX_REVIEW_EVENTS = 200
+MAX_REVIEW_ACTIONS = 300
+MAX_REVIEW_PAYLOAD_CHARS = 200_000
+MAX_TEXT_FIELD_CHARS = 2000
 DEFAULT_CHANNELS = ["EEG1", "EEG2", "EMG", "ACC"]
+LOCAL_HOSTS = {"127.0.0.1", "::1", "localhost"}
+LOCAL_APP_ENVS = {"local", "dev", "development", "test"}
+SENSITIVE_PAYLOAD_KEYS = {
+    "source_path",
+    "source_path_display",
+    "local_source_path",
+    "absolute_path",
+    "root",
+    "source_folder_display",
+}
+ABSOLUTE_PATH_PATTERNS = (
+    re.compile(r"(?i)\b[a-z]:[\\/][^\r\n\t\"<>|]+"),
+    re.compile(r"\\\\[^\\/\s]+[\\/][^\r\n\t\"<>|]+"),
+    re.compile(r"(?<![\w:])/(?:Users|home|mnt|var|tmp|opt|root|srv|data|Volumes)[^\r\n\t\"<>|]*"),
+)
 
 
 def _seed(event_id: str, start_sec: float, duration_sec: float, event_type: str, priority: str, channels: list[str]) -> dict[str, Any]:
@@ -69,21 +92,68 @@ HE_CANDIDATE_SEEDS: dict[str, list[dict[str, Any]]] = {
     ],
 }
 
-LAB_REVIEW_SESSIONS: dict[str, dict[str, Any]] = {}
+LAB_REVIEW_SESSIONS: OrderedDict[str, dict[str, Any]] = OrderedDict()
 
 
 def _env_flag(name: str) -> bool:
     return os.getenv(name, "").strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _host_without_port(value: str) -> str:
+    text = (value or "").strip().lower()
+    if not text:
+        return ""
+    parsed = urlsplit(text if "://" in text else f"//{text}")
+    host = parsed.hostname or text
+    return host.strip("[]")
+
+
+def _is_local_host_value(value: str) -> bool:
+    return _host_without_port(value) in LOCAL_HOSTS
+
+
+def _comma_hosts_are_local(value: str) -> bool:
+    if not value:
+        return True
+    return all(_is_local_host_value(part.strip()) for part in value.split(",") if part.strip())
+
+
+def _origin_headers_are_local(request: Request) -> bool:
+    for header in ("origin", "referer"):
+        value = request.headers.get(header, "")
+        if value and not _is_local_host_value(value):
+            return False
+    return True
+
+
+def _forwarded_headers_are_local(request: Request) -> bool:
+    forwarded = request.headers.get("forwarded", "")
+    if forwarded:
+        return False
+    if not _comma_hosts_are_local(request.headers.get("x-forwarded-for", "")):
+        return False
+    if not _comma_hosts_are_local(request.headers.get("x-real-ip", "")):
+        return False
+    if not _comma_hosts_are_local(request.headers.get("x-forwarded-host", "")):
+        return False
+    return True
+
+
 def _is_local_request(request: Request) -> bool:
-    host = (request.client.host if request.client else "") or ""
-    return host in {"127.0.0.1", "::1", "localhost"}
+    client_host = (request.client.host if request.client else "") or ""
+    return (
+        _is_local_host_value(client_host)
+        and _is_local_host_value(request.headers.get("host", ""))
+        and _origin_headers_are_local(request)
+        and _forwarded_headers_are_local(request)
+    )
 
 
 def require_lab_local_request(request: Request) -> None:
     if not _env_flag(LAB_API_ENV):
         raise HTTPException(status_code=404, detail="Lab epilepsy full-flow API is disabled")
+    if os.getenv(APP_ENV, "").strip().lower() not in LOCAL_APP_ENVS:
+        raise HTTPException(status_code=404, detail="Lab epilepsy full-flow API requires explicit local development environment")
     if not _is_local_request(request):
         raise HTTPException(status_code=403, detail="Lab epilepsy full-flow API is local-only")
 
@@ -98,15 +168,38 @@ def _sample_root() -> Path:
     return root
 
 
-def _local_paths_allowed(request: Request) -> bool:
-    return _is_local_request(request) and _env_flag(SHOW_LOCAL_PATHS_ENV)
+def _sanitize_payload(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {
+            key: _sanitize_payload(item)
+            for key, item in value.items()
+            if str(key).lower() not in SENSITIVE_PAYLOAD_KEYS
+        }
+    if isinstance(value, list):
+        return [_sanitize_payload(item) for item in value]
+    if isinstance(value, str):
+        text = value[:MAX_TEXT_FIELD_CHARS]
+        for pattern in ABSOLUTE_PATH_PATTERNS:
+            text = pattern.sub("[local_path_redacted]", text)
+        return text
+    return value
+
+
+def _require_object_list(value: Any, field_name: str, max_items: int) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        raise HTTPException(status_code=422, detail=f"{field_name} must be a list")
+    if len(value) > max_items:
+        raise HTTPException(status_code=413, detail=f"{field_name} exceeds {max_items} items")
+    if not all(isinstance(item, dict) for item in value):
+        raise HTTPException(status_code=422, detail=f"{field_name} items must be objects")
+    return value
 
 
 def _sanitized_record(record: dict[str, Any]) -> dict[str, Any]:
     cleaned = {
-        key: value
+        key: _sanitize_payload(value)
         for key, value in record.items()
-        if key not in {"source_path", "source_path_display", "local_source_path", "absolute_path", "root"}
+        if str(key).lower() not in SENSITIVE_PAYLOAD_KEYS
     }
     filename = cleaned.get("filename")
     if filename:
@@ -160,19 +253,12 @@ def _record_payload(path: Path, request: Request, include_metadata: bool = False
         "filename": path.name,
         "format": path.suffix.lower().lstrip("."),
         "size_bytes": path.stat().st_size,
-        "source_path_display": str(path) if _local_paths_allowed(request) else safe_source_path,
+        "source_path_display": safe_source_path,
         "safe_source_path": safe_source_path,
-        "path_visibility": "local_absolute" if _local_paths_allowed(request) else "safe_relative",
+        "path_visibility": "safe_relative",
         "candidate_seed_count": len(HE_CANDIDATE_SEEDS.get(record_id, [])),
-        "limitations": [
-            "候选时间来自内置科研演示种子，后端只计算对应真实 EDF 小窗口指标。",
-            "尚未运行全记录训练模型扫描，不能估计检测器灵敏度、特异性或漏检率。",
-            "正式交付必须替换为真实 evidence package、可追溯人工复核层和导出 manifest。",
-        ],
         "non_medical_scope": "research_screening_support_only",
     }
-    if _local_paths_allowed(request):
-        payload["local_source_path"] = str(path)
     if include_metadata:
         payload.update(_metadata_for_path(str(path)))
     return payload
@@ -249,16 +335,26 @@ def _window_data(path: Path, start_sec: float, duration_sec: float, channels: st
 def _cached_window_data(path_text: str, start_sec: float, duration_sec: float, channels: str, max_points: int) -> dict[str, Any]:
     return _window_data(
         Path(path_text),
-        start_sec=round(float(start_sec), 3),
-        duration_sec=round(float(duration_sec), 3),
+        start_sec=start_sec,
+        duration_sec=duration_sec,
         channels=channels,
-        max_points=int(max_points),
+        max_points=max_points,
+    )
+
+
+def _window_data_cached(path: Path, start_sec: float, duration_sec: float, channels: str, max_points: int) -> dict[str, Any]:
+    return _cached_window_data(
+        str(path),
+        round(float(start_sec), 3),
+        round(float(duration_sec), 3),
+        channels,
+        int(max_points),
     )
 
 
 def _candidate_metrics(path: Path, event: dict[str, Any]) -> dict[str, Any]:
-    window = _cached_window_data(
-        str(path),
+    window = _window_data_cached(
+        path,
         start_sec=max(0.0, float(event["start_sec"]) - 1.0),
         duration_sec=min(20.0, float(event["duration_sec"]) + 2.0),
         channels=",".join(event["channels"]),
@@ -270,7 +366,7 @@ def _candidate_metrics(path: Path, event: dict[str, Any]) -> dict[str, Any]:
         if arr.size:
             values.append(arr)
     if not values:
-        return {"rms_uv": 0.0, "ptp_uv": 0.0, "backend_score": 0.5}
+        return {"rms_uv": 0.0, "ptp_uv": 0.0, "preview_rms_ptp_rank_score": 0.5}
     data = np.vstack(values)
     rms = float(np.sqrt(np.nanmean(np.square(data))))
     ptp = float(np.nanpercentile(data, 99) - np.nanpercentile(data, 1))
@@ -278,20 +374,18 @@ def _candidate_metrics(path: Path, event: dict[str, Any]) -> dict[str, Any]:
     return {
         "rms_uv": round(rms, 4),
         "ptp_uv": round(ptp, 4),
-        "backend_score": round(score, 4),
+        "preview_rms_ptp_rank_score": round(score, 4),
     }
 
 
 @router.get("/lab/epilepsy-full-flow/records")
 def list_he_records(request: Request, inspect: bool = Query(False)) -> dict[str, Any]:
-    root = _sample_root()
     records = [_record_payload(path, request, include_metadata=inspect) for path in _sample_paths()]
-    root_display = str(root) if _local_paths_allowed(request) else SAFE_SAMPLE_ROOT
     return {
-        "root": root_display,
+        "root": SAFE_SAMPLE_ROOT,
         "safe_root": SAFE_SAMPLE_ROOT,
         "is_local_request": _is_local_request(request),
-        "path_visibility": "local_absolute" if _local_paths_allowed(request) else "safe_relative",
+        "path_visibility": "safe_relative",
         "records": records,
         "non_medical_scope": "research_screening_support_only",
     }
@@ -320,13 +414,17 @@ def generate_he_candidates(record_id: str, request: Request) -> dict[str, Any]:
     candidates = []
     for index, seed in enumerate(seeds, start=1):
         metrics = _candidate_metrics(path, seed)
+        preview_score = metrics["preview_rms_ptp_rank_score"]
         candidates.append({
             **seed,
             "id": seed["event_id"],
             "index": index,
-            "score": metrics["backend_score"],
+            "preview_rms_ptp_rank_score": preview_score,
+            "score_kind": "preview_rms_ptp_rank_not_probability",
+            "score_note": "RMS/PTP 小窗口预览排序值，不是临床概率、检测置信度、敏感性/特异性或诊断结论。",
             "backend_metrics": metrics,
             "source": "seeded_time_real_edf_window_metrics",
+            "event_type_scope": "candidate_label_only",
             "evidence_window": {
                 "start_sec": max(0.0, float(seed["start_sec"]) - 10.0),
                 "duration_sec": min(30.0, float(seed["duration_sec"]) + 20.0),
@@ -339,7 +437,7 @@ def generate_he_candidates(record_id: str, request: Request) -> dict[str, Any]:
         "candidate_source": "seeded_candidate_times_with_real_edf_window_metrics_v2",
         "algorithm_status": "lab_preview_not_validated_detector",
         "limitations": [
-            "候选时间点来自 HE 开发种子，后端分数来自真实 EDF 小窗口指标。",
+            "候选时间点来自 HE 开发种子，后端预览排序值来自真实 EDF 小窗口 RMS/PTP 指标，不是概率。",
             "尚未完成全记录训练模型扫描，不能估计敏感性或特异性。",
             "正式报告仍需 evidence package 和人工复核层。",
         ],
@@ -361,36 +459,48 @@ def he_waveform_window(
     max_points: int = Query(2000, ge=100, le=MAX_WAVEFORM_POINTS),
 ) -> dict[str, Any]:
     path = _sample_path(record_id)
-    return _cached_window_data(str(path), start_sec=start_sec, duration_sec=duration_sec, channels=channels, max_points=max_points)
+    return _window_data_cached(path, start_sec=start_sec, duration_sec=duration_sec, channels=channels, max_points=max_points)
 
 
 @router.post("/lab/epilepsy-full-flow/review-sessions")
 def save_lab_review_session(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    payload_chars = len(str(payload))
+    if payload_chars > MAX_REVIEW_PAYLOAD_CHARS:
+        raise HTTPException(status_code=413, detail=f"review session payload exceeds {MAX_REVIEW_PAYLOAD_CHARS} characters")
     if payload.get("non_medical_scope") != "research_screening_support_only":
         raise HTTPException(status_code=422, detail="non_medical_scope must be research_screening_support_only")
     record = payload.get("record") or {}
     events = payload.get("reviewed_events") or []
+    actions = payload.get("actions") or []
+    if not isinstance(record, dict):
+        raise HTTPException(status_code=422, detail="record must be an object")
     if not record.get("filename"):
         raise HTTPException(status_code=422, detail="record.filename is required")
-    if not isinstance(events, list):
-        raise HTTPException(status_code=422, detail="reviewed_events must be a list")
+    events = _require_object_list(events, "reviewed_events", MAX_REVIEW_EVENTS)
+    actions = _require_object_list(actions, "actions", MAX_REVIEW_ACTIONS)
     session_id = f"lab_ep_review_{uuid4().hex[:12]}"
     saved_at = datetime.now(timezone.utc).isoformat()
     stored = {
         "session_id": session_id,
         "saved_at": saved_at,
+        "generated_at": _sanitize_payload(payload.get("generated_at") or payload.get("created_at")),
         "schema_version": payload.get("schema_version"),
         "review_session_schema_version": payload.get("review_session_schema_version"),
         "non_medical_scope": payload.get("non_medical_scope"),
         "record": _sanitized_record(record),
-        "summary": payload.get("summary") or {},
-        "event_reviews": payload.get("event_reviews") or {},
-        "reviewed_events": events,
-        "actions": payload.get("actions") or [],
+        "context": _sanitize_payload(payload.get("context") or {}),
+        "model": _sanitize_payload(payload.get("model") or {}),
+        "summary": _sanitize_payload(payload.get("summary") or {}),
+        "event_reviews": _sanitize_payload(payload.get("event_reviews") or {}),
+        "reviewed_events": _sanitize_payload(events[:MAX_REVIEW_EVENTS]),
+        "actions": _sanitize_payload(actions[-MAX_REVIEW_ACTIONS:]),
         "source": "lab_epilepsy_full_flow_backend_memory_sanitized",
         "storage": "volatile_lab_memory",
     }
     LAB_REVIEW_SESSIONS[session_id] = stored
+    LAB_REVIEW_SESSIONS.move_to_end(session_id)
+    while len(LAB_REVIEW_SESSIONS) > MAX_REVIEW_SESSIONS:
+        LAB_REVIEW_SESSIONS.popitem(last=False)
     return {
         "session_id": session_id,
         "saved_at": saved_at,

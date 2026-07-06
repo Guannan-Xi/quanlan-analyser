@@ -1,5 +1,6 @@
 const DEFAULT_API_BASE = ["localhost", "127.0.0.1"].includes(window.location.hostname) ? "http://127.0.0.1:8001/api" : "/api";
 const API_BASE = new URLSearchParams(window.location.search).get("api") || DEFAULT_API_BASE;
+const AUTH_KEY = "qlanalyser_auth_session";
 
 const state = {
   project: null,
@@ -96,7 +97,7 @@ const MODULES = {
     ],
   },
   epilepsy_std: {
-    title: "癫痫样事件筛查 / STD 阈值",
+    title: "癫痫样候选事件复核预览 / STD 阈值",
     workflow: "epilepsy_std_threshold",
     backendModule: "epilepsy",
     workbenchPage: "./epilepsy-workbench.html",
@@ -109,7 +110,7 @@ const MODULES = {
     fields: EPILEPSY_STD_FIELDS,
   },
   epilepsy_lab_std: {
-    title: "癫痫样事件筛查 / 实验室同步测试",
+    title: "癫痫样候选事件复核预览 / 实验室同步测试",
     workflow: "epilepsy_std_threshold",
     backendModule: "epilepsy",
     workbenchPage: "./epilepsy-workbench.html",
@@ -117,7 +118,7 @@ const MODULES = {
     statusLabel: "同源试跑",
     fixedParameters: {
       method: "std_threshold",
-      display_alias: "癫痫样事件筛查 / 实验室同步测试",
+      display_alias: "癫痫样候选事件复核预览 / 实验室同步测试",
       lab_mode: true,
       lab_fixture_id: "epilepsy_std_demo_high_amplitude_v1",
       sync_mirror_note: "STD current runnable lab mirror; ML high-fidelity migration pending.",
@@ -140,7 +141,7 @@ const MODULES = {
       "TRF = Temporal Response Function，属于连续刺激-神经响应建模，后续可单独开放为连续刺激响应分析。",
     ],
     statusLabel: "时频方法",
-    lifecycle: "当前可用方法",
+    lifecycle: "实验室预览",
     fields: [
       ["event_id", "事件编号（可选）", "text", ""],
       ["tmin", "分段开始（秒）", "number", "-0.2"],
@@ -159,7 +160,7 @@ const MODULES = {
     workflow: "pac_cfc",
     description: "运行单记录相位-振幅耦合分析，导出 MI 表、相位分箱、耦合图和动态曲线；结果不能单独解释为因果机制。",
     statusLabel: "耦合方法",
-    lifecycle: "当前可用方法",
+    lifecycle: "实验室预览",
     fields: [
       ["channels", "通道，用英文逗号分隔", "text", "Cz,Pz"],
       ["phase_freqs", "相位频率中心（Hz）", "text", "4,6,8"],
@@ -209,7 +210,7 @@ const MODULES = {
     workflow: "reference_csd",
     description: "运行 CSD 传感器空间滤波并导出前后对照结果；重参考设置属于数据准备，不作为分析方法卡片。",
     statusLabel: "需通道位置",
-    lifecycle: "当前可用方法",
+    lifecycle: "实验室预览",
     fields: [
       ["reference_mode", "空间滤波模式", "select", "csd", ["csd", "average", "keep_original", "specific_channels", "bipolar"]],
       ["ref_channels", "参考通道，用英文逗号分隔", "text", ""],
@@ -230,7 +231,7 @@ const MODULES = {
     fixedParameters: { analysis_family: "psd" },
     description: "使用多窗谱估计计算连续 EEG 的 PSD；这是频谱功率方法，不与事件锁定 TFR 合并。",
     statusLabel: "多窗谱方法",
-    lifecycle: "当前可用方法",
+    lifecycle: "实验室预览",
     fields: [
       ["fmin", "最低频率（Hz）", "number", "1"],
       ["fmax", "最高频率（Hz）", "number", "40"],
@@ -250,7 +251,7 @@ const MODULES = {
     fixedParameters: { analysis_family: "tfr" },
     description: "使用多窗方法计算事件锁定时频功率和可选 ITC；这是 TFR 方法，不与多窗 PSD 合并。",
     statusLabel: "多窗时频方法",
-    lifecycle: "当前可用方法",
+    lifecycle: "实验室预览",
     fields: [
       ["event_id", "事件编号（可选）", "text", ""],
       ["tmin", "分段开始（秒）", "number", "-0.2"],
@@ -273,7 +274,7 @@ const MODULES = {
     workflow: "connectivity",
     description: "运行单记录传感器空间连接性分析，导出矩阵、边排序和图；结果不证明信息流或因果方向。",
     statusLabel: "连接性方法",
-    lifecycle: "当前可用方法",
+    lifecycle: "实验室预览",
     fields: [
       ["method", "方法", "select", "correlation", ["correlation", "coherence"]],
       ["fmin", "最低频率（Hz）", "number", "8"],
@@ -314,50 +315,50 @@ const METHOD_GROUPS = [
   },
   {
     id: "event-screening-research",
-    title: "事件筛查 / 癫痫样事件",
-    lifecycle: "内部验证",
-    description: "癫痫样事件筛查用于科研辅助复核候选高幅 epoch；不作为诊断、确诊、治疗或临床决策。",
+    title: "癫痫样候选事件复核预览",
+    lifecycle: "内部验证 / 非正式交付",
+    description: "癫痫样候选事件入口用于科研辅助复核高幅 epoch 候选；不作为诊断、确诊、治疗或临床决策。",
     ids: ["epilepsy_std", "epilepsy_lab_std"],
   },
   {
     id: "event-locked-time-frequency",
     title: "事件锁定时频分析",
-    lifecycle: "当前可用方法",
+    lifecycle: "实验室预览",
     description: "TFR 是方法入口；ERSP、ITC 与 ERS-like/ERD-like 解释都来自同一时频结果。TRF 是连续刺激响应函数建模，不并入本组。",
     ids: ["tfr"],
   },
   {
     id: "multitaper-spectral-power",
     title: "多窗连续频谱功率",
-    lifecycle: "当前可用方法",
+    lifecycle: "实验室预览",
     description: "多窗 PSD 是连续频谱功率估计方法，单独评审，不与事件锁定 TFR 合并。",
     ids: ["multitaper_psd"],
   },
   {
     id: "multitaper-time-frequency",
     title: "事件锁定多窗时频分析",
-    lifecycle: "当前可用方法",
+    lifecycle: "实验室预览",
     description: "多窗 TFR 是事件锁定时频方法，单独评审；ITC 是可选输出指标，baseline 口径需要随结果报告保留。",
     ids: ["multitaper_tfr"],
   },
   {
     id: "csd-spatial-filter",
     title: "CSD 空间滤波",
-    lifecycle: "当前可用方法",
+    lifecycle: "实验室预览",
     description: "CSD 用于传感器空间的空间滤波；重参考设置归入数据准备，不作为分析方法。",
     ids: ["reference_csd"],
   },
   {
     id: "cross-frequency-coupling",
     title: "跨频耦合",
-    lifecycle: "当前可用方法",
+    lifecycle: "实验室预览",
     description: "PAC / CFC 描述同一记录中低频相位和高频振幅之间的耦合，不等同于通道间连接性。",
     ids: ["pac", "pac_v2"],
   },
   {
     id: "sensor-connectivity",
     title: "传感器连接性",
-    lifecycle: "当前可用方法",
+    lifecycle: "实验室预览",
     description: "连接性分析描述通道之间的相关或相干结构，不与 PAC/CFC 合并。",
     ids: ["connectivity"],
   },
@@ -397,6 +398,21 @@ function api(path) {
   return `${API_BASE.replace(/\/$/, "")}${path}`;
 }
 
+function storedAuthSession() {
+  try {
+    return JSON.parse(localStorage.getItem(AUTH_KEY) || sessionStorage.getItem(AUTH_KEY) || "{}");
+  } catch (_) {
+    return {};
+  }
+}
+
+function withAuthHeaders(headers = {}) {
+  const next = { ...headers };
+  const token = storedAuthSession()?.token;
+  if (token && !next.Authorization) next.Authorization = `Bearer ${token}`;
+  return next;
+}
+
 function publicArtifactLabel(item) {
   const raw = item?.label || item?.artifact_type || item?.file_name || item?.path || "output";
   const withoutQuery = String(raw).split(/[?#]/)[0];
@@ -421,7 +437,8 @@ function readableErrorDetail(value, fallback) {
 }
 
 async function apiJson(path, options = {}) {
-  const response = await fetch(api(path), options);
+  const headers = withAuthHeaders(options.headers || {});
+  const response = await fetch(api(path), { ...options, headers });
   if (!response.ok) {
     let detail = `${response.status} ${response.statusText}`;
     try {
@@ -855,7 +872,7 @@ function renderModulePanel(id, module, hidden = false) {
   const boundaryNotes = module.boundaryNotes?.length ? `<div class="method-boundary-notes" aria-label="${h(module.title)}科学边界">
       ${module.boundaryNotes.map((note) => `<span>${h(note)}</span>`).join("")}
     </div>` : "";
-  const workbenchLink = module.workbenchPage ? `<div class="module-workbench-link"><a class="btn primary" href="${h(module.workbenchPage)}?lab=1&api=${encodeURIComponent(API_BASE)}">${icon("monitor-cog")}打开癫痫分析工作台</a><small>进入参数、候选事件、epoch 时间轴和人工复核界面。</small></div>` : "";
+  const workbenchLink = module.workbenchPage ? `<div class="module-workbench-link"><a class="btn primary" href="${h(module.workbenchPage)}?lab=1&api=${encodeURIComponent(API_BASE)}">${icon("monitor-cog")}打开癫痫候选事件实验室复核预览台</a><small>进入预览参数、候选事件、epoch 时间轴和人工复核界面；非正式诊断或交付入口。</small></div>` : "";
   return `<section class="method-panel" id="module-${h(id)}" data-method-panel="${h(id)}" ${hidden ? "hidden" : ""}>
     <div class="method-panel-head"><strong>${h(module.title)}</strong><span>${h(module.statusLabel || module.lifecycle || "可运行")}</span></div>
     <p>${h(module.description)}</p>
@@ -894,7 +911,7 @@ function renderMethodGroupCard(group) {
     <div class="module-card-top"><span>${h(group.lifecycle)}</span><strong>${h(group.ids.length)} 个入口</strong></div>
     <h2>${h(group.title)}</h2>
     <p>${h(group.description)}</p>
-    <div class="method-contract"><span>真实分析</span><span>参数记录</span><span>结果文件</span></div>
+    <div class="method-contract"><span>流程试跑</span><span>参数记录</span><span>结果文件</span></div>
     ${group.ids.length > 1 ? `<div class="method-switcher" role="tablist" aria-label="${h(group.title)}">
       ${group.ids.map((id, index) => `<button class="method-switch${index === 0 ? " active" : ""}" type="button" role="tab" aria-selected="${index === 0 ? "true" : "false"}" data-method-switch="${h(group.id)}" data-target-method="${h(id)}">
         <strong>${h(MODULES[id].title)}</strong><span>${h(MODULES[id].statusLabel || MODULES[id].lifecycle || "当前方法")}</span>
@@ -1063,10 +1080,10 @@ function renderPage() {
   </header>
   <main class="lab-wrap">
     <section class="module-hero">
-      <div class="hero-kicker"><span class="status enabled">真实分析流程</span><span class="status glass">可用教学数据</span><span class="status glass">9 项分析能力 + 同步测试入口</span></div>
+      <div class="hero-kicker"><span class="status enabled">科研分析底座</span><span class="status glass">教学数据可试跑</span><span class="status glass">稳定能力 + 实验室预览入口</span></div>
       <p class="eyebrow">分析方法库</p>
-      <h1>上传一份 EEG，查看并试用当前分析方法</h1>
-      <p>这里帮助科研用户先确认数据可分析性，再分别查看 PSD、ERP、TFR、多窗、参考变换、PAC 和连接性。每个方法都会保留参数记录、结果文件和解释边界。</p>
+      <h1>上传一份 EEG，查看稳定方法和实验室预览入口</h1>
+      <p>这里帮助科研用户先确认数据可分析性，再分别查看 PSD、ERP 与实验室预览方法。稳定方法可用于 V01 科研流程；预览方法只验证参数、产物和解释边界。</p>
       <div class="hero-proof-grid" aria-label="分析方法能力概览">
         <div><strong>01</strong><span>数据准备与 QC 保留</span></div>
         <div><strong>02</strong><span>按科学目的拆分方法</span></div>
@@ -1085,8 +1102,8 @@ function renderPage() {
         <a href="#method-group-event-locked-time-domain">事件锁定时域</a>
       </div>
       <div>
-        <span>当前可用方法</span>
-        <a href="#method-group-event-screening-research">事件筛查 / 癫痫样事件</a>
+        <span>实验室预览方法</span>
+        <a href="#method-group-event-screening-research">癫痫样候选事件复核预览</a>
         <a href="#method-group-event-locked-time-frequency">事件锁定时频</a>
         <a href="#method-group-multitaper-spectral-power">多窗 PSD</a>
         <a href="#method-group-multitaper-time-frequency">多窗 TFR</a>
@@ -1099,7 +1116,7 @@ function renderPage() {
       <div class="source-copy">
         <p class="eyebrow">数据来源</p>
         <h2>上传或选择分析数据集</h2>
-        <p>无需先建立正式项目。你可以上传本地 EDF/FIF，也可以使用内置教学数据；每个方法都会按真实分析流程运行。</p>
+        <p>无需先建立正式项目。你可以上传本地 EDF/FIF，也可以使用内置教学数据；稳定方法按科研分析流程试跑，实验室预览入口仅验证流程和边界。</p>
       </div>
       <form class="runner-form source-form" onsubmit="return false;">
         <label>项目名称<input id="labProjectName" type="text" value="分析方法预览项目" /></label>
@@ -1127,9 +1144,9 @@ function renderPage() {
       className: "p0-workflow",
     })}
     ${renderModuleSection({
-      title: "当前可用分析方法",
-      eyebrow: "按科研问题归类",
-      description: "方法按科学问题拆开：时频动态、多窗估计、CSD 空间滤波、跨频耦合和通道间连接性分别查看；参数、统计口径和解释边界随结果记录保存。",
+      title: "实验室预览分析方法",
+      eyebrow: "按科研问题归类 / 非正式交付",
+      description: "方法按科学问题拆开：时频动态、多窗估计、CSD 空间滤波、跨频耦合和通道间连接性分别查看；这些入口用于验证参数、统计口径和解释边界，不作为 V01 正式交付承诺。",
       groups: METHOD_GROUPS.filter((group) => group.ids.some((id) => ADVANCED_MODULE_IDS.includes(id)) && !group.ids.some((id) => STABLE_ANALYSIS_MODULE_IDS.includes(id))),
       className: "advanced-workflow",
     })}

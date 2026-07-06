@@ -345,7 +345,7 @@ const teachingSteps = [
     view: "publication",
     selector: '[data-testid="report-delivery-workbench"]',
     title: "示例模式 6/6：报告",
-    body: "查看结果后再生成报告，下载图表、表格和复现记录。",
+    body: "查看结果后再生成复核记录，下载图表、表格和复现记录。",
     require: () => Boolean(state.real.eegFile?.id),
     blocked: "请先完成示例数据载入。",
   },
@@ -389,10 +389,10 @@ const titles = {
   journey: "交付质检",
   analysis: "检查 EEG 数据",
   workflow: "选择分析方法",
-  epilepsyWorkbenchInline: "癫痫样候选事件复核台",
+  epilepsyWorkbenchInline: "癫痫样候选事件复核预览",
   paradigms: "\u8303\u5f0f\u5e93",
   statistics: "查看分析结果",
-  publication: "生成和下载报告",
+  publication: "生成和下载复核记录",
   upload: "\u6570\u636e\u6587\u4ef6",
   storage: "上传或选择 EEG 数据",
   billing: "服务记录",
@@ -459,7 +459,7 @@ const journeyDetails = [
     view: "statistics",
   },
   {
-    title: "第 6 步：生成报告",
+    title: "第 6 步：生成复核记录",
     body: "下载结果材料，用于复核、共享或归档。",
     action: "图表、表格和复现记录会一起保存在下载材料中。",
     view: "publication",
@@ -2272,9 +2272,9 @@ function updateRealActionGate() {
     ? "数据准备已确认，可以继续分析"
     : "请先完成数据准备并确认方案";
   const epilepsyWorkbenchTitle = planReady
-    ? "进入癫痫样候选事件复核台，先初筛再人工矫正"
+    ? "进入癫痫样候选事件复核预览，先初筛再人工复核标注"
     : teachingEpilepsyWorkbenchReady
-      ? "示例模式可直接进入癫痫样候选事件复核台；系统会自动载入癫痫示例数据和准备方案"
+      ? "示例模式可直接进入癫痫样候选事件复核预览；系统会自动载入癫痫示例数据和准备方案"
       : planTitle;
   setRealActionEnabled("create-project", !hasProject, hasProject ? "当前已有项目，可继续选择或编辑" : "创建当前项目");
   setRealActionEnabled("upload-eeg", hasProject && hasPendingUpload, hasProject ? (hasPendingUpload ? "上传所选 EEG 文件到当前项目" : "请先选择 EEG 文件") : "请先选择或创建项目");
@@ -2297,7 +2297,7 @@ function updateRealActionGate() {
   });
   const task = latestAnalysisTask();
   const canCreateReport = Boolean(task && state.real.resultsViewed);
-  setRealActionEnabled("create-report", canCreateReport, canCreateReport ? "基于已查看的分析结果生成报告" : task ? "请先查看分析结果，再生成报告" : "请先完成一个分析任务");
+  setRealActionEnabled("create-report", canCreateReport, canCreateReport ? "基于已查看的分析结果生成复核记录" : task ? "请先查看分析结果，再生成复核记录" : "请先完成一个分析任务");
   const gate = qs('[data-testid="analysis-preparation-gate"]');
   if (gate) {
     gate.hidden = planReady;
@@ -3953,14 +3953,14 @@ async function bootstrapEpilepsyDeepLinkWorkbench(reason = "deeplink") {
   applyTeachingModeChrome();
   setView("epilepsyWorkbenchInline");
   renderInlineEpilepsyWorkbench();
-  setRealStatus("正在进入癫痫样候选事件复核台：自动准备示例 EDF 数据。", "info");
+  setRealStatus("正在进入癫痫样候选事件复核预览：自动准备示例 EDF 数据。", "info");
   try {
     await loadTeachingDatasetForModule("epilepsy_ml");
     await ensureTeachingSandboxReady({ preview: false, moduleName: "epilepsy_ml" });
     setView("epilepsyWorkbenchInline");
     renderInlineEpilepsyWorkbench();
     state.deepLink.epilepsyBootstrapStatus = "ready";
-    recordUiAction("epilepsy:deeplink-bootstrap", "pass", "已进入癫痫样候选事件复核台，并加载示例 EDF 数据。", {
+    recordUiAction("epilepsy:deeplink-bootstrap", "pass", "已进入癫痫样候选事件复核预览，并加载示例 EDF 数据。", {
       reason,
       project_id: state.real.project?.id || "",
       file_id: state.real.eegFile?.id || "",
@@ -3973,7 +3973,7 @@ async function bootstrapEpilepsyDeepLinkWorkbench(reason = "deeplink") {
     setView("epilepsyWorkbenchInline");
     renderInlineEpilepsyWorkbench();
     recordUiAction("epilepsy:deeplink-bootstrap", "blocked", state.deepLink.epilepsyBootstrapError);
-    showToast(`进入癫痫样候选事件复核台未完成：${state.deepLink.epilepsyBootstrapError}`);
+    showToast(`进入癫痫样候选事件复核预览未完成：${state.deepLink.epilepsyBootstrapError}`);
     return false;
   } finally {
     state.deepLink.epilepsyBootstrapInFlight = false;
@@ -4202,7 +4202,7 @@ function startInlineEpilepsyProgressHeartbeat(eegFile = {}) {
 
 async function runRealTask(moduleName, workflowId) {
   const isInlineEpilepsy = moduleName === "epilepsy_ml";
-  if (isInlineEpilepsy) setInlineEpilepsyScreeningProgress("submitting", 8, "已收到操作，正在提交癫痫样事件初筛任务。");
+  if (isInlineEpilepsy) setInlineEpilepsyScreeningProgress("submitting", 8, "已收到操作，正在提交癫痫样候选事件初筛任务。");
   if (state.teaching.active) await ensureTeachingSandboxReady({ preview: false, moduleName });
   const project = await ensureRealProject();
   const eegFile = currentWorkspaceFile() || (state.teaching.active ? null : await uploadRealEeg());
@@ -4224,7 +4224,7 @@ async function runRealTask(moduleName, workflowId) {
   setRealStatus(`正在运行 ${moduleDisplayName(moduleName)}${planText}`, "info");
   let stopEpilepsyProgress = null;
   if (isInlineEpilepsy) {
-    setInlineEpilepsyScreeningProgress("running", 28, "已提交任务，正在进行癫痫样事件初筛。");
+    setInlineEpilepsyScreeningProgress("running", 28, "已提交任务，正在进行癫痫样候选事件初筛。");
     state.real.tasks[moduleName] = {
       id: `pending_${Date.now()}`,
       status: "running",
@@ -4278,7 +4278,7 @@ async function runRealTask(moduleName, workflowId) {
   state.real.latestTaskModule = moduleName;
   state.real.resultsViewed = false;
   state.real.report = null;
-  if (isInlineEpilepsy) setInlineEpilepsyScreeningProgress("loading_results", 72, "初筛任务已返回，正在读取模型候选标记与候选事件结果。");
+  if (isInlineEpilepsy) setInlineEpilepsyScreeningProgress("loading_results", 72, "初筛任务已返回，正在读取候选标记预览与候选事件结果。");
   if (moduleName === "epilepsy_ml" && isE2EAutomationContext()) {
     window.__QLANALYSER_LAST_EPILEPSY_TASK__ = task;
     window.__QLANALYSER_EPILEPSY_E2E_TASK__ = task;
@@ -4301,8 +4301,8 @@ async function runRealTask(moduleName, workflowId) {
 }
 async function createRealReport() {
   const task = latestAnalysisTask();
-  if (!task) throw new Error("请先完成至少一个分析任务，再生成报告。");
-  if (!state.real.resultsViewed) throw new Error("请先查看分析结果，再生成报告。");
+  if (!task) throw new Error("请先完成至少一个分析任务，再生成复核记录。");
+  if (!state.real.resultsViewed) throw new Error("请先查看分析结果，再生成复核记录。");
   const project = await ensureRealProject();
   const title = qs("#realReportTitle")?.value.trim() || "Single-record EEG analysis report";
   const report = await apiJson("/reports", {
@@ -4314,7 +4314,7 @@ async function createRealReport() {
   addReportDownload(report);
   renderRealDelivery();
   setView("publication");
-  setRealStatus("报告已生成，可在报告页下载。", "ok");
+  setRealStatus("复核记录已生成，可在报告页下载。", "ok");
   return report;
 }
 
@@ -4331,7 +4331,7 @@ function moduleDisplayName(moduleName) {
     tfr: "TFR / ERSP / ITC",
     multitaper_psd: "Multitaper PSD",
     multitaper_tfr: "Multitaper TFR",
-    epilepsy_ml: "癫痫样事件初筛",
+    epilepsy_ml: "癫痫样候选事件初筛",
     reference_csd: "CSD 电流源密度计算",
     pac: "PAC 相位-振幅耦合",
     connectivity: "Connectivity 连接性分析",
@@ -4387,11 +4387,11 @@ function applyResultSurfaceCopy() {
     const action = task?.id ? null : getRecoveryActionForAnalysisFlow();
     delivery.innerHTML = `
       <article class="result-item result-empty-state" data-report-state="empty" data-testid="customer-empty-reports">
-        <strong>${viewedResults ? "生成报告" : task?.id ? "请先查看结果，再生成报告" : "请先完成分析并查看结果"}</strong>
+        <strong>${viewedResults ? "生成复核记录" : task?.id ? "请先查看结果，再生成复核记录" : "请先完成分析并查看结果"}</strong>
         <span>${viewedResults ? "已查看分析结果，可以整理图表、表格、方法记录和复现信息。" : task?.id ? "先到结果页确认图表、表格和质量提示。" : "完成一次分析任务后，先到结果页查看结果。"}</span>
         <div class="real-actions compact-actions">
           ${viewedResults
-            ? `<button class="primary-btn" type="button" data-real-action="create-report"><i data-lucide="file-output"></i><span>生成报告</span></button>`
+            ? `<button class="primary-btn" type="button" data-real-action="create-report"><i data-lucide="file-output"></i><span>生成复核记录</span></button>`
             : task?.id
               ? `<button class="primary-btn" type="button" data-view-jump="statistics"><i data-lucide="chart-line"></i><span>查看分析结果</span></button>`
             : `<button class="primary-btn" type="button" data-view-jump="${escapeHtml(action.view)}"><i data-lucide="${escapeHtml(action.icon)}"></i><span>${escapeHtml(action.label)}</span></button>`}
@@ -4456,11 +4456,11 @@ function readableArtifactLabel(artifact = {}) {
     [/erp_metrics|erp_metric|p300/, "ERP 指标表"],
     [/drop_log_summary|epoch_drop|reject/, "Epoch 剔除记录"],
     [/epilepsy_ml_event_timeline_figure|event_timeline/, "癫痫样候选事件初筛时间轴"],
-    [/epilepsy_ml_spectrogram_figure|spectrogram_preview/, "癫痫样事件初筛时频证据图"],
-    [/epilepsy_ml_spectrogram/, "癫痫样事件初筛时频数据"],
+    [/epilepsy_ml_spectrogram_figure|spectrogram_preview/, "癫痫样候选事件初筛时频证据图"],
+    [/epilepsy_ml_spectrogram/, "癫痫样候选事件初筛时频数据"],
     [/epilepsy.*epoch|epoch_predictions|epoch_scores/, "癫痫样事件 epoch 预测表"],
     [/epilepsy.*event|candidate_events|reviewed_events|final_review_events/, "癫痫样候选事件表"],
-    [/manual_corrections|review_actions|event_review/, "人工矫正记录"],
+    [/manual_corrections|review_actions|event_review/, "人工复核标注记录"],
     [/review_revision|review_session/, "复核版本记录"],
     [/model_manifest|epilepsy_ml_model_manifest/, "模型记录"],
     [/tfr_power_long|ersp|itc|time_frequency/, "时频功率明细表"],
@@ -4785,10 +4785,10 @@ function renderRealResultReview() {
   const reportAction = task && !state.real.report
     ? `
       <article class="result-item" data-result-action="report">
-        <strong>下一步：生成报告</strong>
-        <span>确认结果图表、表格和参数记录后，再生成报告包。</span>
+        <strong>下一步：生成复核记录</strong>
+        <span>确认结果图表、表格和参数记录后，再生成科研交付材料。</span>
         <div class="real-actions compact-actions">
-          <button class="primary-btn" type="button" data-real-action="create-report"><i data-lucide="file-output"></i><span>生成报告</span></button>
+          <button class="primary-btn" type="button" data-real-action="create-report"><i data-lucide="file-output"></i><span>生成复核记录</span></button>
         </div>
       </article>
     `
@@ -5052,10 +5052,10 @@ function addReportDownload(report) {
   const htmlUrl = `${state.apiBase}/reports/${encodeURIComponent(report.id)}/html`;
   target.innerHTML = `
     <article class="result-item" data-report-id="${escapeHtml(report.id)}">
-      <strong>报告已生成</strong>
+      <strong>复核记录已生成</strong>
       <span>下载完整交付材料，包含图表、表格、方法记录和复现信息。</span>
       <div class="real-actions compact-actions">
-        <a class="primary-btn" data-report-download="package" data-report-id="${escapeHtml(report.id)}" href="${escapeHtml(packageUrl)}">下载报告包</a>
+        <a class="primary-btn" data-report-download="package" data-report-id="${escapeHtml(report.id)}" href="${escapeHtml(packageUrl)}">下载复核记录包</a>
         <a class="ghost-btn" data-report-download="html" data-report-id="${escapeHtml(report.id)}" href="${escapeHtml(htmlUrl)}">在线预览</a>
       </div>
     </article>
@@ -5077,7 +5077,7 @@ function renderRealDelivery() {
     const action = task?.id ? null : getRecoveryActionForAnalysisFlow();
     target.innerHTML = `
       <article class="result-item result-empty-state" data-report-state="empty" data-testid="customer-empty-reports">
-        <strong>${viewedResults ? "生成报告" : task?.id ? "请先查看结果，再生成报告" : "请先完成分析并查看结果"}</strong>
+        <strong>${viewedResults ? "生成复核记录" : task?.id ? "请先查看结果，再生成复核记录" : "请先完成分析并查看结果"}</strong>
         <span>${viewedResults
           ? "已查看分析结果，可以整理图表、表格、方法记录和复现信息。"
           : task?.id
@@ -5086,7 +5086,7 @@ function renderRealDelivery() {
         </span>
         <div class="real-actions compact-actions">
           ${viewedResults
-            ? `<button class="primary-btn" type="button" data-real-action="create-report"><i data-lucide="file-output"></i><span>生成报告</span></button>`
+            ? `<button class="primary-btn" type="button" data-real-action="create-report"><i data-lucide="file-output"></i><span>生成复核记录</span></button>`
             : task?.id
               ? `<button class="primary-btn" type="button" data-view-jump="statistics"><i data-lucide="chart-line"></i><span>查看分析结果</span></button>`
             : `<button class="primary-btn" type="button" data-view-jump="${escapeHtml(action.view)}"><i data-lucide="${escapeHtml(action.icon)}"></i><span>${escapeHtml(action.label)}</span></button>`}
@@ -5100,7 +5100,7 @@ function renderRealDelivery() {
     <article class="result-item" data-report-state="empty">
       <strong>\u6682\u65e0\u53ef\u4e0b\u8f7d\u62a5\u544a</strong>
       <span>${task?.id
-        ? "请先查看分析结果，再生成报告。"
+        ? "请先查看分析结果，再生成复核记录。"
         : "请先确认数据准备并运行推荐分析，然后查看结果。"}</span>
       <div class="real-actions compact-actions">
         <button class="${task?.id ? "primary-btn" : "ghost-btn"}" type="button" ${task?.id ? 'data-view-jump="statistics"' : 'data-view-jump="analysis"'}>
@@ -5146,7 +5146,7 @@ async function handleRealAction(action) {
     "download-epoch-record": "\u4e0b\u8f7d 数据准备记录",
     "confirm-plan-inline": "\u786e\u8ba4\u6570\u636e\u51c6\u5907",
     "download-plan-json": "下载处理记录",
-    "create-report": "生成报告",
+    "create-report": "生成复核记录",
     "run-psd": "PSD 分析",
     "run-erp": "ERP 分析",
     "run-tfr": "TFR 时频分析",
@@ -5197,7 +5197,7 @@ async function handleRealAction(action) {
       if (["localhost", "127.0.0.1"].includes(window.location.hostname)) {
         window.__QLANALYSER_LAST_REAL_ACTION__ = { action, status: "failed", error: String(error.message || error) };
       }
-      setInlineEpilepsyScreeningProgress("failed", 100, `癫痫样事件初筛失败：${error.message || error}`);
+      setInlineEpilepsyScreeningProgress("failed", 100, `癫痫样候选事件初筛失败：${error.message || error}`);
     }
     const message = `${actionNames[action] || action}\u672a\u5b8c\u6210\uff1a${error.message || error}`;
     recordUiAction(`real:${action}`, "blocked", message);
@@ -5910,7 +5910,7 @@ async function ensureInlineEpilepsyReviewSession() {
   const task = inlineEpilepsyTask();
   const file = currentWorkspaceFile() || state.real.eegFile || {};
   const plan = state.real.plan || {};
-  if (!task?.id) throw new Error("请先运行癫痫样事件初筛，再保存人工矫正。");
+  if (!task?.id) throw new Error("请先运行癫痫样候选事件初筛，再保存人工复核标注。");
   const session = await apiJson(`/tasks/${encodeURIComponent(task.id)}/epilepsy-review-sessions`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -5935,7 +5935,7 @@ async function ensureInlineEpilepsyReviewSession() {
 }
 
 async function saveInlineEpilepsyReviewDraft() {
-  if (!state.epilepsyInline.draftCommands.length) throw new Error("暂无人工矫正草稿可保存。");
+  if (!state.epilepsyInline.draftCommands.length) throw new Error("暂无人工复核标注草稿可保存。");
   state.epilepsyInline.reviewSaveStatus = "saving";
   state.epilepsyInline.reviewSaveError = "";
   renderInlineEpilepsyWorkbench();
@@ -5961,7 +5961,7 @@ async function saveInlineEpilepsyReviewDraft() {
     state.epilepsyInline.reviewSaveError = "";
     state.epilepsyInline.draftSaved = true;
     state.epilepsyInline.published = false;
-    showToast("人工矫正草稿已保存到复核记录。");
+    showToast("人工复核标注草稿已保存到复核记录。");
   } catch (error) {
     state.epilepsyInline.reviewSaveStatus = "failed";
     state.epilepsyInline.reviewSaveError = error.message || String(error);
@@ -5973,7 +5973,7 @@ async function saveInlineEpilepsyReviewDraft() {
 }
 
 async function exportInlineEpilepsyReviewResults() {
-  if (!state.epilepsyInline.draftSaved || !state.epilepsyInline.reviewSession?.id) throw new Error("请先保存人工矫正草稿。");
+  if (!state.epilepsyInline.draftSaved || !state.epilepsyInline.reviewSession?.id) throw new Error("请先保存人工复核标注草稿。");
   state.epilepsyInline.exportStatus = "exporting";
   state.epilepsyInline.exportError = "";
   renderInlineEpilepsyWorkbench();
@@ -5988,7 +5988,7 @@ async function exportInlineEpilepsyReviewResults() {
     renderRealResultReview();
     renderRealDelivery();
     publishE2EState();
-    showToast("人工矫正结果已生成，可进入结果页查看。");
+    showToast("人工复核标注结果已生成，可进入结果页查看。");
   } catch (error) {
     state.epilepsyInline.exportStatus = "failed";
     state.epilepsyInline.exportError = error.message || String(error);
@@ -6506,7 +6506,7 @@ function renderInlineEpilepsyWorkbench() {
             <div class="inline-staging-title">
               <div>
                 <p class="eyebrow">分析任务 / 癫痫样候选事件复核</p>
-                <h2>癫痫样候选事件复核台</h2>
+                <h2>癫痫样候选事件复核预览</h2>
                 <p>用于候选事件初筛和人工复核。请先选择 EDF/EEG 数据，本页不提供诊断、确诊、治疗或临床分诊结论。</p>
               </div>
             </div>
@@ -6516,7 +6516,7 @@ function renderInlineEpilepsyWorkbench() {
         statusContainer.classList.add("single-empty-action");
         statusContainer.innerHTML = `
           <div class="status-title">请先完成数据选择和准备确认</div>
-          <div class="status-message">上传或选择已准备的 EEG 数据后，这里会显示波形、模型候选标记和人工复核工具。</div>
+          <div class="status-message">上传或选择已准备的 EEG 数据后，这里会显示波形、候选标记预览和人工复核工具。</div>
           <div class="status-actions">
             <button class="primary-btn" type="button" data-workbench-goto="storage"><span>上传或选择 EEG 数据</span></button>
           </div>`;
@@ -6566,8 +6566,8 @@ function renderInlineEpilepsyWorkbench() {
   const exportingReview = state.epilepsyInline.exportStatus === "exporting";
   const canSave = draftCount > 0 && !state.epilepsyInline.draftSaved && !savingReview;
   const canPublish = state.epilepsyInline.draftSaved && Boolean(state.epilepsyInline.reviewSession?.id) && !exportingReview && state.epilepsyInline.exportStatus !== "exported";
-  const correctionDisabledReason = resultReady ? "请选择一个候选事件后再进行人工矫正。" : "请先完成癫痫样事件初筛并载入候选事件。";
-  const saveDisabledReason = savingReview ? "正在保存复核草稿。" : draftCount ? "当前草稿已保存或正在等待后端返回。" : "请先选择候选事件并添加人工矫正草稿。";
+  const correctionDisabledReason = resultReady ? "请选择一个候选事件后再进行人工复核标注。" : "请先完成癫痫样候选事件初筛并载入候选事件。";
+  const saveDisabledReason = savingReview ? "正在保存复核草稿。" : draftCount ? "当前草稿已保存或正在等待后端返回。" : "请先选择候选事件并添加人工复核标注草稿。";
   const publishDisabledReason = state.epilepsyInline.exportStatus === "exported" ? "复核结果已发布到结果页。" : "请先保存复核记录，再发布到结果页。";
   const reviewSessionLabel = state.epilepsyInline.reviewSession?.id || "尚未保存";
   const exportLabel = state.epilepsyInline.exportStatus === "exported" ? "已生成复核结果" : state.epilepsyInline.exportStatus === "exporting" ? "正在生成复核结果" : "等待保存草稿";
@@ -6575,15 +6575,15 @@ function renderInlineEpilepsyWorkbench() {
   const teachingInline = Boolean(state.teaching.active && (isTeachingDemoProject(state.real.project) || isTeachingDemoFile(file)));
   const deepLinkPreparing = state.deepLink.epilepsyBootstrapStatus === "running" || state.deepLink.epilepsyBootstrapInFlight;
   const deepLinkFailed = state.deepLink.epilepsyBootstrapStatus === "failed";
-  const teachingBoundaryText = "\u6559\u5b66\u6a21\u5f0f\uff1a\u6b63\u5728\u4f7f\u7528\u5185\u7f6e\u5408\u6210\u766b\u75eb\u6837 EEG \u6570\u636e\uff0c\u53ef\u5b8c\u6574\u8bd5\u8dd1\u521d\u7b5b\u3001\u4eba\u5de5\u77eb\u6b63\u548c\u590d\u6838\u7ed3\u679c\u751f\u6210\uff1b\u4e0d\u4e0a\u4f20\u3001\u4e0d\u5220\u9664\u3001\u4e0d\u8986\u76d6\u4f60\u7684\u6b63\u5f0f\u6570\u636e\uff0c\u4e0d\u4f5c\u4e3a\u8bca\u65ad\u6216\u79d1\u5b66\u7ed3\u8bba\u3002";
+  const teachingBoundaryText = "\u6559\u5b66\u6a21\u5f0f\uff1a\u6b63\u5728\u4f7f\u7528\u5185\u7f6e\u5408\u6210\u766b\u75eb\u6837 EEG \u6570\u636e\uff0c\u53ef\u5b8c\u6574\u8bd5\u8dd1\u521d\u7b5b\u3001\u4eba\u5de5\u590d\u6838\u6807\u6ce8\u548c\u590d\u6838\u7ed3\u679c\u751f\u6210\uff1b\u4e0d\u4e0a\u4f20\u3001\u4e0d\u5220\u9664\u3001\u4e0d\u8986\u76d6\u4f60\u7684\u6b63\u5f0f\u6570\u636e\uff0c\u4e0d\u4f5c\u4e3a\u8bca\u65ad\u6216\u79d1\u5b66\u7ed3\u8bba\u3002";
   const context = qs('[data-testid="inline-epilepsy-context-header"]');
   if (context) {
     context.innerHTML = `
       <div class="inline-staging-title">
         <div>
           <p class="eyebrow">分析任务 / 主系统子页面</p>
-          <h2>癫痫样候选事件复核台</h2>
-          <p>继承已确认的数据准备方案，进入后先查看波形；再运行候选事件初筛，结合模型候选标记、事件表、时频证据与人工矫正形成复核草稿。科研支持用途，不用于诊断、确诊、治疗或临床分诊。</p>
+          <h2>癫痫样候选事件复核预览</h2>
+          <p>继承已确认的数据准备方案，进入后先查看波形；再运行候选事件初筛，结合候选标记预览、事件表、时频证据与人工复核标注形成复核草稿。科研支持用途，不用于诊断、确诊、治疗或临床分诊。</p>
         </div>
         <div class="real-actions compact-actions">
           <button class="ghost-btn" type="button" data-view-jump="workflow"><span>分析任务</span></button>
@@ -6606,12 +6606,12 @@ function renderInlineEpilepsyWorkbench() {
     const gateReason = planReady ? "准备方案已确认，可以运行后端初筛。" : "尚未确认数据准备方案：可以先查看波形，但不能运行初筛。";
     const screeningStatus = state.epilepsyInline.screeningStatus || (running ? "running" : completed ? "completed" : "idle");
     const screeningProgress = Math.max(0, Math.min(100, Number(state.epilepsyInline.screeningProgress || (running ? 35 : completed ? 100 : 0))));
-    const screeningMessage = state.epilepsyInline.screeningMessage || (running ? "\u7cfb\u7edf\u6b63\u5728\u8fdb\u884c\u766b\u75eb\u6837\u4e8b\u4ef6\u521d\u7b5b\u3002" : completed ? "\u766b\u75eb\u6837\u4e8b\u4ef6\u521d\u7b5b\u5b8c\u6210\uff0c\u53ef\u7ee7\u7eed\u4eba\u5de5\u77eb\u6b63\u3002" : "\u70b9\u51fb\u5f00\u59cb\u521d\u7b5b\u540e\uff0c\u7cfb\u7edf\u4f1a\u8bfb\u53d6\u5019\u9009\u4e8b\u4ef6\u548c\u6a21\u578b\u5019\u9009\u6807\u8bb0\u3002");
+    const screeningMessage = state.epilepsyInline.screeningMessage || (running ? "\u7cfb\u7edf\u6b63\u5728\u8fdb\u884c\u766b\u75eb\u6837\u5019\u9009\u4e8b\u4ef6\u521d\u7b5b\u3002" : completed ? "\u766b\u75eb\u6837\u5019\u9009\u4e8b\u4ef6\u521d\u7b5b\u5b8c\u6210\uff0c\u53ef\u7ee7\u7eed\u4eba\u5de5\u590d\u6838\u6807\u6ce8\u3002" : "\u70b9\u51fb\u5f00\u59cb\u521d\u7b5b\u540e\uff0c\u7cfb\u7edf\u4f1a\u8bfb\u53d6\u5019\u9009\u4e8b\u4ef6\u548c\u5019\u9009\u6807\u8bb0\u9884\u89c8\u3002");
     startPanel.innerHTML = `
       <div class="inline-staging-callout inline-workbench-toolbar">
         <div>
           <p class="eyebrow">操作台工具栏</p>
-          <h2>${completed ? "算法结果已载入，继续人工矫正" : "先阅片，再按需初筛"}</h2>
+          <h2>${completed ? "算法结果已载入，继续人工复核标注" : "先阅片，再按需初筛"}</h2>
           <p data-testid="inline-epilepsy-gate-reason">${escapeHtml(gateReason)} 波形、候选标记、时频证据与候选事件保持同一时间尺度。</p>
         </div>
         <div class="real-actions compact-actions">
@@ -6632,10 +6632,10 @@ function renderInlineEpilepsyWorkbench() {
       <div class="metric-grid compact-metrics">
         <article class="metric"><span>候选事件</span><strong>${counts.eventCount}</strong><small>来自本次结果文件</small></article>
         <article class="metric"><span>Epoch</span><strong>${counts.epochCount}</strong><small>来自模型分段结果</small></article>
-        <article class="metric"><span>候选命中</span><strong>${counts.seizureEpochs}</strong><small>模型候选标记</small></article>
-        <article class="metric"><span>人工矫正</span><strong>${draftCount}</strong><small>${state.epilepsyInline.draftSaved ? "已保存复核记录" : "本地草稿"}</small></article>
+        <article class="metric"><span>候选命中</span><strong>${counts.seizureEpochs}</strong><small>候选标记预览</small></article>
+        <article class="metric"><span>人工复核标注</span><strong>${draftCount}</strong><small>${state.epilepsyInline.draftSaved ? "已保存复核记录" : "本地草稿"}</small></article>
       </div>
-      <div class="segment-summary">源结果来自本次初筛任务；人工矫正只写复核版本，不覆盖原始算法输出。</div>
+      <div class="segment-summary">源结果来自本次初筛任务；人工复核标注只写复核版本，不覆盖原始算法输出。</div>
       ${state.epilepsyInline.resultLoadError ? `<p class="small-muted danger-text" data-testid="inline-epilepsy-result-load-error">结果读取错误：${escapeHtml(state.epilepsyInline.resultLoadError)}</p>` : ""}
     `;
   }
@@ -6651,7 +6651,7 @@ function renderInlineEpilepsyWorkbench() {
           const inWindow = (epochIndex * epochDurationSec < displayEndSec && (epochIndex + 1) * epochDurationSec > displayStartSec) ? " in-window" : "";
           return `<button type="button" class="${code === 1 ? "candidate" : ""}${active}${inWindow}" data-epilepsy-action="select-epoch" data-epoch-index="${escapeHtml(epochIndex)}" data-event-id="${escapeHtml(mappedEvent?.id || "")}" title="${mappedEvent ? "选择对应候选事件" : "该 epoch 暂无候选事件"}">${escapeHtml(String(code))}</button>`;
         }).join("")
-      : `<em>运行初筛后显示每个 epoch 的模型候选标记。</em>`;
+      : `<em>运行初筛后显示每个 epoch 的候选标记预览。</em>`;
     var epochDur = Number((state.epilepsyInline.epochRows[0] && state.epilepsyInline.epochRows[0].duration_sec) || (state.epilepsyInline.epochRows[0] && state.epilepsyInline.epochRows[0].duration) || 4);
     var totalEpochs = (state.epilepsyInline.epochRows || []).length;
     var totalDur = totalEpochs * epochDur;
@@ -6721,8 +6721,8 @@ function renderInlineEpilepsyWorkbench() {
     }).join("");
     var summaryBadge = "已判 " + (statusCounts.confirmed + statusCounts.rejected) + "/" + events.length;
     eventsPanel.innerHTML = `
-      <div class="panel-head compact"><h2>候选事件与人工矫正</h2><span class="badge warn">${events.length} 个候选 ･ ${summaryBadge}</span></div>
-      <div class="segment-summary">选择候选事件后，可在人工矫正区标记为“保留候选 / 排除候选 / 需复核”；<span class="status-legend"><i style="color:#16a34a">●</i>保留 <i style="color:#dc2626">●</i>排除 <i style="color:#f59e0b">●</i>复核 <i style="color:#94a3b8">●</i>待判</span></div>
+      <div class="panel-head compact"><h2>候选事件与人工复核标注</h2><span class="badge warn">${events.length} 个候选 ･ ${summaryBadge}</span></div>
+      <div class="segment-summary">选择候选事件后，可在人工复核区标记为“保留候选 / 排除候选 / 需复核”；<span class="status-legend"><i style="color:#16a34a">●</i>保留 <i style="color:#dc2626">●</i>排除 <i style="color:#f59e0b">●</i>复核 <i style="color:#94a3b8">●</i>待判</span></div>
       <div class="inline-event-list">${rows || `<div class="empty-object-state"><strong>暂无候选事件</strong><span>请先运行初筛，或检查本次结果文件。</span></div>`}</div>
     `;
   }
@@ -6774,11 +6774,11 @@ function renderInlineEpilepsyWorkbench() {
         <div class="inline-reader-group inline-reader-toggles" aria-label="overlay controls">
           <button type="button" data-epilepsy-action="reader-toggle-overlay" data-overlay="candidates" aria-pressed="${reader.overlayVisibility.candidates ? "true" : "false"}" data-testid="inline-epilepsy-toggle-candidates">候选</button>
           <button type="button" data-epilepsy-action="reader-toggle-overlay" data-overlay="stageCode" aria-pressed="${reader.overlayVisibility.stageCode ? "true" : "false"}" data-testid="inline-epilepsy-toggle-stage">候选标记</button>
-          <button type="button" data-epilepsy-action="reader-toggle-overlay" data-overlay="reviewEdits" aria-pressed="${reader.overlayVisibility.reviewEdits ? "true" : "false"}" data-testid="inline-epilepsy-toggle-review">人工矫正</button>
+          <button type="button" data-epilepsy-action="reader-toggle-overlay" data-overlay="reviewEdits" aria-pressed="${reader.overlayVisibility.reviewEdits ? "true" : "false"}" data-testid="inline-epilepsy-toggle-review">人工复核标注</button>
         </div>
       </div>
       <div class="inline-wave-canvas ${waveformReady ? "ready" : "blocked"}" data-source-task="${escapeHtml(task?.id || "")}" data-sync-scale="${escapeHtml(syncScale)}" data-selected-event="${escapeHtml(selectedEventId)}" data-waveform-status="${escapeHtml(waveformStatus)}" data-waveform-fetch-status="${escapeHtml(waveformFetchStatus)}" data-displayed-start-sec="${displayStartSec.toFixed(3)}" data-displayed-duration-sec="${displayDurationSec.toFixed(3)}">
-        <canvas data-testid="inline-epilepsy-waveform-canvas" data-sync-scale="${escapeHtml(syncScale)}" data-selected-event="${escapeHtml(selectedEventId)}" data-waveform-status="${escapeHtml(waveformStatus)}" data-waveform-fetch-status="${escapeHtml(waveformFetchStatus)}" aria-label="癫痫样候选事件复核台原始 EEG 波形"></canvas>
+        <canvas data-testid="inline-epilepsy-waveform-canvas" data-sync-scale="${escapeHtml(syncScale)}" data-selected-event="${escapeHtml(selectedEventId)}" data-waveform-status="${escapeHtml(waveformStatus)}" data-waveform-fetch-status="${escapeHtml(waveformFetchStatus)}" aria-label="癫痫样候选事件复核预览原始 EEG 波形"></canvas>
       </div>
     `;
     const inlineCanvas = waveform.querySelector('[data-testid="inline-epilepsy-waveform-canvas"]');
@@ -6793,7 +6793,7 @@ function renderInlineEpilepsyWorkbench() {
         ${reader.overlayVisibility.reviewEdits ? overviewReviews : ""}
         <span class="inline-overview-current-window" style="left:${overviewLeft.toFixed(3)}%;width:${overviewWidth.toFixed(3)}%"></span>
       </div>
-      <p class="small-muted inline-reader-help">滚轮水平阅片，Ctrl/Cmd+滚轮缩放时间窗，方向键小步移动，PageUp/PageDown 翻页，+/- 调整 uV/row；浏览不会写入人工矫正草稿。</p>
+      <p class="small-muted inline-reader-help">滚轮水平阅片，Ctrl/Cmd+滚轮缩放时间窗，方向键小步移动，PageUp/PageDown 翻页，+/- 调整 uV/row；浏览不会写入人工复核标注草稿。</p>
     `);
   }
   const spectrogram = qs('[data-testid="inline-epilepsy-spectrogram-panel"]');
@@ -6801,7 +6801,7 @@ function renderInlineEpilepsyWorkbench() {
     spectrogram.innerHTML = `
       <div class="panel-head compact"><div><h2>时频证据层</h2><p>基于当前同一波形窗口即时计算 STFT 预览，与波形同轴联动；它不是正式 TFR、PSD 或 Band Power 分析结果。</p></div><div class="inline-scale-control-group" data-testid="inline-epilepsy-sync-scale-readout"><span>跟随阅片窗</span><strong>${escapeHtml(syncScale)}s</strong></div></div>
       <div class="inline-spectrogram-shell" data-sync-scale="${escapeHtml(syncScale)}" data-selected-event="${escapeHtml(selectedEventId)}" data-source-task="${escapeHtml(task?.id || "")}">
-        <canvas data-testid="inline-epilepsy-spectrogram-canvas" data-sync-scale="${escapeHtml(syncScale)}" data-selected-event="${escapeHtml(selectedEventId)}" data-source-task="${escapeHtml(task?.id || "")}" data-spectrogram-status="${waveformReady ? "ready" : "waiting"}" aria-label="癫痫样候选事件复核台 STFT 预览"></canvas>
+        <canvas data-testid="inline-epilepsy-spectrogram-canvas" data-sync-scale="${escapeHtml(syncScale)}" data-selected-event="${escapeHtml(selectedEventId)}" data-source-task="${escapeHtml(task?.id || "")}" data-spectrogram-status="${waveformReady ? "ready" : "waiting"}" aria-label="癫痫样候选事件复核预览 STFT 预览"></canvas>
         <div class="inline-spectrogram-event"><span>${waveformReady ? escapeHtml(waveWindowText) : "等待波形窗口"}</span><strong>${selectedEvent ? "候选事件同步高亮" : "运行后同步候选事件"}</strong></div>
       </div>
       <p class="small-muted" data-testid="inline-epilepsy-spectrogram-source-copy">当前图只由同一波形窗口的 waveform chunk 即时派生 STFT 预览，用于同步阅片参考；它不是正式 TFR、PSD 或 Band Power 分析结果，也不会写入结果产物。</p>
@@ -6809,15 +6809,15 @@ function renderInlineEpilepsyWorkbench() {
   }
   const source = qs('[data-testid="inline-epilepsy-source-panel"]');
   if (source) {
-    source.innerHTML = `<div class="panel-head compact"><h2>源结果记录</h2></div><div class="empty-object-state"><strong>${resultReady ? "源结果只读保留" : "等待源结果"}</strong><span>模型候选标记、候选事件、阈值和结果文件来自本次任务；人工矫正另存为草稿，不覆盖原始模型输出。</span></div>`;
+    source.innerHTML = `<div class="panel-head compact"><h2>源结果记录</h2></div><div class="empty-object-state"><strong>${resultReady ? "源结果只读保留" : "等待源结果"}</strong><span>候选标记预览、候选事件、阈值和结果文件来自本次任务；人工复核标注另存为草稿，不覆盖原始模型输出。</span></div>`;
   }
   const review = qs('[data-testid="inline-epilepsy-review-panel"]');
   if (review) {
     review.innerHTML = `
-      <div class="panel-head compact"><h2>人工矫正与草稿</h2></div>
+      <div class="panel-head compact"><h2>人工复核标注与草稿</h2></div>
       <label class="real-field"><span>当前任务</span><input value="${escapeHtml(task?.id || "未运行")}" readonly /></label>
       <label class="real-field"><span>复核会话</span><input value="${escapeHtml(reviewSessionLabel)}" readonly /></label>
-      <div class="inline-review-status"><strong>${selectedEvent ? escapeHtml(selectedEvent.label) : "请选择候选事件"}</strong><span>${correction ? escapeHtml(correction.displayLabel || correction.label) : "人工矫正只写入复核草稿：保留候选会保留该候选，排除候选会把对应 epoch 改为 0，需复核只写复核状态。"}</span></div>
+      <div class="inline-review-status"><strong>${selectedEvent ? escapeHtml(selectedEvent.label) : "请选择候选事件"}</strong><span>${correction ? escapeHtml(correction.displayLabel || correction.label) : "人工复核标注只写入复核草稿：保留候选会保留该候选，排除候选会把对应 epoch 改为 0，需复核只写复核状态。"}</span></div>
       <div class="inline-correction-actions">
         <button class="ghost-btn danger-soft" type="button" data-epilepsy-action="set-correction" data-correction="Seizure" data-correction-label="保留候选" data-event-id="${escapeHtml(selectedEventId)}" title="${escapeHtml(canCorrect ? "把当前候选保留在复核版本中。" : correctionDisabledReason)}" data-disabled-reason="${escapeHtml(canCorrect ? "" : correctionDisabledReason)}" ${canCorrect ? "" : "disabled"}>保留候选</button>
         <button class="ghost-btn" type="button" data-epilepsy-action="set-correction" data-correction="Normal" data-correction-label="排除候选" data-event-id="${escapeHtml(selectedEventId)}" title="${escapeHtml(canCorrect ? "把当前候选排除，并把对应 epoch 写为 0。" : correctionDisabledReason)}" data-disabled-reason="${escapeHtml(canCorrect ? "" : correctionDisabledReason)}" ${canCorrect ? "" : "disabled"}>排除候选</button>
@@ -6831,14 +6831,14 @@ function renderInlineEpilepsyWorkbench() {
         <button class="ghost-btn" type="button" data-epilepsy-action="adjust-interval" data-adjust-edge="end" data-adjust-delta-sec="1" data-event-id="${escapeHtml(selectedEventId)}" title="${escapeHtml(canCorrect ? "把候选终点向后微调 1 秒。" : correctionDisabledReason)}" data-disabled-reason="${escapeHtml(canCorrect ? "" : correctionDisabledReason)}" ${canCorrect ? "" : "disabled"}>终点 +1s</button>
       </div>
       <div class="real-actions compact-actions">
-        <button class="ghost-btn" type="button" data-epilepsy-action="undo" title="${draftCount ? "撤销最近一条人工矫正。" : "暂无可撤销的人工矫正。"}" data-disabled-reason="${draftCount ? "" : "暂无可撤销的人工矫正。"}" ${draftCount ? "" : "disabled"}>撤销</button>
-        <button class="ghost-btn" type="button" data-epilepsy-action="redo" title="${state.epilepsyInline.redoCommands.length ? "重做最近撤销的人工矫正。" : "暂无可重做的人工矫正。"}" data-disabled-reason="${state.epilepsyInline.redoCommands.length ? "" : "暂无可重做的人工矫正。"}" ${state.epilepsyInline.redoCommands.length ? "" : "disabled"}>重做</button>
-        <button class="ghost-btn danger-soft" type="button" data-epilepsy-action="reset" title="${draftCount ? "清空当前本地复核草稿。" : "暂无可清空的人工矫正草稿。"}" data-disabled-reason="${draftCount ? "" : "暂无可清空的人工矫正草稿。"}" ${draftCount ? "" : "disabled"}>清空</button>
-        <button class="ghost-btn" type="button" data-epilepsy-action="save-draft" title="${escapeHtml(canSave ? "保存人工矫正草稿到复核记录。" : saveDisabledReason)}" data-disabled-reason="${escapeHtml(canSave ? "" : saveDisabledReason)}" ${canSave ? "" : "disabled"}>${savingReview ? "正在保存" : state.epilepsyInline.draftSaved ? "已保存复核记录" : "保存复核草稿"}</button>
+        <button class="ghost-btn" type="button" data-epilepsy-action="undo" title="${draftCount ? "撤销最近一条人工复核标注。" : "暂无可撤销的人工复核标注。"}" data-disabled-reason="${draftCount ? "" : "暂无可撤销的人工复核标注。"}" ${draftCount ? "" : "disabled"}>撤销</button>
+        <button class="ghost-btn" type="button" data-epilepsy-action="redo" title="${state.epilepsyInline.redoCommands.length ? "重做最近撤销的人工复核标注。" : "暂无可重做的人工复核标注。"}" data-disabled-reason="${state.epilepsyInline.redoCommands.length ? "" : "暂无可重做的人工复核标注。"}" ${state.epilepsyInline.redoCommands.length ? "" : "disabled"}>重做</button>
+        <button class="ghost-btn danger-soft" type="button" data-epilepsy-action="reset" title="${draftCount ? "清空当前本地复核草稿。" : "暂无可清空的人工复核标注草稿。"}" data-disabled-reason="${draftCount ? "" : "暂无可清空的人工复核标注草稿。"}" ${draftCount ? "" : "disabled"}>清空</button>
+        <button class="ghost-btn" type="button" data-epilepsy-action="save-draft" title="${escapeHtml(canSave ? "保存人工复核标注草稿到复核记录。" : saveDisabledReason)}" data-disabled-reason="${escapeHtml(canSave ? "" : saveDisabledReason)}" ${canSave ? "" : "disabled"}>${savingReview ? "正在保存" : state.epilepsyInline.draftSaved ? "已保存复核记录" : "保存复核草稿"}</button>
         <button class="ghost-btn" type="button" data-epilepsy-action="publish-results" ${canPublish ? "" : "disabled"} title="${escapeHtml(canPublish ? "生成复核结果并进入结果页。" : publishDisabledReason)}" data-disabled-reason="${escapeHtml(canPublish ? "" : publishDisabledReason)}">${exportingReview ? "正在发布" : state.epilepsyInline.exportStatus === "exported" ? "已发布到结果页" : "发布到结果页"}</button>
         ${state.epilepsyInline.exportStatus === "exported" ? `<button class="ghost-btn" type="button" data-testid="inline-epilepsy-view-results" data-view-jump="statistics">查看复核结果</button>` : ""}
       </div>
-      <div class="inline-draft-ledger" data-testid="inline-epilepsy-draft-ledger"><b>复核草稿 ${draftCount} 条${state.epilepsyInline.draftSaved ? " / 已保存" : " / 本地待保存"}</b><span>${state.epilepsyInline.draftCommands.map((item) => escapeHtml(`${item.eventId}: ${item.displayLabel || item.label}`)).join(" / ") || "暂无人工矫正草稿。"}</span></div>
+      <div class="inline-draft-ledger" data-testid="inline-epilepsy-draft-ledger"><b>复核草稿 ${draftCount} 条${state.epilepsyInline.draftSaved ? " / 已保存" : " / 本地待保存"}</b><span>${state.epilepsyInline.draftCommands.map((item) => escapeHtml(`${item.eventId}: ${item.displayLabel || item.label}`)).join(" / ") || "暂无人工复核标注草稿。"}</span></div>
       <p class="small-muted">保存会写入复核记录；发布会生成复核结果文件，不覆盖原始模型输出。状态：${escapeHtml(exportLabel)}。</p>
       ${state.epilepsyInline.reviewSaveError ? `<p class="small-muted danger-text" data-testid="inline-epilepsy-review-save-error">保存错误：${escapeHtml(state.epilepsyInline.reviewSaveError)}</p>` : ""}
       ${state.epilepsyInline.exportError ? `<p class="small-muted danger-text" data-testid="inline-epilepsy-export-error">发布错误：${escapeHtml(state.epilepsyInline.exportError)}</p>` : ""}
@@ -7328,7 +7328,7 @@ const PROGRESS_STEPS = [
   { id: 'preparation', label: '数据准备', view: 'analysis' },
   { id: 'analysis', label: '运行分析', view: 'workflow' },
   { id: 'results', label: '查看结果', view: 'statistics' },
-  { id: 'report', label: '生成报告', view: 'publication' },
+  { id: 'report', label: '生成复核记录', view: 'publication' },
 ];
 
 const PAGE_ROUTE_CONTRACT = {
@@ -7420,8 +7420,8 @@ function getWorkspaceNextRecommendation(progress = getWorkspaceProgressState()) 
   if (!progress.hasPreparationPlan) return { label: "确认准备并进入分析", view: "analysis" };
   if (!progress.hasCompletedTask) return { label: "运行 PSD 分析", view: "workflow" };
   if (!progress.hasViewedResults) return { label: "查看分析结果", view: "statistics" };
-  if (!progress.hasReport) return { label: "生成报告", view: "publication" };
-  return { label: "下载报告包", view: "publication" };
+  if (!progress.hasReport) return { label: "生成复核记录", view: "publication" };
+  return { label: "下载复核记录包", view: "publication" };
 }
 
 function getRecoveryActionForAnalysisFlow() {
@@ -7870,7 +7870,7 @@ function loginAs(role, profile = null) {
     if (accountMeta) {
       accountMeta.textContent = `${maskEmail(customer.email || demoCustomer.email)} / 客户账号`;
     }
-    qs("#topEyebrow").textContent = "QLanalyser Online · EEG 数据到报告";
+    qs("#topEyebrow").textContent = "QLanalyser Online · EEG 科研数据到复核记录";
     const hashView = window.location.hash.slice(1);
     const targetView = isEpilepsyWorkbenchDeepLinkIntent() 
       ? "epilepsyWorkbenchInline" 
@@ -7908,7 +7908,7 @@ function applyShellCopyFixesAsciiLegacy(role, profile = null) {
   qs("#roleLabel").textContent = customer.name || "客户账户";
   qs("#balanceSide").textContent = "账户概览";
   qs("#accountHint").textContent = visibleCustomerShellHint(customer);
-  qs("#topEyebrow").textContent = "QLanalyser Online · EEG 数据到报告";
+  qs("#topEyebrow").textContent = "QLanalyser Online · EEG 科研数据到复核记录";
 }
 
 function applyShellCopyFixesAscii(role, profile = null) {
@@ -7923,7 +7923,7 @@ function applyShellCopyFixesAscii(role, profile = null) {
   qs("#roleLabel").textContent = customer.name || "客户账号";
   qs("#balanceSide").textContent = "个人中心";
   qs("#accountHint").textContent = visibleCustomerShellHint(customer);
-  qs("#topEyebrow").textContent = "QLanalyser Online · EEG 数据到报告";
+  qs("#topEyebrow").textContent = "QLanalyser Online · EEG 科研数据到复核记录";
 }
 
 function renderProjectDataManagement() {
@@ -8477,7 +8477,7 @@ function applyLegacyVisibleCopyCleanup() {
   setTextIfPresent("#dashboard .metric-grid .metric:nth-child(4) span", "下一步");
   setTextIfPresent("#dashboard .metric-grid .metric:nth-child(4) strong", "先选项目");
   setTextIfPresent("#dashboard .metric-grid .metric:nth-child(4) small", "先选项目，再展开数据列表");
-  setTextIfPresent("#topEyebrow", state.role === "admin" ? "QLanalyser Online · 内部后台" : "QLanalyser Online · EEG 数据到报告");
+  setTextIfPresent("#topEyebrow", state.role === "admin" ? "QLanalyser Online · 内部后台" : "QLanalyser Online · EEG 科研数据到复核记录");
   const customer = getStoredCustomer();
   setTextIfPresent("#userCenterName", customer.name || "客户账号");
   setTextIfPresent("#userCenterEmail", customer.email || "demo.customer@quanlan.cn");
@@ -8538,7 +8538,7 @@ function applyLegacyVisibleCopyCleanup() {
     ['[data-real-action="download-epoch-record"] span', "\u4e0b\u8f7d\u6570\u636e\u51c6\u5907\u8bb0\u5f55"],
     ['[data-real-action="confirm-plan-inline"] span', "\u786e\u8ba4\u6570\u636e\u51c6\u5907"],
     ['[data-real-action="download-plan-json"] span', "\u4e0b\u8f7d\u5904\u7406\u8bb0\u5f55"],
-    ['[data-real-action="create-report"] span', "生成报告"],
+    ['[data-real-action="create-report"] span', "生成复核记录"],
     ['[data-real-action="run-psd"] span', "开始 PSD 分析"],
     ['[data-real-action="run-erp"] span', "开始 ERP 分析"],
     ['[data-real-action="run-tfr"] span', "开始 TFR 时频分析"],
@@ -8703,9 +8703,9 @@ const PRODUCT_VIEW_TITLES = {
   storage: "上传或选择 EEG 数据",
   analysis: "检查 EEG 数据",
   workflow: "选择分析方法",
-  epilepsyWorkbenchInline: "癫痫样候选事件复核台",
+  epilepsyWorkbenchInline: "癫痫样候选事件复核预览",
   statistics: "查看分析结果",
-  publication: "生成和下载报告",
+  publication: "生成和下载复核记录",
   journey: "交付质检",
   billing: "服务记录",
   invoice: "发票申请",
@@ -9313,7 +9313,7 @@ function groupAnalysisMethods() {
     { id: 'pac', label: 'PAC 相位-振幅耦合', group: 'advanced' },
     { id: 'connectivity', label: 'Connectivity 连接性分析', group: 'advanced' },
     { id: 'reference_csd', label: 'CSD 电流源密度', group: 'advanced', condition: '需要通道位置' },
-    { id: 'epilepsy_ml', label: '癫痫样候选事件复核台', group: 'special' },
+    { id: 'epilepsy_ml', label: '癫痫样候选事件复核预览', group: 'special' },
   ];
 
   const groups = {
@@ -9418,18 +9418,18 @@ function applyProductPageStructureCleanup() {
     publication.innerHTML = `
       <section class="panel span-2" data-testid="report-delivery-workbench">
         <div class="panel-head">
-          <div><h2>生成和下载报告</h2><p>把结果、图表、参数、方法和复现记录打包交付。</p></div>
-          <button class="primary-btn" type="button" data-real-action="create-report" hidden><i data-lucide="file-output"></i><span>生成报告</span></button>
+          <div><h2>生成和下载复核记录</h2><p>把结果、图表、参数、方法和复现记录打包为科研交付材料。</p></div>
+          <button class="primary-btn" type="button" data-real-action="create-report" hidden><i data-lucide="file-output"></i><span>生成复核记录</span></button>
         </div>
         <div class="delivery-grid" id="realDeliveryLinks"></div>
       </section>
       <section class="panel" data-testid="report-package-contract" hidden>
-        <div class="panel-head compact"><h2>报告包内容</h2></div>
+        <div class="panel-head compact"><h2>复核记录包内容</h2></div>
         <div class="storage-table compact-table">
           <div class="table-row head"><span>\u5185\u5bb9</span><span>\u7528\u9014</span><span>\u72b6\u6001</span></div>
-          <div class="table-row"><span>\u56fe\u8868</span><span>\u7ed3\u679c\u67e5\u770b\u548c\u6c47\u62a5</span><span class="run">\u968f\u62a5\u544a\u751f\u6210</span></div>
-          <div class="table-row"><span>\u8868\u683c</span><span>\u6307\u6807\u548c\u5bfc\u51fa\u6570\u636e</span><span class="run">\u968f\u62a5\u544a\u751f\u6210</span></div>
-          <div class="table-row"><span>\u65b9\u6cd5\u8bb0\u5f55</span><span>\u53c2\u6570\u3001\u8f6f\u4ef6\u7248\u672c\u548c\u8fb9\u754c</span><span class="run">\u968f\u62a5\u544a\u751f\u6210</span></div>
+          <div class="table-row"><span>\u56fe\u8868</span><span>\u7ed3\u679c\u67e5\u770b\u548c\u6c47\u62a5</span><span class="run">\u968f\u590d\u6838\u8bb0\u5f55\u751f\u6210</span></div>
+          <div class="table-row"><span>\u8868\u683c</span><span>\u6307\u6807\u548c\u5bfc\u51fa\u6570\u636e</span><span class="run">\u968f\u590d\u6838\u8bb0\u5f55\u751f\u6210</span></div>
+          <div class="table-row"><span>\u65b9\u6cd5\u8bb0\u5f55</span><span>\u53c2\u6570\u3001\u8f6f\u4ef6\u7248\u672c\u548c\u8fb9\u754c</span><span class="run">\u968f\u590d\u6838\u8bb0\u5f55\u751f\u6210</span></div>
         </div>
       </section>
     `;
@@ -9442,12 +9442,12 @@ function applyProductPageStructureCleanup() {
     journey.innerHTML = `
       <section class="panel span-2" data-testid="review-validation-workbench">
         <div class="panel-head">
-          <div><h2>交付质检</h2><p>后台检查数据、准备记录、结果文件和报告包是否具备交付条件；不评估临床诊断结论。</p></div>
+          <div><h2>交付质检</h2><p>后台检查数据、准备记录、结果文件和复核记录包是否具备交付条件；不评估临床诊断结论。</p></div>
         </div>
         <div class="review-gate-grid">
           <article class="review-gate-card"><strong>任务产物</strong><span>核对分析任务、图表、表格和结果文件是否齐全。</span><b>待复核</b></article>
           <article class="review-gate-card"><strong>准备记录</strong><span>确认输入数据、准备方案、参数和修订记录可追溯。</span><b>待复核</b></article>
-          <article class="review-gate-card"><strong>报告包</strong><span>检查方法说明、结果摘要和下载入口是否完整。</span><b>待复核</b></article>
+          <article class="review-gate-card"><strong>复核记录包</strong><span>检查方法说明、结果摘要和下载入口是否完整。</span><b>待复核</b></article>
           <article class="review-gate-card"><strong>边界说明</strong><span>确认结果保持科研分析支持边界，避免诊断化表述。</span><b>待复核</b></article>
         </div>
       </section>
@@ -9482,7 +9482,7 @@ function applyProductPageStructureCleanup() {
             <div class="audit-list">
               <span><b>\u9879\u76ee\u6743\u9650\uff1a</b>可查看和管理授权项目</span>
               <span><b>\u6570\u636e\u6743\u9650\uff1a</b>可上传、选择和准备项目内 EEG 数据</span>
-              <span><b>\u7ed3\u679c\u6743\u9650\uff1a</b>可查看结果并生成报告包</span>
+              <span><b>\u7ed3\u679c\u6743\u9650\uff1a</b>可查看结果并生成复核记录包</span>
             </div>
           </div>
           <div class="user-center-section">
@@ -9569,7 +9569,7 @@ function applyLoginAndAdminCleanCopy() {
   });
   const activeView = qs(".view.active")?.id || "dashboard";
   setTextIfPresent("#viewTitle", PRODUCT_VIEW_TITLES[activeView] || "QLanalyser Online");
-  setTextIfPresent("#topEyebrow", state.role === "admin" ? "QLanalyser Online · 内部后台" : "QLanalyser Online · EEG 数据到报告");
+  setTextIfPresent("#topEyebrow", state.role === "admin" ? "QLanalyser Online · 内部后台" : "QLanalyser Online · EEG 科研数据到复核记录");
   applyTeachingModeChrome();
   setTextIfPresent("#logoutBtn span", "退出");
   setTextIfPresent("#roleLabel", state.role === "admin" ? "内部账号" : "个人中心");
@@ -9644,7 +9644,7 @@ function applyCustomerAnalysisTaskCopy() {
     pac: ["PAC 相位-振幅耦合", "描述相位与振幅的统计耦合，不能单独解释为因果机制。", "进阶", "advanced", "run-pac"],
     connectivity: ["Connectivity 连接性分析", "描述通道间统计关联，不证明信息流或因果方向。", "进阶", "advanced", "run-connectivity"],
     reference_csd: ["CSD 电流源密度计算", "需要通道位置信息；这是传感器空间滤波，不是源定位或诊断。", "进阶", "advanced", "run-reference-csd"],
-    epilepsy_ml: ["癫痫样候选事件复核台", "候选事件初筛和人工复核操作台；科研辅助用途，不作为诊断或临床结论。", "专项", "conditional", "open-epilepsy-workbench"],
+    epilepsy_ml: ["癫痫样候选事件复核预览", "候选事件初筛和人工复核标注入口；科研辅助用途，不作为诊断或临床结论。", "专项", "conditional", "open-epilepsy-workbench"],
   };
   methodCards.forEach((card, index) => {
     const moduleId = card.dataset.moduleId || moduleOrder[index];
@@ -9702,7 +9702,7 @@ function applyCleanVisibleCopy() {
     setTextIfPresent("#balanceSide", "后台");
     setTextIfPresent("#accountHint", "账号、任务、交付与系统状态");
   } else {
-    setTextIfPresent("#topEyebrow", "QLanalyser Online · EEG 数据到报告");
+    setTextIfPresent("#topEyebrow", "QLanalyser Online · EEG 科研数据到复核记录");
     setTextIfPresent("#roleLabel", getStoredCustomer()?.name || "客户账号");
     setTextIfPresent("#balanceSide", "个人中心");
     setTextIfPresent("#accountHint", visibleCustomerShellHint(getStoredCustomer()));
