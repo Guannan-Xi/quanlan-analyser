@@ -28,6 +28,7 @@
     seizure_like: "发作样节律候选",
     rhythmic: "疑似节律性候选事件",
     artifact_suspect: "伪迹疑似",
+    candidate_window: "候选窗口",
   };
 
   const STATUS_LABEL = {
@@ -36,6 +37,10 @@
     needs_review: "存疑",
     unreviewed: "未复核",
   };
+
+  function eventTypeLabel(type) {
+    return TYPE_LABEL[type] || type || "未标注候选类型";
+  }
 
   const STATUS_COLOR = {
     confirmed: "#17803d",
@@ -564,7 +569,7 @@
     renderActions();
     if (record?.backend_record) {
       try {
-        renderCandidateRunner("载入 seeded 候选时间，并读取对应真实 EDF 小窗口计算预览排序指标，首次可能需要 20-40 秒", 38);
+        renderCandidateRunner("后端按全记录均匀窗口抽样读取真实 EDF，并计算 RMS/PTP 预览排序指标，首次可能需要 20-60 秒", 38);
         const data = state.candidateCache[record.id] || await apiFetch(
           `/lab/epilepsy-full-flow/records/${encodeURIComponent(record.id)}/candidates`,
           { method: "POST", timeoutMs: LONG_REQUEST_TIMEOUT_MS }
@@ -589,7 +594,7 @@
         state.reviews = {};
         state.waveformCache = {};
         state.reviewSaved = false;
-        addAudit("backend_candidates_generated", `后端载入 ${candidates().length} 个 seeded 候选时间，并计算对应真实 EDF 小窗口预览排序指标。`);
+        addAudit("backend_candidates_generated", `后端生成 ${candidates().length} 个 bounded scan 候选窗口，并计算真实 EDF 小窗口预览排序指标。`);
         runAdversarialReview({ silent: true });
         setStep("review");
         render();
@@ -651,6 +656,9 @@
     if (event?.source === "seeded_time_real_edf_window_metrics") {
       return "seeded 时间 + 真实 EDF 小窗口指标；排序值不是概率";
     }
+    if (event?.source === "bounded_full_record_window_scan_metrics") {
+      return "全记录 bounded scan + 真实 EDF 小窗口指标；排序值不是概率";
+    }
     if (event?.score_kind?.includes("not_probability")) {
       return "预览候选；排序值不是概率";
     }
@@ -704,7 +712,7 @@
   }
 
   function exampleNote(status, event) {
-    if (status === "confirmed") return `${TYPE_LABEL[event.event_type]}，EEG 双通道证据较一致；需正式报告替换真实波形证据。`;
+    if (status === "confirmed") return `${eventTypeLabel(event.event_type)}，EEG 双通道证据较一致；需正式报告替换真实波形证据。`;
     if (status === "needs_review") return "形态边界或伪迹解释仍需专家复核，暂不进入最终结论。";
     return "EMG/ACC 或信号质量提示伪迹风险，本预览中排除出统计。";
   }
@@ -941,6 +949,8 @@
     if (currentRecord()?.upload_only && state.preflightDone) return { action: "select_sample", title: "上传文件待后端解析", text: "当前上传文件不能套用 HE 示例候选；请选择 HE 示例，或接入正式后端任务服务后再生成候选。", label: "选择 HE 示例" };
     if (!state.candidatesGenerated) return { action: "candidates", title: "生成候选事件包", text: "创建用于人工复核的候选事件队列；HE 后端首次读取真实 EDF 小窗口可能需要 20-40 秒。", label: "生成候选" };
     if (stats.reviewed === 0) return { action: "auto_review", title: "进行人工复核", text: "可逐条复核，也可填充演示复核以试走流程；演示复核不能用于真实报告。", label: "填充演示复核" };
+    if (stats.unreviewed === 0 && !state.reviewSaved) return { action: "save_review", title: "保存复核层", text: "将人工复核结果写入本地预览存储，供草稿页面读取。", label: "保存复核层" };
+    if (state.reviewSaved && stats.unreviewed === 0) return { action: "report", title: stats.needs_review > 0 ? "查看部分复核草稿" : "查看复核草稿预览", text: "存疑候选会保留为草稿风险提示，不会升级为正式结论。", label: "查看草稿" };
     if (stats.needs_review > 0) return { action: "review", title: `处理 ${stats.needs_review} 个存疑候选`, text: "存疑候选必须单列待确认，不能进入正式结论。", label: "回到复核" };
     if (stats.unreviewed > 0) return { action: "review", title: "补齐未复核候选", text: "未复核候选不能进入最终报告结论。", label: "回到复核" };
     if (!state.reviewSaved) return { action: "save_review", title: "保存复核层", text: "把人工复核结果写入本地预览存储，供草稿页读取。", label: "保存复核层" };
@@ -1087,7 +1097,7 @@
     dom.candidateStrip.innerHTML = list.length
       ? list.map((event) => `
         <article class="ep-flow-candidate-mini">
-          <strong>${h(event.event_id)} · ${h(TYPE_LABEL[event.event_type])}</strong>
+          <strong>${h(event.event_id)} · ${h(eventTypeLabel(event.event_type))}</strong>
           <span>${formatClock(event.start_sec)} · ${event.duration_sec.toFixed(1)} s · ${h(event.channels.join(" / "))}</span>
           <span>优先级 ${h(event.priority)} · 预览排序值 ${event.score.toFixed(2)}</span>
           <span>${h(candidateSourceLabel(event))}</span>
@@ -1102,7 +1112,7 @@
       ? list.map((event, index) => `
         <button class="ep-flow-event-card ${index === state.activeEventIndex ? "is-active" : ""}" type="button" data-event-index="${index}" aria-current="${index === state.activeEventIndex ? "true" : "false"}" aria-selected="${index === state.activeEventIndex ? "true" : "false"}">
           <strong><span>${h(event.event_id)}</span><span>${h(STATUS_LABEL[statusFor(event)])}</span></strong>
-          <span>${formatClock(event.start_sec)} · ${event.duration_sec.toFixed(1)} s · ${h(TYPE_LABEL[event.event_type])}</span>
+          <span>${formatClock(event.start_sec)} · ${event.duration_sec.toFixed(1)} s · ${h(eventTypeLabel(event.event_type))}</span>
           <span>${h(event.channels.join(" / "))} · priority ${h(event.priority)} · 预览排序值 ${event.score.toFixed(2)}</span>
           <span>${h(candidateSourceLabel(event))}</span>
         </button>
@@ -1132,10 +1142,10 @@
       setReviewControlsDisabled(true);
       return;
     }
-    dom.activeEventTitle.textContent = `${event.event_id} · ${TYPE_LABEL[event.event_type]}`;
+    dom.activeEventTitle.textContent = `${event.event_id} · ${eventTypeLabel(event.event_type)}`;
     dom.reviewWaveform.setAttribute(
       "aria-label",
-      `${event.event_id}，${TYPE_LABEL[event.event_type]}，起始 ${formatClock(event.start_sec)}，时长 ${event.duration_sec.toFixed(1)} 秒，通道 ${event.channels.join(" / ")}，状态 ${STATUS_LABEL[review?.status || "unreviewed"]}。`
+      `${event.event_id}，${eventTypeLabel(event.event_type)}，起始 ${formatClock(event.start_sec)}，时长 ${event.duration_sec.toFixed(1)} 秒，通道 ${event.channels.join(" / ")}，状态 ${STATUS_LABEL[review?.status || "unreviewed"]}。`
     );
     dom.eventTypeSelect.value = review?.event_type || event.event_type;
     dom.evidenceGradeSelect.value = review?.evidence_grade || (event.priority === "high" ? "B" : "C");
@@ -1244,7 +1254,7 @@
         <tr>
           <td><strong>${h(event.event_id)}</strong></td>
           <td>${h(formatClock(event.start_sec))}<br><small>${h(event.duration_sec.toFixed(1))} s</small></td>
-          <td>${h(TYPE_LABEL[event.event_type] || event.event_type)}</td>
+          <td>${h(eventTypeLabel(event.event_type))}</td>
           <td>${h(event.channels.join(" / "))}</td>
           <td>${h(event.evidence_grade || "-")}<br><small>RMS/PTP 预览排序 ${h(event.preview_rms_ptp_rank_score.toFixed(2))}（非概率）</small></td>
           <td>${h(STATUS_LABEL[event.status] || event.status)}</td>
@@ -1417,9 +1427,11 @@
   function methodsText(record, stats) {
     if (!record) return "尚未选择输入数据。";
     const sfreq = record.sfreq ? `${record.sfreq} Hz` : "后端待解析";
-    const candidateSource = record.backend_candidate_source
-      ? `候选时间由后端从 seeded 列表载入，来源为 ${record.backend_candidate_source}；后端对对应候选窗口读取真实 EDF 数据并计算 RMS/PTP/预览排序值，该排序值不是概率。`
-      : "当前页面使用前端 seeded 预览候选包试跑产品流程，不表示候选算法或科研结论已验证。";
+    const candidateSource = record.backend_candidate_source?.startsWith("fallback_")
+      ? `候选窗口由后端兜底种子列表生成，来源为 ${record.backend_candidate_source}；后端读取对应真实 EDF 小窗口并计算 RMS/PTP/预览排序值，该排序值不是概率。`
+      : record.backend_candidate_source
+        ? `候选窗口由后端 bounded scan 生成，来源为 ${record.backend_candidate_source}；后端读取真实 EDF 小窗口并计算 RMS/PTP/预览排序值，该排序值不是概率。`
+        : "当前页面使用前端 seeded 预览候选包试跑产品流程，不表示候选算法或科研结论已验证。";
     return `输入为 ${record.filename}，通道为 ${(record.channels || []).join("、") || "后端待解析"}，采样率 ${sfreq}，记录时长约 ${formatHours(effectiveDurationSec(record))} 小时。${candidateSource} 正式分析应记录检测器版本、阈值、预处理、窗口策略、候选表校验值、人工复核标准和导出追溯清单。证据等级 A/B/C/X 仅表示展示证据充分、展示证据有限、证据很有限和不可判读；排除原因包括肌电、运动、接触不良、断线、饱和、噪声、重复候选或非癫痫样生理活动。本草稿不估计敏感性或特异性，不确认或排除癫痫发作。`;
   }
 

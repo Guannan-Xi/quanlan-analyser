@@ -26,6 +26,10 @@ SAFE_SAMPLE_ROOT = "work/sample_data/epilepsy/"
 SUPPORTED_SUFFIXES = {".edf", ".bdf", ".fif", ".fiff"}
 MAX_WAVEFORM_DURATION_SEC = 120.0
 MAX_WAVEFORM_POINTS = 4000
+MAX_SCAN_WINDOWS = 96
+DEFAULT_SCAN_WINDOWS = 32
+DEFAULT_SCAN_WINDOW_SEC = 4.0
+DEFAULT_SCAN_TOP_K = 12
 MAX_REVIEW_SESSIONS = 50
 MAX_REVIEW_EVENTS = 200
 MAX_REVIEW_ACTIONS = 300
@@ -378,6 +382,107 @@ def _candidate_metrics(path: Path, event: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _metric_score(rms_uv: float, ptp_uv: float) -> float:
+    return round(max(0.05, min(0.99, 0.35 + np.log1p(max(rms_uv, 0.0)) / 12.0 + np.log1p(max(ptp_uv, 0.0)) / 18.0)), 4)
+
+
+def _scan_candidate_windows(path: Path, requested_windows: int, window_sec: float, top_k: int) -> list[dict[str, Any]]:
+    raw = read_raw(path, preload=False)
+    sfreq = float(raw.info["sfreq"])
+    duration_sec = float(raw.n_times / sfreq)
+    channels = _pick_channels(list(raw.ch_names), ",".join(DEFAULT_CHANNELS))
+    picks = raw.copy().pick(channels)
+    window_sec = min(max(float(window_sec), 1.0), 30.0)
+    requested_windows = max(8, min(int(requested_windows), MAX_SCAN_WINDOWS))
+    top_k = max(1, min(int(top_k), 40))
+    if duration_sec <= window_sec:
+        starts = [0.0]
+    else:
+        scan_stop = max(0.0, duration_sec - window_sec)
+        starts = np.linspace(0.0, scan_stop, num=requested_windows).tolist()
+
+    scored: list[dict[str, Any]] = []
+    for start_sec in starts:
+        start_sample = int(max(0.0, start_sec) * sfreq)
+        stop_sample = min(raw.n_times, max(start_sample + 1, int((start_sec + window_sec) * sfreq)))
+        data = picks.get_data(start=start_sample, stop=stop_sample)
+        data = _scale_to_uv(np.asarray(data, dtype=float))
+        finite = data[np.isfinite(data)]
+        if finite.size == 0:
+            continue
+        rms = float(np.sqrt(np.nanmean(np.square(finite))))
+        ptp = float(np.nanpercentile(finite, 99) - np.nanpercentile(finite, 1))
+        scored.append(
+            {
+                "start_sec": round(float(start_sec), 3),
+                "duration_sec": round((stop_sample - start_sample) / sfreq, 3),
+                "rms_uv": round(rms, 4),
+                "ptp_uv": round(ptp, 4),
+                "preview_rms_ptp_rank_score": _metric_score(rms, ptp),
+            }
+        )
+
+    scored.sort(key=lambda item: (item["preview_rms_ptp_rank_score"], item["ptp_uv"], item["rms_uv"]), reverse=True)
+    candidates: list[dict[str, Any]] = []
+    for index, item in enumerate(scored[:top_k], start=1):
+        event_id = f"{path.stem.upper()}-SCAN-{index:03d}"
+        duration = max(1.0, float(item["duration_sec"]))
+        candidates.append(
+            {
+                "event_id": event_id,
+                "id": event_id,
+                "index": index,
+                "start_sec": item["start_sec"],
+                "end_sec": round(item["start_sec"] + duration, 3),
+                "duration_sec": duration,
+                "event_type": "candidate_window",
+                "priority": "high" if item["preview_rms_ptp_rank_score"] >= 0.9 else "medium",
+                "channels": channels,
+                "preview_rms_ptp_rank_score": item["preview_rms_ptp_rank_score"],
+                "score_kind": "bounded_scan_rms_ptp_rank_not_probability",
+                "score_note": "全记录均匀窗口扫描后的 RMS/PTP 预览排序值，不是临床概率、检测置信度、敏感性/特异性或诊断结论。",
+                "backend_metrics": {
+                    "rms_uv": item["rms_uv"],
+                    "ptp_uv": item["ptp_uv"],
+                    "preview_rms_ptp_rank_score": item["preview_rms_ptp_rank_score"],
+                },
+                "source": "bounded_full_record_window_scan_metrics",
+                "event_type_scope": "candidate_window_only",
+                "evidence_window": {
+                    "start_sec": item["start_sec"],
+                    "duration_sec": duration,
+                    "channels": channels,
+                },
+            }
+        )
+    return candidates
+
+
+def _seeded_candidates(path: Path, record_id: str) -> list[dict[str, Any]]:
+    seeds = HE_CANDIDATE_SEEDS.get(record_id, [])
+    candidates = []
+    for index, seed in enumerate(seeds, start=1):
+        metrics = _candidate_metrics(path, seed)
+        preview_score = metrics["preview_rms_ptp_rank_score"]
+        candidates.append({
+            **seed,
+            "id": seed["event_id"],
+            "index": index,
+            "preview_rms_ptp_rank_score": preview_score,
+            "score_kind": "preview_rms_ptp_rank_not_probability",
+            "score_note": "RMS/PTP 小窗口预览排序值，不是临床概率、检测置信度、敏感性/特异性或诊断结论。",
+            "backend_metrics": metrics,
+            "source": "seeded_time_real_edf_window_metrics",
+            "event_type_scope": "candidate_label_only",
+            "evidence_window": {
+                "start_sec": max(0.0, float(seed["start_sec"]) - 10.0),
+                "duration_sec": min(30.0, float(seed["duration_sec"]) + 20.0),
+                "channels": DEFAULT_CHANNELS,
+            },
+        })
+    return candidates
+
+
 @router.get("/lab/epilepsy-full-flow/records")
 def list_he_records(request: Request, inspect: bool = Query(False)) -> dict[str, Any]:
     records = [_record_payload(path, request, include_metadata=inspect) for path in _sample_paths()]
@@ -400,51 +505,53 @@ def preflight_he_record(record_id: str, request: Request) -> dict[str, Any]:
         "reader": "mne_preload_false",
         "large_file_strategy": "windowed_reading_only",
         "browser_full_load_allowed": False,
-        "candidate_generation": "seeded_candidate_times_with_real_edf_window_metrics_v2",
+        "candidate_generation": "bounded_full_record_window_scan_rms_ptp_v1",
         "report_boundary": "research_screening_support_only",
     }
     return record
 
 
 @router.post("/lab/epilepsy-full-flow/records/{record_id}/candidates")
-def generate_he_candidates(record_id: str, request: Request) -> dict[str, Any]:
+def generate_he_candidates(
+    record_id: str,
+    request: Request,
+    scan_windows: int = Query(DEFAULT_SCAN_WINDOWS, ge=8, le=MAX_SCAN_WINDOWS),
+    window_sec: float = Query(DEFAULT_SCAN_WINDOW_SEC, ge=1.0, le=30.0),
+    top_k: int = Query(DEFAULT_SCAN_TOP_K, ge=1, le=40),
+) -> dict[str, Any]:
     path = _sample_path(record_id)
     record = _record_payload(path, request, include_metadata=True)
-    seeds = HE_CANDIDATE_SEEDS.get(record_id, [])
-    candidates = []
-    for index, seed in enumerate(seeds, start=1):
-        metrics = _candidate_metrics(path, seed)
-        preview_score = metrics["preview_rms_ptp_rank_score"]
-        candidates.append({
-            **seed,
-            "id": seed["event_id"],
-            "index": index,
-            "preview_rms_ptp_rank_score": preview_score,
-            "score_kind": "preview_rms_ptp_rank_not_probability",
-            "score_note": "RMS/PTP 小窗口预览排序值，不是临床概率、检测置信度、敏感性/特异性或诊断结论。",
-            "backend_metrics": metrics,
-            "source": "seeded_time_real_edf_window_metrics",
-            "event_type_scope": "candidate_label_only",
-            "evidence_window": {
-                "start_sec": max(0.0, float(seed["start_sec"]) - 10.0),
-                "duration_sec": min(30.0, float(seed["duration_sec"]) + 20.0),
-                "channels": DEFAULT_CHANNELS,
-            },
-        })
+    fallback_reason = ""
+    try:
+        candidates = _scan_candidate_windows(path, scan_windows, window_sec, top_k)
+        candidate_source = "bounded_full_record_window_scan_rms_ptp_v1"
+        algorithm_status = "lab_bounded_scan_not_validated_detector"
+    except Exception as exc:
+        candidates = _seeded_candidates(path, record_id)
+        fallback_reason = f"{type(exc).__name__}: {str(exc)[:180]}"
+        candidate_source = "fallback_seeded_candidate_times_with_real_edf_window_metrics_v2"
+        algorithm_status = "lab_preview_seed_fallback_not_validated_detector"
     return {
         "record": record,
         "candidates": candidates,
-        "candidate_source": "seeded_candidate_times_with_real_edf_window_metrics_v2",
-        "algorithm_status": "lab_preview_not_validated_detector",
+        "candidate_source": candidate_source,
+        "algorithm_status": algorithm_status,
+        "scan_parameters": {
+            "scan_windows": scan_windows,
+            "window_sec": window_sec,
+            "top_k": top_k,
+            "strategy": "uniform_full_record_window_sampling_ranked_by_rms_ptp",
+        },
+        "fallback_reason": fallback_reason,
         "limitations": [
-            "候选时间点来自 HE 开发种子，后端预览排序值来自真实 EDF 小窗口 RMS/PTP 指标，不是概率。",
-            "尚未完成全记录训练模型扫描，不能估计敏感性或特异性。",
-            "正式报告仍需 evidence package 和人工复核层。",
+            "Bounded scan candidates are ranked by real EDF window RMS/PTP preview metrics, not model probability.",
+            "Bounded scan is not an exhaustive detector and cannot estimate sensitivity, specificity, or miss rate.",
+            "Formal delivery still requires evidence package, traceable manual review, and export manifest.",
         ],
         "candidate_boundary_notes": [
-            "候选时间来自内置科研演示种子，后端只计算对应真实 EDF 小窗口指标。",
-            "尚未运行全记录训练模型扫描，不能估计检测器灵敏度、特异性或漏检率。",
-            "正式交付必须替换为真实 evidence package、可追溯人工复核层和导出 manifest。",
+            "Backend reads real EDF windows across the full record by uniform bounded sampling and ranks by RMS/PTP.",
+            "This is not the epilepsy_ml_xgboost long task and is not an externally validated detector.",
+            "Formal delivery must replace this preview with a real evidence package and review manifest.",
         ],
         "non_medical_scope": "research_screening_support_only",
     }
