@@ -1139,16 +1139,25 @@
       ? "not_ready"
       : stats.unreviewed + stats.needs_review > 0
         ? "partial_review_draft"
-        : "complete_review_preview";
+        : "review_draft_ready";
     return {
       schema_version: REPORT_SCHEMA,
       source_review_schema_version: REVIEW_SCHEMA,
+      export_class: "review_draft_only",
       non_medical_scope: "research_screening_support_only",
+      delivery_readiness: {
+        can_export_draft_json: !hasFailingGate() && state.reviewSaved,
+        formal_pdf_html_ready: false,
+        manifest_required: true,
+        clinical_use_allowed: false,
+      },
       record: {
         filename: record?.filename || "",
         duration_sec: effectiveDurationSec(record),
         sfreq: record?.sfreq || null,
         channels: record?.channels || [],
+        safe_source_path: record?.safe_source_path || `${SAFE_SAMPLE_FOLDER}${record?.filename || ""}`,
+        path_visibility: "safe_relative",
       },
       summary: {
         ...stats,
@@ -1261,15 +1270,20 @@
   }
 
   function exportReportJson() {
-    saveBlob(JSON.stringify(buildReportPayload(), null, 2), "epilepsy_full_flow_report_preview.json", "application/json;charset=utf-8");
-    addAudit("report_json_exported", "导出全流程报告 JSON。");
-    toast("报告 JSON 已导出。");
+    if (hasFailingGate() || !state.reviewSaved) {
+      toast("存在阻断项或复核层未保存，不能导出报告包。");
+      setStep(hasFailingGate() ? "adversarial" : "review");
+      return;
+    }
+    saveBlob(JSON.stringify(buildReportPayload(), null, 2), "epilepsy_full_flow_review_draft.json", "application/json;charset=utf-8");
+    addAudit("draft_json_exported", "导出候选复核草稿 JSON。");
+    toast("草稿 JSON 已导出。");
     renderAudit();
   }
 
   function exportEventsCsv() {
     const rows = [
-      ["event_id", "status", "start_sec", "duration_sec", "event_type", "channels", "evidence_grade", "score", "review_note"],
+      ["event_id", "status", "start_sec", "duration_sec", "event_type", "channels", "evidence_grade", "ranking_score", "review_note"],
       ...candidates().map((event) => {
         const item = normalizedEvent(event);
         return [
