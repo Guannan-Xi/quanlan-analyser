@@ -341,8 +341,19 @@ def _merge_plan_into_task_parameters(module_name: str, parameters: dict, plan) -
     return merged
 
 
-def create_task(payload: AnalysisTaskCreate) -> AnalysisTaskRead:
-    eeg_file = storage_service.get_eeg_file(payload.input_file_id)
+def create_task(payload: AnalysisTaskCreate, requesting_user_id: str | None = None) -> AnalysisTaskRead:
+    if requesting_user_id is not None and payload.owner_user_id != requesting_user_id:
+        raise HTTPException(status_code=403, detail="Task owner must match the authenticated user")
+    storage_service.get_project(payload.project_id, requesting_user_id=requesting_user_id)
+    eeg_file = storage_service.get_eeg_file(payload.input_file_id, requesting_user_id=requesting_user_id)
+    if eeg_file.project_id != payload.project_id:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "TASK_FILE_PROJECT_MISMATCH",
+                "message": "The selected EEG file belongs to a different project.",
+            },
+        )
     
     # P0-TASK-01 FIX: Implement idempotency key to prevent duplicate charges
     # Generate idempotency key from task parameters
@@ -526,13 +537,13 @@ def create_task(payload: AnalysisTaskCreate) -> AnalysisTaskRead:
             actor_user_id=task.owner_user_id,
             metadata_json={"error_code": exc.code, "message": exc.message},
         )
-        raise HTTPException(status_code=422, detail={"task_id": task.id, "error_code": exc.code, "message": exc.message, "detail": exc.detail}) from exc
+        raise HTTPException(status_code=422, detail={"task_id": task.id, "error_code": exc.code, "message": exc.message}) from exc
     except Exception as exc:
         task.status = "failed"
         task.queue_status = "failed"
         task.progress = 100
         task.error_code = "TASK_EXECUTION_FAILED"
-        task.error_message = str(exc)
+        task.error_message = "Analysis task failed during execution. Contact support with the task_id if the issue persists."
         task.finished_at = utc_now()
         task.updated_at = task.finished_at
         _tasks[task.id] = task
@@ -540,16 +551,6 @@ def create_task(payload: AnalysisTaskCreate) -> AnalysisTaskRead:
         
         # P0-DATA-01 FIX: Do NOT refund on failure
         # Current billing model: charge AFTER success, so no refund needed on failure
-        
-        audit_service.record_event(
-                    action="billing.refund.failed",
-                    object_type="analysis_task",
-                    object_id=task.id,
-                    organization_id=task.organization_id,
-                    project_id=task.project_id,
-                    actor_user_id=task.owner_user_id,
-                    metadata_json={"error": str(refund_exc), "original_error": str(exc)},
-                )
         
         audit_service.record_event(
             action="analysis_task.failed",
@@ -560,66 +561,115 @@ def create_task(payload: AnalysisTaskCreate) -> AnalysisTaskRead:
             actor_user_id=task.owner_user_id,
             metadata_json={"error_code": task.error_code, "message": task.error_message},
         )
-        raise HTTPException(status_code=422, detail={"task_id": task.id, "error": str(exc)}) from exc
+        raise HTTPException(status_code=422, detail={"task_id": task.id, "error_code": task.error_code, "message": task.error_message}) from exc
 
-    for label, path in result_paths.items():
-        artifact = ArtifactRead(
-            task_id=task.id,
+    charged = False
+    try:
+        registered_object_keys: set[str] = set()
+        registered_paths: set[str] = set()
+        registered_artifact_count = 0
+        for label, path in result_paths.items():
+            metadata = _artifact_file_metadata(path, task.project_id, task.id)
+            object_key = str(metadata.get("object_key") or "")
+            path_key = str(Path(path).resolve())
+            if (object_key and object_key in registered_object_keys) or path_key in registered_paths:
+                continue
+            if object_key:
+                registered_object_keys.add(object_key)
+            registered_paths.add(path_key)
+            artifact = ArtifactRead(
+                task_id=task.id,
+                organization_id=task.organization_id,
+                project_id=task.project_id,
+                input_file_id=task.input_file_id,
+                artifact_type=path.suffix.lstrip(".") or "file",
+                label=label,
+                path=path,
+                mime_type=_guess_mime(path),
+                **metadata,
+            )
+            _artifacts[artifact.id] = artifact
+            state_store.upsert_item("artifacts", artifact)
+            registered_artifact_count += 1
+
+        task.actual_resource_usage_json = {
+            "artifact_count": registered_artifact_count,
+            "output_storage_bytes": sum(Path(path).stat().st_size for path in {Path(p).resolve() for p in result_paths.values()} if Path(path).exists()),
+            "worker_id": task.worker_id,
+        }
+        quota_service.record_usage(
+            resource_type="analysis_task",
+            action="analysis_task.completed",
+            quantity=1,
+            unit="task",
+            source_type="analysis_task",
+            source_id=task.id,
             organization_id=task.organization_id,
             project_id=task.project_id,
-            input_file_id=task.input_file_id,
-            artifact_type=path.suffix.lstrip(".") or "file",
-            label=label,
-            path=path,
-            mime_type=_guess_mime(path),
-            **_artifact_file_metadata(path, task.project_id, task.id),
+            owner_user_id=task.owner_user_id,
+            metadata_json=task.actual_resource_usage_json,
         )
-        _artifacts[artifact.id] = artifact
-        state_store.upsert_item("artifacts", artifact)
-
-    task.status = "completed"
-    task.queue_status = "completed"
-    task.progress = 100
-    task.finished_at = utc_now()
-    task.updated_at = task.finished_at
-    task.actual_resource_usage_json = {
-        "artifact_count": len(result_paths),
-        "output_storage_bytes": sum(Path(path).stat().st_size for path in result_paths.values() if Path(path).exists()),
-        "worker_id": task.worker_id,
-    }
-    quota_service.record_usage(
-        resource_type="analysis_task",
-        action="analysis_task.completed",
-        quantity=1,
-        unit="task",
-        source_type="analysis_task",
-        source_id=task.id,
-        organization_id=task.organization_id,
-        project_id=task.project_id,
-        owner_user_id=task.owner_user_id,
-        metadata_json=task.actual_resource_usage_json,
-    )
-    billing_transaction = billing_service.charge_analysis_task(
-        account_id=task.quota_charge_preview_json.get("billing_account_id"),
-        task_id=task.id,
-        module_name=task.module_name,
-        quantity_credits=float(task.quota_charge_preview_json.get("estimated_credits") or 0),
-        metadata_json=task.actual_resource_usage_json,
-    )
-    task.actual_resource_usage_json["billing_transaction_id"] = billing_transaction.id
-    task.actual_resource_usage_json["charged_credits"] = task.quota_charge_preview_json.get("estimated_credits")
-    audit_service.record_event(
-        action="analysis_task.completed",
-        object_type="analysis_task",
-        object_id=task.id,
-        organization_id=task.organization_id,
-        project_id=task.project_id,
-        actor_user_id=task.owner_user_id,
-        metadata_json=task.actual_resource_usage_json,
-    )
-    _tasks[task.id] = task
-    state_store.upsert_item("tasks", task)
-    return task
+        billing_transaction = billing_service.charge_analysis_task(
+            account_id=task.quota_charge_preview_json.get("billing_account_id"),
+            task_id=task.id,
+            module_name=task.module_name,
+            quantity_credits=float(task.quota_charge_preview_json.get("estimated_credits") or 0),
+            metadata_json=task.actual_resource_usage_json,
+        )
+        charged = True
+        task.actual_resource_usage_json["billing_transaction_id"] = billing_transaction.id
+        task.actual_resource_usage_json["charged_credits"] = task.quota_charge_preview_json.get("estimated_credits")
+        task.status = "completed"
+        task.queue_status = "completed"
+        task.progress = 100
+        task.finished_at = utc_now()
+        task.updated_at = task.finished_at
+        _tasks[task.id] = task
+        state_store.upsert_item("tasks", task)
+        try:
+            audit_service.record_event(
+                action="analysis_task.completed",
+                object_type="analysis_task",
+                object_id=task.id,
+                organization_id=task.organization_id,
+                project_id=task.project_id,
+                actor_user_id=task.owner_user_id,
+                metadata_json=task.actual_resource_usage_json,
+            )
+        except Exception:
+            pass
+        return task
+    except Exception as exc:
+        if charged:
+            task.status = "completed"
+            task.queue_status = "completed"
+            task.progress = 100
+            task.error_code = None
+            task.error_message = None
+            task.finished_at = task.finished_at or utc_now()
+            task.updated_at = utc_now()
+            _tasks[task.id] = task
+            state_store.upsert_item("tasks", task)
+            return task
+        task.status = "failed"
+        task.queue_status = "failed"
+        task.progress = 100
+        task.error_code = "TASK_FINALIZATION_FAILED"
+        task.error_message = "Analysis task finished but result registration failed. Contact support with the task_id."
+        task.finished_at = utc_now()
+        task.updated_at = task.finished_at
+        _tasks[task.id] = task
+        state_store.upsert_item("tasks", task)
+        audit_service.record_event(
+            action="analysis_task.failed",
+            object_type="analysis_task",
+            object_id=task.id,
+            organization_id=task.organization_id,
+            project_id=task.project_id,
+            actor_user_id=task.owner_user_id,
+            metadata_json={"error_code": task.error_code, "message": task.error_message},
+        )
+        raise HTTPException(status_code=422, detail={"task_id": task.id, "error_code": task.error_code, "message": task.error_message}) from exc
 
 
 def get_task(task_id: str, requesting_user_id: str | None = None) -> AnalysisTaskRead:
@@ -679,6 +729,8 @@ def get_artifact_download_descriptor(artifact_id: str) -> dict:
         raise HTTPException(status_code=404, detail="Artifact not found")
     return {
         "artifact_id": artifact.id,
+        "task_id": artifact.task_id,
+        "project_id": artifact.project_id,
         "label": artifact.label,
         "path": str(artifact.path),
         "mime_type": artifact.mime_type,

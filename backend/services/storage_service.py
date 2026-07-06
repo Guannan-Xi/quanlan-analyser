@@ -107,12 +107,37 @@ def list_projects() -> list[ProjectRead]:
     return list(_projects.values())
 
 
-def get_project(project_id: str) -> ProjectRead:
+def get_project(project_id: str, requesting_user_id: str | None = None) -> ProjectRead:
+    """Get project by ID with optional permission check.
+
+    Args:
+        project_id: The project ID to retrieve
+        requesting_user_id: If provided, check that the user owns the project
+
+    Raises:
+        HTTPException: 404 if project not found, 403 if permission denied
+    """
     _refresh_projects()
     try:
-        return _projects[project_id]
+        project = _projects[project_id]
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Project not found") from exc
+
+    # Teaching datasets are public read-only demos used by onboarding and E2E flows.
+    if _is_protected_teaching_project(project):
+        return project
+
+    # P0-SEC-01 FIX: Add ownership check to prevent cross-user access
+    if requesting_user_id is not None and project.owner_user_id != requesting_user_id:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code": "PERMISSION_DENIED",
+                "message": "You do not have permission to access this project"
+            }
+        )
+
+    return project
 
 
 def update_project(project_id: str, payload: ProjectUpdate) -> ProjectRead:
@@ -164,14 +189,35 @@ def archive_project(project_id: str, actor_user_id: str = "local-user") -> Proje
 
 
 def delete_project(project_id: str, actor_user_id: str = "local-user") -> ProjectRead:
+    """Delete a project with cascade deletion of associated files.
+
+    P0-STORAGE-02 FIX: Cascade delete all files in the project to prevent orphan files.
+    """
     project = get_project(project_id)
     if _is_protected_teaching_project(project):
         _raise_teaching_protected("project", project.id)
+
+    # P0-STORAGE-02 FIX: Cascade delete all files in project
+    _refresh_eeg_files()
+    project_files = [f for f in _eeg_files.values() if f.project_id == project_id]
+    deleted_file_count = 0
+    failed_deletes = []
+
+    for eeg_file in project_files:
+        if not _is_protected_teaching_file(eeg_file):
+            try:
+                delete_eeg_file(eeg_file.id)
+                deleted_file_count += 1
+            except Exception as exc:
+                failed_deletes.append({"file_id": eeg_file.id, "error": str(exc)})
+
+    # Mark project as deleted
     project.status = "deleted"
     project.updated_by = actor_user_id
     project.updated_at = utc_now()
     _projects[project.id] = project
     state_store.upsert_item("projects", project)
+
     audit_service.record_event(
         action="project.soft_deleted",
         object_type="project",
@@ -179,7 +225,12 @@ def delete_project(project_id: str, actor_user_id: str = "local-user") -> Projec
         organization_id=project.organization_id,
         project_id=project.id,
         actor_user_id=actor_user_id,
-        metadata_json={"delete_mode": "soft", "status": "deleted"},
+        metadata_json={
+            "delete_mode": "soft",
+            "status": "deleted",
+            "cascaded_files": deleted_file_count,
+            "failed_deletes": failed_deletes
+        },
     )
     return project
 
@@ -215,7 +266,14 @@ async def create_eeg_file(
     if upload is None or not upload.filename:
         raise HTTPException(status_code=422, detail="A real EEG file upload is required")
 
-    filename = Path(upload.filename).name
+    # P1-STORAGE-01 FIX: Sanitize filename to prevent path traversal
+    original_filename = Path(upload.filename).name  # Already strips directory
+    # Additional sanitization: remove dangerous characters
+    import re
+    safe_filename = re.sub(r'[^\w\s.-]', '_', original_filename)
+    safe_filename = safe_filename.replace('..', '_')  # Prevent traversal
+    filename = safe_filename
+
     suffix = Path(filename).suffix.lower().lstrip(".") or "unknown"
     if suffix not in {"edf", "bdf", "set", "vhdr", "cnt", "fif"}:
         raise HTTPException(status_code=422, detail=f"Unsupported EEG file format: {suffix}")
@@ -327,12 +385,37 @@ def list_eeg_files() -> list[EEGFileRead]:
     return list(_eeg_files.values())
 
 
-def get_eeg_file(file_id: str) -> EEGFileRead:
+def get_eeg_file(file_id: str, requesting_user_id: str | None = None) -> EEGFileRead:
+    """Get EEG file by ID with optional permission check.
+
+    Args:
+        file_id: The file ID to retrieve
+        requesting_user_id: If provided, check that the user owns the file
+
+    Raises:
+        HTTPException: 404 if file not found, 403 if permission denied
+    """
     _refresh_eeg_files()
     try:
-        return _eeg_files[file_id]
+        eeg_file = _eeg_files[file_id]
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="EEG file not found") from exc
+
+    # Teaching datasets are public read-only demos used by onboarding and E2E flows.
+    if _is_protected_teaching_file(eeg_file):
+        return eeg_file
+
+    # P0-SEC-01 FIX: Add ownership check to prevent cross-user access.
+    if requesting_user_id is not None and eeg_file.owner_user_id != requesting_user_id:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code": "PERMISSION_DENIED",
+                "message": "You do not have permission to access this file"
+            }
+        )
+
+    return eeg_file
 
 
 def update_eeg_file_label(file_id: str, label: str) -> dict:
@@ -346,15 +429,44 @@ def update_eeg_file_label(file_id: str, label: str) -> dict:
 
 
 def delete_eeg_file(file_id: str) -> None:
+    """Delete an EEG file with physical cleanup.
+
+    P0-STORAGE-01 FIX: Delete both metadata and physical file to prevent storage leaks.
+    """
     eeg_file = get_eeg_file(file_id)
     if _is_protected_teaching_file(eeg_file):
         _raise_teaching_protected("eeg_file", eeg_file.id)
+
+    # Mark as deleted in metadata
     eeg_file.status = "deleted"
     eeg_file.upload_status = "deleted"
     eeg_file.deleted_at = utc_now()
     eeg_file.updated_at = utc_now()
     _eeg_files[file_id] = eeg_file
     state_store.upsert_item("eeg_files", eeg_file)
+
+    # P0-STORAGE-01 FIX: Delete physical file
+    import os
+    if eeg_file.stored_path and eeg_file.stored_path.exists():
+        try:
+            os.remove(eeg_file.stored_path)
+            # Try to remove parent directory if empty
+            try:
+                eeg_file.stored_path.parent.rmdir()
+            except OSError:
+                pass  # Directory not empty or other issue
+        except OSError as exc:
+            # Log but don't fail the delete operation
+            audit_service.record_event(
+                action="eeg_file.physical_delete_failed",
+                object_type="eeg_file",
+                object_id=eeg_file.id,
+                organization_id=eeg_file.organization_id,
+                project_id=eeg_file.project_id,
+                actor_user_id=eeg_file.owner_user_id,
+                metadata_json={"error": str(exc), "path": str(eeg_file.stored_path)},
+            )
+
     audit_service.record_event(
         action="eeg_file.soft_deleted",
         object_type="eeg_file",

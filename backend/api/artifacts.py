@@ -1,9 +1,10 @@
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 
-from backend.services import task_service
+from backend.models.governance import AccountRead
+from backend.services import account_service, task_service
 
 router = APIRouter()
 
@@ -25,8 +26,12 @@ def _assert_path_within_derivatives(raw_path: Path) -> Path:
 
 
 @router.get("/artifacts/{artifact_id}/download")
-def download_artifact(artifact_id: str) -> FileResponse:
+def download_artifact(
+    artifact_id: str,
+    current: AccountRead = Depends(account_service.require_current_account),
+) -> FileResponse:
     descriptor = task_service.get_artifact_download_descriptor(artifact_id)
+    task_service.get_task(str(descriptor["task_id"]), requesting_user_id=current.id)
     path = _assert_path_within_derivatives(Path(descriptor["path"]))
     if not path.exists() or not path.is_file():
         raise HTTPException(status_code=410, detail="Artifact file is not available on disk")

@@ -4,20 +4,22 @@ import csv
 import hashlib
 import io
 import json
+import re
 import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal
 
 import numpy as np
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
 from mne.filter import filter_data, notch_filter
 from pydantic import BaseModel, Field
 
 from backend.models.artifact import ArtifactRead
 from backend.models.base import new_id, utc_now
-from backend.services import state_store, storage_service, task_service
+from backend.models.governance import AccountRead
+from backend.services import account_service, state_store, storage_service, task_service
 from eeg_core.io.readers import read_raw
 
 # P0-EPILEPSY-PHASE1: Import phase validator for staged release
@@ -27,12 +29,13 @@ from backend.api.epilepsy_phase_validator import validate_by_file_id, get_phase_
 router = APIRouter()
 
 REVIEW_REGISTRY = "epilepsy_review_sessions"
-MAX_DURATION_SEC = 300.0
+MAX_DURATION_SEC = 3600.0  # Increased from 300 to support overview bar for long recordings
 DEFAULT_WINDOW_SEC = 30.0
 DEFAULT_MAX_POINTS = 2000
 MAX_MAX_POINTS = 10000
 MAX_WAVEFORM_CHANNELS = 8
 MAX_WAVEFORM_SAMPLES = 1_000_000
+MAX_STREAMING_MINMAX_BUCKETS = 1000
 RAW_FILTER_PROFILE = "raw"
 PREVIEW_FILTER_PROFILE = "preview_0p5_45_notch50"
 
@@ -300,12 +303,60 @@ def _apply_preview_filter(values: np.ndarray, sfreq: float, profile: dict[str, A
     return window
 
 
+def _encode_minmax_window_streaming(
+    raw: Any,
+    picks: list[str],
+    start_sample: int,
+    stop_sample: int,
+    sfreq: float,
+    *,
+    max_points: int,
+    scale_factor: float,
+) -> list[dict[str, Any]]:
+    sample_count = max(0, stop_sample - start_sample)
+    bucket_count = max(1, min(MAX_STREAMING_MINMAX_BUCKETS, max_points // 2))
+    edges = np.linspace(start_sample, stop_sample, bucket_count + 1, dtype=int)
+    decimation = int(np.ceil(sample_count / max(1, bucket_count)))
+    payloads = [
+        {
+            "name": channel_name,
+            "encoding": "minmax",
+            "decimation": decimation,
+            "times_sec": [],
+            "values": None,
+            "min_values": [],
+            "max_values": [],
+        }
+        for channel_name in picks
+    ]
+    for left, right in zip(edges[:-1], edges[1:], strict=True):
+        if right <= left:
+            continue
+        segment = raw.get_data(picks=picks, start=int(left), stop=int(right))
+        if scale_factor != 1.0:
+            segment = segment * scale_factor
+        bucket_time = round(float(left) / float(sfreq), 6) if sfreq > 0 else 0.0
+        for channel_index, values in enumerate(segment):
+            payloads[channel_index]["times_sec"].append(bucket_time)
+            payloads[channel_index]["min_values"].append(round(float(np.nanmin(values)), 6))
+            payloads[channel_index]["max_values"].append(round(float(np.nanmax(values)), 6))
+    return payloads
+
+
 @router.post("/tasks/{task_id}/epilepsy-review-sessions", response_model=EpilepsyReviewSession)
-def create_review_session(task_id: str, payload: CreateReviewSessionRequest) -> EpilepsyReviewSession:
-    task = task_service.get_task(task_id)
+def create_review_session(
+    task_id: str,
+    payload: CreateReviewSessionRequest,
+    current: AccountRead = Depends(account_service.require_current_account),
+) -> EpilepsyReviewSession:
+    task = task_service.get_task(task_id, requesting_user_id=current.id)
     task_params = _task_parameters(task)
     inherited_context = _validate_inherited_context(payload, task_params)
-    input_file_id = payload.input_file_id or _task_input_file_id(task)
+    task_input_file_id = _task_input_file_id(task)
+    if payload.input_file_id and payload.input_file_id != task_input_file_id:
+        raise HTTPException(status_code=422, detail="Review session input_file_id must match the task input file")
+    input_file_id = task_input_file_id
+    storage_service.get_eeg_file(input_file_id, requesting_user_id=current.id)
     
     # P0-EPILEPSY-PHASE1: Validate file constraints before creating review session
     validation_result = validate_by_file_id(
@@ -348,18 +399,31 @@ def create_review_session(task_id: str, payload: CreateReviewSessionRequest) -> 
     return _save_session(session)
 
 
-@router.get("/epilepsy-review-sessions/{session_id}", response_model=EpilepsyReviewSession)
-def get_review_session(session_id: str) -> EpilepsyReviewSession:
+def _get_review_session_for_user(session_id: str, current: AccountRead) -> EpilepsyReviewSession:
     sessions = _sessions()
     try:
-        return sessions[session_id]
+        session = sessions[session_id]
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Epilepsy review session not found") from exc
+    task_service.get_task(session.task_id, requesting_user_id=current.id)
+    return session
+
+
+@router.get("/epilepsy-review-sessions/{session_id}", response_model=EpilepsyReviewSession)
+def get_review_session(
+    session_id: str,
+    current: AccountRead = Depends(account_service.require_current_account),
+) -> EpilepsyReviewSession:
+    return _get_review_session_for_user(session_id, current)
 
 
 @router.patch("/epilepsy-review-sessions/{session_id}", response_model=EpilepsyReviewSession)
-def patch_review_session(session_id: str, payload: PatchReviewSessionRequest) -> EpilepsyReviewSession:
-    session = get_review_session(session_id)
+def patch_review_session(
+    session_id: str,
+    payload: PatchReviewSessionRequest,
+    current: AccountRead = Depends(account_service.require_current_account),
+) -> EpilepsyReviewSession:
+    session = _get_review_session_for_user(session_id, current)
     if payload.status is not None:
         session.status = payload.status
     if payload.current_epoch is not None:
@@ -378,8 +442,11 @@ def patch_review_session(session_id: str, payload: PatchReviewSessionRequest) ->
 
 
 @router.get("/eeg/files/{file_id}/waveform-pyramid/manifest")
-def waveform_pyramid_manifest(file_id: str) -> dict[str, Any]:
-    eeg_file = storage_service.get_eeg_file(file_id)
+def waveform_pyramid_manifest(
+    file_id: str,
+    current: AccountRead = Depends(account_service.require_current_account),
+) -> dict[str, Any]:
+    eeg_file = storage_service.get_eeg_file(file_id, requesting_user_id=current.id)
     path = Path(eeg_file.stored_path)
     raw = _open_raw_eeg(path)
     unit_policy = _source_unit_policy(path)
@@ -410,8 +477,11 @@ def waveform_pyramid_manifest(file_id: str) -> dict[str, Any]:
 
 
 @router.post("/eeg/files/{file_id}/waveform-pyramid/build")
-def build_waveform_pyramid(file_id: str) -> dict[str, Any]:
-    storage_service.get_eeg_file(file_id)
+def build_waveform_pyramid(
+    file_id: str,
+    current: AccountRead = Depends(account_service.require_current_account),
+) -> dict[str, Any]:
+    storage_service.get_eeg_file(file_id, requesting_user_id=current.id)
     return {
         "file_id": file_id,
         "build_status": "on_demand",
@@ -430,9 +500,11 @@ def waveform_window(
     filter_profile_id: str = Query("raw"),
     include_events: bool = Query(False),
     request_id: str = Query(""),
+    mode: str = Query("auto"),
+    current: AccountRead = Depends(account_service.require_current_account),
 ) -> dict[str, Any]:
     server_start = time.perf_counter()
-    eeg_file = storage_service.get_eeg_file(file_id)
+    eeg_file = storage_service.get_eeg_file(file_id, requesting_user_id=current.id)
     path = Path(eeg_file.stored_path)
     stat = path.stat() if path.exists() else None
     source_data_revision = f"{file_id}:{int(stat.st_mtime) if stat else 0}:{stat.st_size if stat else 0}"
@@ -446,30 +518,57 @@ def waveform_window(
     picks = _select_waveform_channels(raw, channels)
     start_sample = int(round(start_sec * sfreq))
     stop_sample = int(round(stop_sec * sfreq))
-    _validate_waveform_budget(picks, start_sample, stop_sample)
     filter_profile = _filter_profile(filter_profile_id)
     unit_policy = _source_unit_policy(path)
-    data, times = raw.get_data(picks=picks, start=start_sample, stop=stop_sample, return_times=True)
-    read_elapsed_ms = (time.perf_counter() - read_start) * 1000
-    if unit_policy["scale_factor"] != 1.0:
-        data = data * float(unit_policy["scale_factor"])
-    filter_start = time.perf_counter()
-    data = _apply_preview_filter(data, sfreq, filter_profile)
-    filter_elapsed_ms = (time.perf_counter() - filter_start) * 1000
-    encoding = "raw"
-    decimation = max(1, int(level))
-    channels_payload = []
-    encode_start = time.perf_counter()
-    for channel_name, values in zip(picks, data, strict=True):
-        payload = _encode_channel(values, times, max_points=max_points)
-        payload["name"] = channel_name
-        channels_payload.append(payload)
-        if payload["encoding"] != "raw":
-            encoding = payload["encoding"]
-            decimation = payload["decimation"]
-    encode_elapsed_ms = (time.perf_counter() - encode_start) * 1000
+    sample_count = max(0, stop_sample - start_sample)
+    requested_samples = len(picks) * sample_count
+    mode_normalized = (mode or "auto").strip().lower()
+    streaming_minmax = (
+        mode_normalized in {"auto", "minmax"}
+        and not filter_profile.get("applied")
+        and sample_count > max_points
+        and len(picks) * max_points <= MAX_WAVEFORM_SAMPLES
+    )
+    if not streaming_minmax:
+        _validate_waveform_budget(picks, start_sample, stop_sample)
+        data, times = raw.get_data(picks=picks, start=start_sample, stop=stop_sample, return_times=True)
+        read_elapsed_ms = (time.perf_counter() - read_start) * 1000
+        if unit_policy["scale_factor"] != 1.0:
+            data = data * float(unit_policy["scale_factor"])
+        filter_start = time.perf_counter()
+        data = _apply_preview_filter(data, sfreq, filter_profile)
+        filter_elapsed_ms = (time.perf_counter() - filter_start) * 1000
+        encoding = "raw"
+        decimation = max(1, int(level))
+        channels_payload = []
+        encode_start = time.perf_counter()
+        for channel_name, values in zip(picks, data, strict=True):
+            payload = _encode_channel(values, times, max_points=max_points)
+            payload["name"] = channel_name
+            channels_payload.append(payload)
+            if payload["encoding"] != "raw":
+                encoding = payload["encoding"]
+                decimation = payload["decimation"]
+        encode_elapsed_ms = (time.perf_counter() - encode_start) * 1000
+    else:
+        filter_elapsed_ms = 0.0
+        encode_start = time.perf_counter()
+        channels_payload = _encode_minmax_window_streaming(
+            raw,
+            picks,
+            start_sample,
+            stop_sample,
+            sfreq,
+            max_points=max_points,
+            scale_factor=float(unit_policy["scale_factor"]),
+        )
+        read_elapsed_ms = (time.perf_counter() - read_start) * 1000
+        encode_elapsed_ms = (time.perf_counter() - encode_start) * 1000
+        encoding = "minmax"
+        decimation = channels_payload[0]["decimation"] if channels_payload else max(1, int(level))
+    resolved_mode = "streaming_minmax" if streaming_minmax else "raw_window"
     window_key = hashlib.sha256(
-        f"{file_id}|{start_sec:.3f}|{duration_sec:.3f}|{','.join(picks)}|{filter_profile['id']}|{max_points}|{source_data_revision}".encode("utf-8")
+        f"{file_id}|{start_sec:.3f}|{duration_sec:.3f}|{','.join(picks)}|{filter_profile['id']}|{max_points}|{resolved_mode}|{source_data_revision}".encode("utf-8")
     ).hexdigest()[:16]
     response = {
         "file_id": file_id,
@@ -488,7 +587,9 @@ def waveform_window(
             "max_channels": MAX_WAVEFORM_CHANNELS,
             "max_samples": MAX_WAVEFORM_SAMPLES,
             "requested_channel_count": len(picks),
-            "requested_samples": len(picks) * max(0, stop_sample - start_sample),
+            "requested_samples": requested_samples,
+            "encoded_max_points": max_points,
+            "budget_mode": resolved_mode,
         },
         "decimation": {"method": encoding, "factor": decimation, "max_points": max_points},
         "channels": channels_payload,
@@ -591,8 +692,15 @@ def _artifact_metadata(path: Path, project_id: str, task_id: str) -> dict[str, A
     }
 
 
-def _register_review_artifact(session: EpilepsyReviewSession, relative_path: str, label: str, text: str, mime_type: str) -> ArtifactRead:
-    task = task_service.get_task(session.task_id)
+def _register_review_artifact(
+    session: EpilepsyReviewSession,
+    relative_path: str,
+    label: str,
+    text: str,
+    mime_type: str,
+    requesting_user_id: str | None = None,
+) -> ArtifactRead:
+    task = task_service.get_task(session.task_id, requesting_user_id=requesting_user_id)
     project_id = task.project_id or "local-project"
     root = getattr(task_service, "DERIVATIVES_ROOT", Path(__file__).resolve().parents[2] / "data" / "derivatives")
     path = root / project_id / task.id / "epilepsy_review" / session.id / relative_path
@@ -807,8 +915,11 @@ def _final_review_event_rows(candidate_rows: list[dict[str, Any]]) -> list[dict[
 
 
 @router.post("/epilepsy-review-sessions/{session_id}/exports")
-def export_review_session(session_id: str) -> dict[str, Any]:
-    session = get_review_session(session_id)
+def export_review_session(
+    session_id: str,
+    current: AccountRead = Depends(account_service.require_current_account),
+) -> dict[str, Any]:
+    session = _get_review_session_for_user(session_id, current)
     session.status = "exported"
     _save_session(session)
     exported_at = utc_now().isoformat()
@@ -819,7 +930,7 @@ def export_review_session(session_id: str) -> dict[str, Any]:
     manual_correction_rows = _manual_correction_rows(session)
     final_review_event_rows = _final_review_event_rows(v01_candidate_rows)
     source_artifacts = _source_artifact_metadata(session)
-    task = task_service.get_task(session.task_id)
+    task = task_service.get_task(session.task_id, requesting_user_id=current.id)
     parameters_json = _task_parameters(task)
     summary_json = _artifact_json(_task_artifact_by_id(session, session.source_summary_artifact_id))
     model_manifest_json = _artifact_json(
@@ -1047,13 +1158,16 @@ def _event_review_status(row: dict[str, Any], max_score_across_events: float = 0
 
 
 @router.get("/epilepsy-workbench/{task_id}/events")
-def get_epilepsy_task_events(task_id: str) -> dict[str, Any]:
+def get_epilepsy_task_events(
+    task_id: str,
+    current: AccountRead = Depends(account_service.require_current_account),
+) -> dict[str, Any]:
     """Return a v3-compatible event review DTO for a completed epilepsy task.
 
     Falls back to a minimal summary when no events CSV artifact is available,
     so the frontend v3 panel can render the workspace structure.
     """
-    task = task_service.get_task(task_id)
+    task = task_service.get_task(task_id, requesting_user_id=current.id)
     task_params = _task_parameters(task)
     raw_rows = _load_task_events_csv(task_id)
     summary = _load_task_summary(task_id)
@@ -1121,6 +1235,14 @@ def get_epilepsy_task_events(task_id: str) -> dict[str, Any]:
     }
 
 
+def _safe_event_file_id(event_id: str) -> str:
+    safe = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(event_id or "event"))
+    safe = safe.strip("._") or "event"
+    if safe in {".", ".."}:
+        return "event"
+    return safe[:80]
+
+
 def _generate_event_evidence_png(
     task_id: str,
     event_id: str,
@@ -1142,7 +1264,8 @@ def _generate_event_evidence_png(
     artifact_root = _task_artifact_root(task_id)
     figures_dir = artifact_root / "figures"
     figures_dir.mkdir(parents=True, exist_ok=True)
-    png_path = figures_dir / f"epilepsy_event_{event_id}_focus_1_35hz.png"
+    safe_event_id = _safe_event_file_id(event_id)
+    png_path = figures_dir / f"epilepsy_event_{safe_event_id}_focus_1_35hz.png"
 
     if png_path.exists():
         return png_path
@@ -1201,20 +1324,25 @@ def _task_artifact_root(task_id: str) -> Path:
 
 
 @router.get("/epilepsy-workbench/{task_id}/events/{event_id}/evidence")
-def get_event_evidence(task_id: str, event_id: str) -> FileResponse:
+def get_event_evidence(
+    task_id: str,
+    event_id: str,
+    current: AccountRead = Depends(account_service.require_current_account),
+) -> FileResponse:
     """Serve the per-event evidence PNG figure directly for <img src> embedding.
 
     Also registers the file as an artifact so it can be accessed via
     /api/artifacts/{id}/download for ZIP packaging and reuse.
     """
-    task = task_service.get_task(task_id)
+    task = task_service.get_task(task_id, requesting_user_id=current.id)
     task_params = _task_parameters(task)
     summary = _load_task_summary(task_id)
     events = _load_task_events_csv(task_id)
     event_row = next((e for e in events if str(e.get("event_id", "")) == event_id), None)
 
+    safe_event_id = _safe_event_file_id(event_id)
     png_path = _generate_event_evidence_png(task_id, event_id, task_params, summary, event_row)
-    _register_or_get_evidence_artifact(task_id, png_path, f"epilepsy_event_{event_id}_focus_png", event_id)
+    _register_or_get_evidence_artifact(task_id, png_path, f"epilepsy_event_{safe_event_id}_focus_png", event_id)
 
     if not png_path.exists():
         raise HTTPException(status_code=404, detail="Evidence PNG not found")
@@ -1222,7 +1350,7 @@ def get_event_evidence(task_id: str, event_id: str) -> FileResponse:
     return FileResponse(
         png_path,
         media_type="image/png",
-        filename=f"epilepsy_event_{event_id}_focus_1_35hz.png",
+        filename=f"epilepsy_event_{safe_event_id}_focus_1_35hz.png",
     )
 
 
@@ -1231,13 +1359,14 @@ def _register_or_get_evidence_artifact(task_id: str, png_path: Path, label: str,
     for artifact in task_service.list_task_artifacts(task_id):
         if artifact.label == label:
             return artifact
+    safe_event_id = _safe_event_file_id(event_id)
     artifact = ArtifactRead(
         task_id=task_id,
         artifact_type="png",
         label=label,
         path=png_path,
         mime_type="image/png" if png_path.suffix == ".png" else "application/zip",
-        object_key=f"figures/epilepsy_event_{event_id}_focus_1_35hz.png",
+        object_key=f"figures/epilepsy_event_{safe_event_id}_focus_1_35hz.png",
     )
     state_store.upsert_item("artifacts", artifact)
     return artifact
@@ -1253,14 +1382,17 @@ def get_epilepsy_phase_roadmap():
 
 
 @router.post("/epilepsy-workbench/{task_id}/evidence-package")
-def create_all_events_evidence_package(task_id: str) -> dict[str, Any]:
+def create_all_events_evidence_package(
+    task_id: str,
+    current: AccountRead = Depends(account_service.require_current_account),
+) -> dict[str, Any]:
     """Generate a ZIP containing all event evidence PNGs and a manifest.
 
     Returns artifact download metadata for the ZIP.
     """
     import zipfile
 
-    task = task_service.get_task(task_id)
+    task = task_service.get_task(task_id, requesting_user_id=current.id)
     task_params = _task_parameters(task)
     summary = _load_task_summary(task_id)
     events = _load_task_events_csv(task_id)
@@ -1286,8 +1418,9 @@ def create_all_events_evidence_package(task_id: str) -> dict[str, Any]:
             event_id = str(event_row.get("event_id") or "")
             if not event_id:
                 continue
+            safe_event_id = _safe_event_file_id(event_id)
             png_path = _generate_event_evidence_png(task_id, event_id, task_params, summary, event_row)
-            arcname = f"events/{event_id}/figures/{event_id}_focus_1_35hz.png"
+            arcname = f"events/{safe_event_id}/figures/{safe_event_id}_focus_1_35hz.png"
             zf.write(png_path, arcname)
             manifest["events"].append({
                 "event_id": event_id,

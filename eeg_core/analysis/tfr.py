@@ -52,6 +52,18 @@ def run_tfr(input_path: str | Path, output_dir: str | Path, parameters: dict | N
 
     raw = read_raw(input_path, preload=True)
     params = validate_tfr_parameters(parameters, raw=raw)
+
+    # Crop to analysis window if provided (allows TFR to follow the waveform preview window)
+    analysis_window = params.get("analysis_window")
+    if analysis_window and isinstance(analysis_window, dict):
+        aw_start = float(analysis_window.get("start_sec", 0))
+        aw_duration = float(analysis_window.get("duration_sec", 0))
+        file_duration = raw.n_times / float(raw.info["sfreq"])
+        if aw_start >= 0 and aw_duration > 0 and aw_start < file_duration:
+            aw_stop = min(aw_start + aw_duration, file_duration)
+            raw = raw.copy().crop(tmin=aw_start, tmax=aw_stop, include_tmax=False)
+            params = {**params, "analysis_window": {**analysis_window, "actual_crop_start_sec": round(aw_start, 2), "actual_crop_end_sec": round(aw_stop, 2)}}
+
     event_id = _resolve_event_id(raw, params["event_id"])
     events, event_map = mne.events_from_annotations(raw, event_id=event_id, verbose=False)
     if events.size == 0:
@@ -238,10 +250,43 @@ def validate_tfr_parameters(parameters: dict | None, *, raw) -> dict[str, Any]:
     params["picks"] = _string_list(source.get("picks"), name="picks")
     params.setdefault("data_preparation_plan_id", source.get("data_preparation_plan_id") or "none")
     params.setdefault("data_preparation_revision", source.get("data_preparation_revision"))
+    
+    # P0-ALGO-02: Nyquist frequency validation
+    sfreq = float(raw.info["sfreq"])
+    nyquist = sfreq / 2.0
+    
     if not params["freqs"]:
         raise ValueError("TFR requires at least one frequency")
     if min(params["freqs"]) <= 0:
         raise ValueError("TFR frequencies must be positive")
+    if max(params["freqs"]) >= nyquist:
+        raise ValueError(f"TFR frequencies must be below Nyquist ({nyquist:.2f} Hz). Requested max: {max(params['freqs']):.2f} Hz")
+    
+    # P0-ALGO-02: Memory estimation for TFR
+    n_channels = raw.get_channel_types().count("eeg")
+    if n_channels < 1:
+        raise ValueError("TFR requires at least one EEG channel")
+    
+    # Estimate time points after epoching
+    epoch_duration = params["tmax"] - params["tmin"]
+    time_points = int(epoch_duration * sfreq / params["decim"])
+    freq_points = len(params["freqs"])
+    
+    # Estimate memory: freq_points × time_points × channels × 8 bytes (float64)
+    # Include both power and ITC if requested
+    memory_per_epoch_mb = (freq_points * time_points * n_channels * 8) / (1024 * 1024)
+    if params["return_itc"]:
+        memory_per_epoch_mb *= 2  # Both power and ITC
+    
+    # Set conservative limit at 2GB
+    memory_limit_mb = 2048
+    if memory_per_epoch_mb > memory_limit_mb:
+        raise ValueError(
+            f"TFR memory estimate ({memory_per_epoch_mb:.1f} MB) exceeds limit ({memory_limit_mb} MB). "
+            f"Reduce frequency points ({freq_points}), increase decimation (current: {params['decim']}), "
+            f"or reduce time window (current: {epoch_duration:.2f}s)"
+        )
+    
     if params["n_cycles"] <= 0:
         raise ValueError("TFR n_cycles must be positive")
     if params["decim"] < 1:
@@ -250,8 +295,7 @@ def validate_tfr_parameters(parameters: dict | None, *, raw) -> dict[str, Any]:
         raise ValueError("TFR baseline must be a valid start/end pair")
     if params["tmax"] <= params["tmin"]:
         raise ValueError("TFR tmax must be greater than tmin")
-    if raw.get_channel_types().count("eeg") < 1:
-        raise ValueError("TFR requires at least one EEG channel")
+    
     return params
 
 
@@ -329,16 +373,28 @@ def _write_heatmap_svg(path: Path, data: np.ndarray, times: np.ndarray, freqs: l
     width, height = 860, 460
     left, top = 120, 70
     plot_w, plot_h = 660, 280
-    max_value = float(np.nanmax(data)) if np.size(data) else 1.0
-    min_value = float(np.nanmin(data)) if np.size(data) else 0.0
     rows = []
+    # 使用百分位范围（p2–p98）作为颜色映射区间，避免极端值挤压分布
+    flat = data.ravel()
+    vmin = float(np.percentile(flat, 2)) if flat.size > 1 else float(np.nanmin(data))
+    vmax = float(np.percentile(flat, 98)) if flat.size > 1 else float(np.nanmax(data))
+    if vmax - vmin < 1e-12:
+        vmax = vmin + 1.0
     for y, freq in enumerate(freqs):
         rows.append(f'<text x="{left - 10}" y="{top + (y + 0.5) * (plot_h / len(freqs))}" text-anchor="end" font-size="12">{freq:g} Hz</text>')
         for x, time_sec in enumerate(times):
             if y == 0:
                 rows.append(f'<text x="{left + (x + 0.5) * (plot_w / len(times))}" y="{top - 10}" text-anchor="middle" font-size="12">{time_sec:g}</text>')
             value = float(np.mean(data[:, y, x])) if data.ndim >= 3 else float(data[y, x])
-            rows.append(f'<rect x="{left + x * (plot_w / len(times)):.1f}" y="{top + y * (plot_h / len(freqs)):.1f}" width="{plot_w / len(times):.1f}" height="{plot_h / len(freqs):.1f}" fill="{_heat_color(value, min_value, max_value)}" stroke="#ffffff"/>')
+            rows.append(f'<rect x="{left + x * (plot_w / len(times)):.1f}" y="{top + y * (plot_h / len(freqs)):.1f}" width="{plot_w / len(times):.1f}" height="{plot_h / len(freqs):.1f}" fill="{_heat_color(value, vmin, vmax)}" stroke="#ffffff"/>')
+    # 颜色图例
+    legend_x = left + plot_w + 20
+    for i in range(10):
+        y_legend = top + i * (plot_h / 10)
+        frac = 1.0 - i / 9.0
+        rows.append(f'<rect x="{legend_x}" y="{y_legend:.1f}" width="16" height="{plot_h/10:.1f}" fill="{_heat_color(vmin + frac * (vmax - vmin), vmin, vmax)}" stroke="none"/>')
+    rows.append(f'<text x="{legend_x + 20}" y="{top + 10}" font-size="10" fill="#333">{vmax:.1f} dB</text>')
+    rows.append(f'<text x="{legend_x + 20}" y="{top + plot_h - 4}" font-size="10" fill="#333">{vmin:.1f} dB</text>')
     path.write_text(
         f"""<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">
   <rect width="{width}" height="{height}" fill="#ffffff"/>

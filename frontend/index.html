@@ -5,20 +5,20 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>QLanalyser Online</title>
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob: https:; media-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' http://127.0.0.1:* http://localhost:* ws://127.0.0.1:* ws://localhost:*; font-src 'self' data:;" />
-    <link rel="stylesheet" href="./styles.css?v=20260701-rc-final-clean" />
+    <link rel="stylesheet" href="./styles.css?v=20260706-ui-upgrade-complete-v7" />
     <script src="./vendor/lucide.min.js" defer></script>
   </head>
-  <body>
+  <body class="login-active">
     <a class="boss-home" href="./expert-entry-demo.html" data-entry-home hidden aria-hidden="true">返回首页</a>
     <section class="login-screen" id="loginScreen">
+      <button class="admin-corner" type="button" data-login-tab="adminLogin" title="内部入口" aria-label="内部入口"><i data-lucide="shield"></i><span>内部</span></button>
       <div class="login-brand" aria-label="QLanalyser 脑电分析平台封面">
         <div class="entry-brand-lockup">
-          <span class="entry-kicker">全澜脑科学 | QuanLan BrainScience</span>
+          <span class="entry-kicker">全澜脑科学<sup>®</sup> | QuanLan BrainScience<sup>®</sup></span>
           <strong>QLanalyser Online</strong>
-          <small>面向科研团队的 EEG 数据管理、分析交付与复现记录平台。</small>
+          <small>清晰数据管理 · 流程化分析 · 规范结果交付</small>
         </div>
         <div class="cover-copy">
-          <p>让脑电数据管理更清晰，让分析流程更简单，让研究结果更容易交付。</p>
           <div class="entry-value-grid" aria-label="产品价值">
             <article><strong>数据归档</strong><span>原始数据、事件表、参数与结果统一留痕。</span></article>
             <article><strong>分析流程</strong><span>从质控、预处理到结果导出，按科研分析流程推进。</span></article>
@@ -29,37 +29,28 @@
 
       <div class="login-panel" aria-label="账号入口">
         <div class="account-title">
-          <span>研究工作区</span>
-          <strong>进入分析项目</strong>
-          <small>上传数据、选择方法、下载结果材料。</small>
+          <span>QLanalyser Online</span>
+          <strong>登录</strong>
         </div>
         <div class="login-tabs" role="tablist" aria-label="登录入口">
           <button class="active" type="button" data-login-tab="customerLogin">登录</button>
-          <button type="button" data-login-tab="customerRegister">注册账号</button>
-          <button type="button" data-login-tab="adminLogin">运营后台</button>
+          <button type="button" data-login-tab="customerRegister" title="当前试点阶段由运营人员开通账号">账号开通</button>
         </div>
 
         <form class="login-form active" id="customerLoginForm">
-          <label><span>邮箱 / 手机号</span><input id="customerEmail" type="text" placeholder="邮箱 / 手机号" autocomplete="username" /></label>
-          <label><span>密码</span><input id="customerPassword" type="password" placeholder="密码" autocomplete="current-password" /></label>
+          <label><span>邮箱 / 手机号</span><input id="customerEmail" type="text" value="demo.customer@quanlan.cn" placeholder="邮箱 / 手机号" autocomplete="username" /></label>
+          <label><span>密码</span><input id="customerPassword" type="password" value="demo123456" placeholder="密码" autocomplete="current-password" /></label>
           <label class="remember-row"><input id="rememberCustomer" type="checkbox" checked /> 记住登录状态</label>
-          <button class="primary-btn full" id="customerLoginBtn" type="submit"><i data-lucide="log-in"></i><span>登录并进入项目</span></button>
-          <button class="ghost-btn full" id="forgotPasswordBtn" type="button">帮助与账号找回</button>
+          <button class="primary-btn full" id="customerLoginBtn" type="submit"><i data-lucide="log-in"></i><span>登录</span></button>
+          <button class="ghost-btn full" id="forgotPasswordBtn" type="button">找回账号</button>
         </form>
 
         <form class="login-form" id="customerRegisterForm">
-          <div class="register-mode">
-            <label><span>注册邮箱</span><input id="registerEmail" type="email" placeholder="name@example.com" autocomplete="email" /></label>
-            <label><span>姓名</span><input id="registerName" type="text" placeholder="请输入姓名" /></label>
-            <label><span>单位 / 团队</span><input id="registerOrg" type="text" placeholder="请输入单位或团队" /></label>
-            <label><span>设置密码</span><input id="registerPassword" type="password" placeholder="至少 6 位" autocomplete="new-password" /></label>
-            <label><span>确认密码</span><input id="registerPasswordConfirm" type="password" autocomplete="new-password" /></label>
-          </div>
-          <button class="primary-btn full" type="submit"><i data-lucide="user-plus"></i><span>创建账号并进入项目</span></button>
+          <p class="register-unavailable-note">试点阶段由运营人员开通账号。已有账号请返回登录。</p>
         </form>
 
         <form class="login-form admin-form" id="adminLoginForm">
-          <p class="admin-note">后台仅用于运营人员管理客户、订单、任务和系统状态。</p>
+          <p class="admin-note">后台仅用于内部人员查看任务、账号和系统状态。</p>
           <label><span>管理员邮箱</span><input id="adminEmail" type="email" placeholder="管理员邮箱" autocomplete="username" /></label>
           <label><span>管理员密码</span><input id="adminPassword" type="password" autocomplete="current-password" /></label>
           <button class="primary-btn full" type="submit"><i data-lucide="shield-check"></i><span>进入后台</span></button>
@@ -78,23 +69,23 @@
           </div>
         </div>
         <nav class="nav" aria-label="QLanalyser 主业务导航">
-          <button class="nav-item active" data-view="dashboard" data-role="customer"><i data-lucide="folder-kanban"></i><span>项目管理</span></button>
-          <button class="nav-item" data-view="storage" data-role="customer"><i data-lucide="database"></i><span>数据管理</span></button>
-          <button class="nav-item" data-view="analysis" data-role="customer"><i data-lucide="sliders-horizontal"></i><span>数据准备</span></button>
-          <button class="nav-item" data-view="workflow" data-role="customer"><i data-lucide="activity"></i><span>分析任务</span></button>
-          <button class="nav-item" data-view="statistics" data-role="customer"><i data-lucide="chart-no-axes-combined"></i><span>结果查看</span></button>
-          <button class="nav-item" data-view="publication" data-role="customer"><i data-lucide="file-down"></i><span>报告交付</span></button>
-          <button class="nav-item" data-view="journey" data-role="customer"><i data-lucide="clipboard-check"></i><span>质量检查</span></button>
+          <button class="nav-item active" data-view="dashboard" data-role="customer"><i data-lucide="folder-kanban"></i><span>项目</span></button>
+          <button class="nav-item" data-view="storage" data-role="customer"><i data-lucide="database"></i><span>数据</span></button>
+          <button class="nav-item" data-view="analysis" data-role="customer"><i data-lucide="sliders-horizontal"></i><span>准备</span></button>
+          <button class="nav-item" data-view="workflow" data-role="customer"><i data-lucide="activity"></i><span>分析</span></button>
+          <button class="nav-item" data-view="statistics" data-role="customer"><i data-lucide="chart-no-axes-combined"></i><span>结果</span></button>
+          <button class="nav-item" data-view="publication" data-role="customer"><i data-lucide="file-down"></i><span>报告</span></button>
+          <button class="nav-item" data-view="journey" data-role="admin"><i data-lucide="clipboard-check"></i><span>质检</span></button>
           <button class="nav-item" data-view="userCenter" data-role="customer"><i data-lucide="circle-user-round"></i><span>个人中心</span></button>
           <button class="nav-item" data-view="adminDashboard" data-role="admin"><i data-lucide="monitor-dot"></i><span>后台总览</span></button>
-          <button class="nav-item" data-view="adminOperations" data-role="admin"><i data-lucide="list-checks"></i><span>任务运营</span></button>
-          <button class="nav-item" data-view="adminFinance" data-role="admin"><i data-lucide="landmark"></i><span>财务管理</span></button>
+          <button class="nav-item" data-view="adminOperations" data-role="admin"><i data-lucide="list-checks"></i><span>任务队列</span></button>
+          <button class="nav-item" data-view="adminFinance" data-role="admin"><i data-lucide="landmark"></i><span>结算记录</span></button>
           <button class="nav-item" data-view="adminSystem" data-role="admin"><i data-lucide="server-cog"></i><span>系统状态</span></button>
         </nav>
         <div class="account-panel personal-center" data-view-jump="userCenter" role="button" tabindex="0">
           <span class="label" id="roleLabel">客户账户</span>
           <strong id="balanceSide">个人中心</strong>
-          <small id="accountHint">账户、余额、充值、发票与设置</small>
+          <small id="accountHint">账号、项目与通知设置</small>
         </div>
       </aside>
 
@@ -115,26 +106,18 @@
         <nav class="workspace-progress-bar" id="workspaceProgressBar" data-testid="workspace-progress-bar" aria-label="工作台进度" hidden></nav>
 
         <section class="view active" id="dashboard">
-          <div class="metric-grid">
-            <article class="metric"><span>当前项目</span><strong>未选择</strong><small>选择后显示项目名称与状态</small></article>
-            <article class="metric"><span>当前数据</span><strong>未选择</strong><small>选择项目后展开数据列表</small></article>
-            <article class="metric"><span>准备状态</span><strong>未开始</strong><small>完成预处理后进入分析任务</small></article>
-            <article class="metric"><span>下一步</span><strong>先选项目</strong><small>项目、数据、准备、分析按顺序推进</small></article>
-          </div>
-
-          <div class="real-actions next-action-strip" aria-label="下一步">
-            <button class="primary-btn next-action" type="button" data-real-action="create-project"><i data-lucide="folder-plus"></i><span>创建项目</span></button>
-            <span class="next-action-hint">先从项目开始，再选择项目内数据并准备分析。</span>
-          </div>
-
-          <div class="work-grid">
+          <div class="work-grid project-management-only">
           <section class="panel span-2" data-testid="project-crud-panel">
             <div class="panel-head">
               <div>
-                <h2>项目管理</h2>
-                <p>只做项目的创建、重命名、归档和删除；先选项目，再展开项目内数据。</p>
+                <h2>开始一次 EEG 分析</h2>
+                <p>先创建或打开项目，再选择项目内 EEG 数据。</p>
               </div>
-              <button class="ghost-btn" type="button" data-real-action="create-project"><i data-lucide="folder-plus"></i><span>创建项目</span></button>
+              <div class="real-actions compact-actions">
+                <button class="primary-btn" type="button" data-real-action="create-project"><i data-lucide="folder-plus"></i><span>创建项目</span></button>
+                <button class="ghost-btn mini starter-demo" type="button" data-teaching-action="quickstart" title="载入示例 EEG 数据并进入数据准备"><i data-lucide="graduation-cap"></i><span>使用示例 EEG 走一遍</span></button>
+                <button class="ghost-btn" type="button" data-view-jump="storage" hidden aria-hidden="true"><i data-lucide="database"></i><span>去选择数据</span></button>
+              </div>
             </div>
             <div class="ia-management-layout project-data-master-detail">
               <section class="ia-project-ledger">
@@ -145,7 +128,7 @@
                   </label>
                   <label class="inline-check" for="workspaceShowReviewProjects">
                     <input id="workspaceShowReviewProjects" type="checkbox" />
-                    <span>显示内部/归档项目</span>
+                    <span>显示更多项目</span>
                   </label>
                   <div class="project-filter-field">
                     <small id="workspaceProjectFilterSummary">默认只显示最近可用项目。</small>
@@ -163,33 +146,6 @@
                   <button class="ghost-btn danger-soft" type="button" data-ia-action="delete-project"><i data-lucide="trash-2"></i><span>删除</span></button>
                 </div>
               </section>
-
-              <section class="ia-data-ledger" data-testid="project-data-crud-panel">
-                <div class="panel-head compact">
-                  <h2>项目内数据</h2>
-                <p>这里只显示当前项目的数据概况和下一步入口；上传和文件整理在“数据管理”页面完成。</p>
-                </div>
-                <div class="segment-summary" id="prepContextSummary">请先在左侧选择一个项目。</div>
-                <div class="segment-summary" id="prepRevisionState">数据状态：未选择项目。</div>
-                <div class="ia-data-empty-state" id="iaDataEmptyState">
-                  <strong>请先选择项目</strong>
-                  <span>选中项目后，这里会显示项目内数据、备注和下一步入口。</span>
-                </div>
-                <div class="ia-data-upload-row">
-                  <button class="file-picker-btn" type="button" data-file-trigger="real-eeg-file" onclick="document.getElementById('real-eeg-file').click()"><i data-lucide="upload"></i><span>选择 EEG 数据</span></button>
-                  <input id="real-eeg-file" class="visually-hidden-file" type="file" accept=".edf,.bdf,.set,.vhdr,.cnt,.fif" />
-                  <button class="primary-btn" type="button" data-real-action="upload-eeg"><i data-lucide="upload-cloud"></i><span>上传到当前项目</span></button>
-                  <small class="file-picked-name" id="realEegFileName">尚未选择文件</small>
-                </div>
-                <label class="upload-authorization-row">
-                  <input type="checkbox" data-upload-authorization="eeg" />
-                  <span>我确认有权上传该 EEG 数据，并同意本次云端试用仅用于科研分析与候选事件初筛。</span>
-                </label>
-                <div class="ia-data-actions">
-                  <button class="ghost-btn" type="button" data-ia-action="rename-data"><i data-lucide="tag"></i><span>重命名 / 备注</span></button>
-                </div>
-                <div class="ia-table" id="iaDataRows"></div>
-              </section>
             </div>
           </section>
 
@@ -200,7 +156,7 @@
         <section class="view" id="journey">
           <section class="panel span-2" data-testid="review-validation-workbench">
             <div class="panel-head">
-                <div><h2>质量检查</h2><p>这里只放页面可操作性、结果完整性和边界提醒，不重复项目、数据和分析流程说明。</p></div>
+                <div><h2>交付质检</h2><p>后台检查数据、准备记录、结果文件和报告包是否具备交付条件。</p></div>
             </div>
           </section>
         </section>
@@ -215,15 +171,15 @@
                 </div>
               </div>
                 <div class="segment-summary" data-testid="prep-no-upload-boundary">
-                  <span>数据准备只处理当前项目内已选数据；上传数据请回到“数据管理”。</span>
+                  <span>准备页只处理当前已选 EEG 数据；上传或换数据请回到“数据”。</span>
                 </div>
                 <div class="segment-summary teaching-protected-note" data-testid="teaching-data-protected" hidden>
                   <span>示例数据 / 受保护：可预览、可练习、可试跑分析，不可删除或覆盖。</span>
                 </div>
                 <div class="ia-table compact" id="prepDataQueue"></div>
               <div class="real-actions compact-actions">
-                <button class="ghost-btn" type="button" data-view-jump="dashboard"><i data-lucide="folder-kanban"></i><span>返回项目管理</span></button>
-                <button class="ghost-btn" type="button" data-view-jump="storage"><i data-lucide="database"></i><span>进入数据管理</span></button>
+                <button class="ghost-btn" type="button" data-view-jump="dashboard"><i data-lucide="folder-kanban"></i><span>返回项目</span></button>
+                <button class="ghost-btn" type="button" data-view-jump="storage"><i data-lucide="database"></i><span>去选择数据</span></button>
               </div>
             </aside>
 
@@ -257,7 +213,7 @@
                       <button class="ghost-btn" id="eegResetBtn"><i data-lucide="rotate-ccw"></i><span>复位</span></button>
                     </div>
                   </div>
-                  <label><span>起点</span><input id="eegStartInput" type="number" value="0" min="0" step="0.5" /><em>s</em></label>
+                  <label><span>起点</span><input id="eegStartInput" type="number" value="0" min="0" step="0.5" /><em>s</em><b id="eegDurationHint" class="eeg-duration-hint" hidden></b></label>
                   <label><span>时间窗</span><input id="eegWindowInput" type="range" min="2" max="30" step="1" value="10" /><b id="eegWindowLabel">10 s</b></label>
                   <label><span>增益</span><input id="eegGainInput" type="range" min="0.5" max="8" step="0.5" value="2" /><b id="eegGainLabel">2x</b></label>
                   <label><span>通道</span><input id="eegChannelInput" type="range" min="4" max="16" step="1" value="8" /><b id="eegChannelLabel">8</b></label>
@@ -274,6 +230,9 @@
                 <div class="waveform-prep-layout">
                   <div class="waveform-main-column">
                     <div class="eeg-viewer">
+                      <div class="eeg-overview-bar-wrap" data-testid="eeg-overview-bar-wrap" hidden>
+                        <canvas id="eegOverviewBar" width="1280" height="48" aria-label="全时程概览条" title="点击或拖动定位当前波形窗口；红色区域为癫痫初筛发作区"></canvas>
+                      </div>
                       <canvas id="eegCanvas" width="1280" height="520" aria-label="脑电波形预览"></canvas>
                       <div class="eeg-empty" id="eegEmpty">正在等待加载 EEG 数据。</div>
                     </div>
@@ -369,30 +328,30 @@
         <section class="view" id="workflow">
           <section class="panel" data-testid="analysis-task-workbench">
             <div class="panel-head">
-              <div><h2>分析任务</h2><p>选择已准备好的 EEG 数据后，可开始当前可用的分析方法。</p></div>
-              <span class="badge">当前可用：8 项分析方法</span>
+              <div><h2>选择分析方法</h2><p>根据当前数据和准备状态，选择可以运行的分析任务。</p></div>
+              <span class="badge">等待数据准备</span>
             </div>
             <div class="analysis-context-strip">
-              <span>前置要求：已选择项目、已选择数据，并已完成或确认数据准备。</span>
+              <span>前置要求：已选择项目、已选择数据，并确认数据准备方案。</span>
               <button class="ghost-btn mini" type="button" data-view-jump="analysis">返回数据准备</button>
             </div>
             <div class="segment-summary analysis-preparation-gate" data-testid="analysis-preparation-gate">
               请先在数据准备页确认当前 EEG 的准备方案。
             </div>
           </section>
-          <section class="panel" data-testid="analysis-method-scope-panel">
-            <div class="panel-head"><div><h2>当前可用分析方法</h2><p>选择一个分析目标，系统会根据当前数据条件提示可运行的方法。</p></div></div>
+          <section class="panel workflow-methods-locked" data-testid="analysis-method-scope-panel" hidden aria-hidden="true">
+            <div class="panel-head"><div><h2>分析方法</h2><p>PSD 是推荐首步；ERP 需要事件语义；进阶方法默认收起。</p></div></div>
             <div id="analysisMethodsGrouped" data-testid="analysis-methods-grouped"></div>
             <div class="ia-method-contract-grid">
               <button class="ia-method-card available" type="button" data-module-id="psd" data-real-action="run-psd"><strong>PSD 频谱与频段功率</strong><span>输出频谱、频段功率和通道级表格，适合查看主要频段分布。</span><b>频谱</b></button>
-              <button class="ia-method-card available" type="button" data-module-id="erp" data-real-action="run-erp"><strong>ERP 事件相关电位</strong><span>基于事件分段输出波形、指标和剔除记录，适合事件相关分析。</span><b>需事件</b></button>
-              <button class="ia-method-card available" type="button" data-module-id="tfr" data-real-action="run-tfr"><strong>TFR 时频分析</strong><span>查看事件前后的时频功率和相位一致性，并记录频率范围与基线设置。</span><b>时频</b></button>
-              <button class="ia-method-card available" type="button" data-module-id="multitaper_psd" data-real-action="run-multitaper-psd"><strong>Multitaper PSD</strong><span>使用多窗谱估计查看频谱功率，适合对频谱结果做参数化比较。</span><b>多窗谱</b></button>
-              <button class="ia-method-card available" type="button" data-module-id="multitaper_tfr" data-real-action="run-multitaper-tfr"><strong>Multitaper TFR</strong><span>查看事件锁定的多窗时频结果，并记录事件、基线和窗参数。</span><b>多窗时频</b></button>
-              <button class="ia-method-card available" type="button" data-module-id="pac" data-real-action="run-pac"><strong>PAC 相位-振幅耦合</strong><span>查看相位-振幅耦合的描述性图表和表格，不能单独解释为因果机制。</span><b>耦合</b></button>
-              <button class="ia-method-card available" type="button" data-module-id="connectivity" data-real-action="run-connectivity"><strong>Connectivity 连接性分析</strong><span>查看连接性矩阵和边表，结果用于研究参考，不证明信息流或因果方向。</span><b>连接</b></button>
-              <button class="ia-method-card available" type="button" data-module-id="reference_csd" data-real-action="run-reference-csd"><strong>CSD 电流源密度计算</strong><span>基于通道位置信息计算头皮电位空间分布变化；这是传感器空间滤波，不是源定位或诊断。</span><b>需通道位置</b></button>
-              <button class="ia-method-card available" type="button" data-module-id="epilepsy_ml" data-real-action="open-epilepsy-workbench"><strong>癫痫样事件分析台</strong><span>进入操作台后先阅读波形，再运行候选事件初筛，查看波形、同轴 STFT 预览、Stage_Code 与候选事件，并进行人工矫正。</span><b>初筛/人工矫正</b></button>
+              <button class="ia-method-card conditional" type="button" data-module-id="erp" data-real-action="run-erp" disabled aria-disabled="true" title="请先保存事件分段或事件语义"><strong>ERP 事件相关电位</strong><span>基于事件分段输出波形、指标和剔除记录，适合事件相关分析。</span><b>需事件</b></button>
+              <button class="ia-method-card advanced" type="button" data-module-id="tfr" data-real-action="run-tfr" disabled aria-disabled="true" title="请先保存事件分段"><strong>TFR 时频分析</strong><span>查看事件前后的时频功率和相位一致性，并记录频率范围与基线设置。</span><b>时频</b></button>
+              <button class="ia-method-card advanced" type="button" data-module-id="multitaper_psd" data-real-action="run-multitaper-psd" disabled aria-disabled="true" title="请先确认数据准备方案"><strong>Multitaper PSD</strong><span>使用多窗谱估计查看频谱功率，适合对频谱结果做参数化比较。</span><b>多窗谱</b></button>
+              <button class="ia-method-card advanced" type="button" data-module-id="multitaper_tfr" data-real-action="run-multitaper-tfr" disabled aria-disabled="true" title="请先保存事件分段"><strong>Multitaper TFR</strong><span>查看事件锁定的多窗时频结果，并记录事件、基线和窗参数。</span><b>多窗时频</b></button>
+              <button class="ia-method-card advanced" type="button" data-module-id="pac" data-real-action="run-pac" disabled aria-disabled="true" title="请先保存事件分段"><strong>PAC 相位-振幅耦合</strong><span>查看相位-振幅耦合的描述性图表和表格，不能单独解释为因果机制。</span><b>耦合</b></button>
+              <button class="ia-method-card advanced" type="button" data-module-id="connectivity" data-real-action="run-connectivity" disabled aria-disabled="true" title="请先确认至少 4 个通道的数据"><strong>Connectivity 连接性分析</strong><span>查看连接性矩阵和边表，结果用于研究参考，不证明信息流或因果方向。</span><b>连接</b></button>
+              <button class="ia-method-card advanced" type="button" data-module-id="reference_csd" data-real-action="run-reference-csd" disabled aria-disabled="true" title="请先确认通道位置或 montage 信息"><strong>CSD 电流源密度计算</strong><span>基于通道位置信息计算头皮电位空间分布变化；这是传感器空间滤波，不是源定位或诊断。</span><b>需通道位置</b></button>
+              <button class="ia-method-card conditional" type="button" data-module-id="epilepsy_ml" data-real-action="open-epilepsy-workbench" disabled aria-disabled="true" title="请先完成数据准备并进入专项复核"><strong>癫痫样候选事件复核台</strong><span>先阅读波形，再运行候选事件初筛，查看波形、同轴 STFT 预览、模型候选标记与候选事件，并进行人工矫正。</span><b>初筛/人工矫正</b></button>
             </div>
           </section>
         </section>
@@ -432,7 +391,7 @@
         <section class="view" id="statistics">
           <section class="panel span-2" data-testid="results-review-workbench">
             <div class="panel-head">
-              <div><h2>结果查看</h2><p>只查看已运行分析的图、表、参数、提醒和来源记录；报告下载放在“报告交付”。</p></div>
+              <div><h2>查看分析结果</h2><p>查看已完成任务的图表、表格、参数、质量提醒和解释边界。</p></div>
             </div>
             <div id="realResultReview" class="result-review"></div>
           </section>
@@ -441,8 +400,8 @@
         <section class="view" id="publication">
           <section class="panel span-2" data-testid="report-delivery-workbench">
             <div class="panel-head">
-              <div><h2>报告交付</h2><p>管理已生成的交付报告、在线预览、完整下载和交付清单。</p></div>
-              <button class="primary-btn" type="button" data-real-action="create-report"><i data-lucide="file-output"></i><span>生成交付报告</span></button>
+              <div><h2>生成和下载报告</h2><p>把结果、图表、参数、方法和复现记录打包交付。</p></div>
+              <button class="primary-btn" type="button" data-real-action="create-report" hidden><i data-lucide="file-output"></i><span>生成报告</span></button>
             </div>
             <div class="delivery-grid" id="realDeliveryLinks"></div>
           </section>
@@ -472,10 +431,10 @@
             <section class="panel span-2" data-testid="storage-workbench">
               <div class="panel-head">
                 <div>
-                  <h2>数据管理</h2>
-                  <p>这里管理当前项目的数据文件。先上传 EEG 文件，再检查基础信息并进入数据准备。</p>
+                  <h2>上传或选择 EEG 数据</h2>
+                  <p>当前项目的数据文件在这里上传、选择和查看基础信息。</p>
                 </div>
-                <button class="ghost-btn" type="button" data-view-jump="dashboard"><i data-lucide="folder-kanban"></i><span>打开项目管理</span></button>
+                <button class="ghost-btn" type="button" data-view-jump="dashboard"><i data-lucide="folder-kanban"></i><span>返回项目</span></button>
               </div>
               <div class="storage-context-bar" id="storageContextBar"></div>
               <div class="storage-workspace-grid">
@@ -490,21 +449,9 @@
                       <button class="primary-btn" type="button" data-real-action="upload-eeg"><i data-lucide="upload-cloud"></i><span>上传到当前项目</span></button>
                     </div>
                   </div>
-                  <label class="upload-authorization-row storage-upload-authorization">
-                    <input type="checkbox" data-upload-authorization="eeg" />
-                    <span>我确认有权上传该 EEG 数据，并同意本次云端试用仅用于科研分析与候选事件初筛。</span>
-                  </label>
                   <div class="storage-table project-file-table" id="storageFileRows"></div>
                 </section>
                 <aside class="storage-file-detail" id="storageFileDetail" aria-label="数据文件详情"></aside>
-              </div>
-            </section>
-            <section class="panel" data-testid="storage-file-policy">
-              <div class="panel-head compact"><h2>生命周期</h2></div>
-              <div class="storage-layers">
-                <span class="hot">近期可快速重跑：上传后的数据可直接进入预览和分析。</span>
-                <span class="warm">项目期保存：保留数据文件、准备记录、图表和报告。</span>
-                <span class="cold">归档可恢复：项目归档后仍可按权限恢复查看。</span>
               </div>
             </section>
           </div>
@@ -512,10 +459,10 @@
 
         <section class="view" id="userCenter">
           <div class="metric-grid">
-            <article class="metric"><span>账户身份</span><strong id="userCenterName">演示用户</strong><small id="userCenterRole">本地审核账号</small></article>
-            <article class="metric"><span>当前余额</span><strong id="userCenterBalance">￥1000.00</strong><small>充值与消费记录集中管理</small></article>
-            <article class="metric"><span>发票事项</span><strong>可申请</strong><small>订单、抬头和邮箱在此维护</small></article>
-            <article class="metric"><span>权限范围</span><strong>演示项目</strong><small>仅用于本地产品审核</small></article>
+            <article class="metric"><span>账户身份</span><strong id="userCenterName">客户账号</strong><small id="userCenterRole">客户账号</small></article>
+            <article class="metric"><span>服务状态</span><strong id="userCenterBalance">试用中</strong><small>线下确认后更新</small></article>
+            <article class="metric"><span>交付记录</span><strong>报告页</strong><small>生成后下载</small></article>
+            <article class="metric"><span>权限范围</span><strong>授权项目</strong><small>按账号权限显示</small></article>
           </div>
 
           <div class="user-center-grid">
@@ -523,8 +470,8 @@
               <div class="panel-head compact"><h2>账户信息</h2></div>
               <div class="audit-list">
                 <span><b>登录账号：</b><em id="userCenterEmail">demo.customer@quanlan.cn</em></span>
-                <span><b>所属单位：</b><em id="userCenterOrg">QuanLan Review Sandbox</em></span>
-                <span><b>账号安全：</b>本地审核专用低权限账号</span>
+                <span><b>所属单位：</b><em id="userCenterOrg">全澜脑科学</em></span>
+                <span><b>账号安全：</b>客户账号</span>
               </div>
             </section>
 
@@ -537,31 +484,14 @@
             </section>
 
             <section class="panel span-2">
-              <div class="panel-head"><div><h2>余额与充值</h2><p>财务操作集中放在个人中心，主业务页面只保留项目和分析动作。</p></div></div>
-              <div class="balance">￥<span id="balanceMain">1000.00</span></div>
-              <div class="pay-options">
-                <button class="pay-option active" data-pay-method="支付宝"><i data-lucide="qr-code"></i>支付宝</button>
-                <button class="pay-option" data-pay-method="微信支付"><i data-lucide="message-circle"></i>微信支付</button>
+              <div class="panel-head"><div><h2>试用服务记录</h2><p>客户侧只显示服务状态和交付入口。</p></div></div>
+              <div class="service-record-list">
+                <span><b>服务状态：</b><em id="balanceMain">试用中</em></span>
+                <span><b>记录状态：</b><em>由运营线下确认后更新</em></span>
+                <span><b>交付记录：</b><em>报告生成后在报告页下载</em></span>
               </div>
-              <div class="recharge">
-                <button data-recharge="100">￥100</button>
-                <button data-recharge="500">￥500</button>
-                <button class="active" data-recharge="1000">￥1000</button>
-                <button data-recharge="5000">￥5000</button>
-              </div>
-              <button class="primary-btn" id="rechargeBtn"><i data-lucide="wallet-cards"></i><span>充值</span></button>
-            </section>
-
-            <section class="panel span-2">
-              <div class="panel-head"><div><h2>发票与订单</h2><p>支持按项目、月份或订单申请电子发票。</p></div></div>
-              <div class="invoice-form">
-                <label><span>发票抬头</span><input id="invoiceTitleInput" value="某某大学认知神经科学实验室" /></label>
-                <label><span>税号</span><input id="invoiceTaxInput" value="91310000MA1EEG2026" /></label>
-                <label><span>开票金额</span><div class="with-unit"><input id="invoiceAmountInput" value="5.00" /><em>元</em></div></label>
-                <label><span>邮箱</span><input id="invoiceEmailInput" value="demo.customer@quanlan.cn" /></label>
-              </div>
-              <button class="primary-btn" id="invoiceBtn"><i data-lucide="send"></i><span>提交开票申请</span></button>
-              <div class="notice" id="invoiceNotice"><i data-lucide="badge-check"></i><span>等待提交。</span></div>
+              <button class="ghost-btn" id="rechargeBtn" type="button"><i data-lucide="clipboard-check"></i><span>提醒运营确认</span></button>
+              <div class="notice" id="rechargeNotice"><i data-lucide="badge-check"></i><span>等待线下确认。</span></div>
             </section>
 
             <section class="panel">
@@ -569,14 +499,14 @@
               <div class="checklist">
                 <label><input type="checkbox" checked /> 分析任务完成提醒</label>
                 <label><input type="checkbox" checked /> 报告生成提醒</label>
-                <label><input type="checkbox" /> 发票审核提醒</label>
+                <label><input type="checkbox" checked /> 下载前显示校验状态</label>
               </div>
             </section>
 
             <section class="panel">
               <div class="panel-head compact"><h2>偏好设置</h2></div>
               <div class="checklist">
-                <label><input type="checkbox" checked /> 登录后进入项目管理</label>
+                <label><input type="checkbox" checked /> 登录后进入最近项目</label>
                 <label><input type="checkbox" checked /> 下载报告前显示校验状态</label>
                 <label><input type="checkbox" /> 使用紧凑列表视图</label>
               </div>
@@ -586,14 +516,14 @@
 
         <section class="view" id="adminDashboard">
           <div class="metric-grid">
-            <article class="metric"><span>今日项目</span><strong>128</strong><small>新增 34 个分析项目</small></article>
+            <article class="metric"><span>项目记录</span><strong>128</strong><small>最近项目变更</small></article>
             <article class="metric"><span>待处理任务</span><strong>42</strong><small>队列运行正常</small></article>
-            <article class="metric"><span>本次扣费</span><strong>¥5.00</strong><small>充值 1000 元，余额 995 元</small></article>
-            <article class="metric"><span>结果通知</span><strong>待确认</strong><small>等待运营确认交付</small></article>
+            <article class="metric"><span>导出队列</span><strong>7</strong><small>报告打包与结果通知</small></article>
+            <article class="metric"><span>待确认事项</span><strong>3</strong><small>任务失败、客户消息与交付提醒</small></article>
           </div>
           <div class="work-grid">
             <section class="panel span-2">
-              <div class="panel-head"><div><h2>运营概览</h2><p>管理员查看客户项目、分析任务、收入、开票和数据存储状态。</p></div></div>
+              <div class="panel-head"><div><h2>后台概览</h2><p>查看账号、任务、交付与系统状态。</p></div></div>
               <div class="queue-grid">
                 <div><strong>96.8%</strong><span>分析成功率</span><b>近 7 天</b></div>
                 <div><strong>11.2 TB</strong><span>客户数据量</span><b>热存储</b></div>
@@ -601,16 +531,16 @@
               </div>
             </section>
             <section class="panel">
-              <div class="panel-head compact"><h2>管理提醒</h2></div>
+              <div class="panel-head compact"><h2>待处理事项</h2></div>
               <div class="checklist">
                 <label><input type="checkbox" checked /> 客户账号已注册。</label>
-                <label><input type="checkbox" checked /> 充值 1000 元和 5 元扣费已展示。</label>
                 <label><input type="checkbox" checked /> 示例数据结果已生成。</label>
-                <label><input type="checkbox" /> 结果通知等待运营确认。</label>
+                <label><input type="checkbox" checked /> 报告导出队列运行正常。</label>
+                <label><input type="checkbox" /> 交付提醒等待确认。</label>
               </div>
             </section>
             <section class="panel">
-              <div class="panel-head compact"><h2>最新注册客户</h2></div>
+              <div class="panel-head compact"><h2>最近账号变更</h2></div>
               <div class="profile-card">
                 <div><span>姓名</span><strong id="adminCustomerName">客户账户</strong></div>
                 <div><span>邮箱</span><strong id="adminCustomerEmail">demo.customer@quanlan.cn</strong></div>
@@ -623,7 +553,7 @@
 
         <section class="view" id="adminOperations">
           <section class="panel">
-            <div class="panel-head"><div><h2>任务运营</h2><p>查看上传、预处理、分析、出图和导出任务状态。</p></div></div>
+            <div class="panel-head"><div><h2>任务队列</h2><p>查看上传、预处理、分析、出图和导出任务状态。</p></div></div>
             <div class="storage-table">
               <div class="table-row head"><span>任务</span><span>客户</span><span>状态</span><span>操作</span></div>
               <div class="table-row"><span>ERP-P300-2401</span><span>demo.customer@quanlan.cn</span><span class="ok">已完成</span><span><a href="./assets/customer_oddball_case/customer_analysis_manifest.json" download>复现记录</a></span></div>
@@ -637,20 +567,20 @@
         <section class="view" id="adminFinance">
           <div class="billing-grid">
             <section class="panel span-2">
-              <div class="panel-head"><div><h2>订单与开票管理</h2><p>管理员审核充值、扣费、订单和电子发票申请。</p></div></div>
+              <div class="panel-head"><div><h2>服务记录</h2><p>查看服务状态、记录变更和交付状态。</p></div></div>
               <div class="storage-table">
-                <div class="table-row head"><span>订单</span><span>金额</span><span>状态</span><span>开票</span></div>
-                <div class="table-row"><span>NC-202606-RECHARGE</span><span>¥1000.00</span><span class="ok">已充值</span><span>无需开票</span></div>
-                <div class="table-row"><span>NC-202606-001</span><span>¥5.00</span><span class="ok">已扣费</span><span>待开票</span></div>
-                <div class="table-row"><span>NC-202606-002</span><span>¥126.00</span><span class="ok">已支付</span><span>已开票</span></div>
+                <div class="table-row head"><span>记录</span><span>类型</span><span>状态</span><span>交付</span></div>
+                <div class="table-row"><span>SR-202606-START</span><span>试用服务</span><span class="ok">已记录</span><span>线下确认</span></div>
+                <div class="table-row"><span>SR-202606-001</span><span>报告包</span><span class="ok">已生成</span><span>报告页</span></div>
+                <div class="table-row"><span>SR-202606-002</span><span>结果通知</span><span class="ok">已发送</span><span>已交付</span></div>
                 <div class="table-row"><span>NC-202606-003</span><span>¥88.00</span><span class="warn">待审核</span><span>待审核</span></div>
               </div>
             </section>
             <section class="panel">
-              <div class="panel-head compact"><h2>财务摘要</h2></div>
-              <div class="cost-row"><span>客户充值</span><b>¥1000.00</b></div>
-              <div class="cost-row"><span>样例分析扣费</span><b>¥5.00</b></div>
-              <div class="cost-row"><span>账户余额</span><b>¥995.00</b></div>
+              <div class="panel-head compact"><h2>结算摘要</h2></div>
+              <div class="cost-row"><span>服务状态</span><b>试用中</b></div>
+              <div class="cost-row"><span>示例报告</span><b>已生成</b></div>
+              <div class="cost-row"><span>线下确认</span><b>待更新</b></div>
               <div class="cost-row"><span>结果通知</span><b class="warn">待确认</b></div>
             </section>
           </div>
@@ -661,8 +591,8 @@
             <div class="panel-head"><div><h2>系统状态</h2><p>后台用于管理员确认上传、分析队列、存储和导出服务是否正常。</p></div></div>
             <div class="queue-grid">
               <div><strong>16</strong><span>服务连接</span><b>健康</b></div>
-              <div><strong>128</strong><span>分析队列</span><b>可扩容</b></div>
-              <div><strong>3.2 Gbps</strong><span>上传吞吐</span><b>稳定</b></div>
+              <div><strong>128</strong><span>队列容量</span><b>正常</b></div>
+              <div><strong>稳定</strong><span>上传服务</span><b>正常</b></div>
             </div>
             <div class="segment-summary" id="concurrencyAdvice">系统根据任务量自动调整分析队列，并为不同客户保持公平调度。</div>
           </section>
@@ -678,6 +608,6 @@
         <div id="modalBody"></div>
       </section>
     </div>
-    <script src="./app.js?v=20260701-rc-final-clean"></script>
+    <script src="./app.js?v=20260706-ui-upgrade-complete-v7"></script>
   </body>
 </html>

@@ -41,14 +41,16 @@ def run_connectivity(input_path: str | Path, output_dir: str | Path, parameters:
         directory.mkdir(parents=True, exist_ok=True)
 
     raw = read_raw(input_path, preload=True)
-    if raw.get_channel_types().count("eeg") < 2:
-        raise ValueError("connectivity requires at least two EEG channels")
+    # P0-ALGO-04: Require at least 4 channels for scientifically meaningful connectivity analysis
+    if raw.get_channel_types().count("eeg") < 4:
+        raise ValueError("connectivity requires at least 4 EEG channels (scientifically meaningful minimum)")
     eeg_all = raw.copy().pick_types(eeg=True, meg=False, eog=False, ecg=False, stim=False, exclude=[])
     params = validate_connectivity_parameters(parameters, channels=list(eeg_all.ch_names), sfreq=float(eeg_all.info["sfreq"]), n_times=int(eeg_all.n_times))
     eeg_all.info["bads"] = sorted(set(eeg_all.info.get("bads", [])) | set(params["bad_channels"]))
     eeg = eeg_all.copy().pick_types(eeg=True, meg=False, eog=False, ecg=False, stim=False, exclude="bads")
-    if len(eeg.ch_names) < 2:
-        raise ValueError("connectivity requires at least two usable EEG channels after bad-channel exclusion")
+    # P0-ALGO-04: Also check after bad channel exclusion
+    if len(eeg.ch_names) < 4:
+        raise ValueError("connectivity requires at least 4 usable EEG channels after bad-channel exclusion (scientifically meaningful minimum)")
 
     data = eeg.get_data(reject_by_annotation="omit")
     matrix = _compute_matrix(data, float(eeg.info["sfreq"]), params)
@@ -121,7 +123,8 @@ def run_connectivity(input_path: str | Path, output_dir: str | Path, parameters:
         threshold_validation={
             "status": "passed",
             "checks": [
-                {"field": "eeg_channels", "rule": ">= 2 usable EEG channels", "value": len(eeg.ch_names), "status": "passed"},
+                # P0-ALGO-04: Updated to >= 4 channels
+                {"field": "eeg_channels", "rule": ">= 4 usable EEG channels (scientifically meaningful minimum)", "value": len(eeg.ch_names), "status": "passed"},
                 {"field": "fmax", "rule": "< Nyquist", "value": params["fmax"], "nyquist_hz": float(eeg.info["sfreq"]) / 2.0, "status": "passed"},
                 {"field": "segment_count", "rule": "reported, warning if < 3", "value": segment_count, "status": "passed"},
             ],

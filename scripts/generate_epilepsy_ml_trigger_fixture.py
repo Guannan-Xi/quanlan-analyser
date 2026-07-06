@@ -84,9 +84,10 @@ def main() -> None:
         burst=bool(best["burst"]),
         seed=2402,
     )
-    epochs = [normal_epoch.copy() for _ in range(12)]
-    epochs[5] = trigger_epoch_a
-    epochs[6] = trigger_epoch_b
+    epochs = [normal_epoch.copy() for _ in range(120)]
+    epochs[50] = trigger_epoch_a
+    epochs[55] = trigger_epoch_b
+    epochs[60] = trigger_epoch_a
     eeg3 = np.concatenate(epochs)
     n_times = eeg3.size
     rng = np.random.default_rng(20260626)
@@ -108,12 +109,13 @@ def main() -> None:
     edf_raw = mne.io.RawArray(edf_data, mne.create_info(channels, fs, ch_types=ch_types), verbose="ERROR")
     edf_raw.export(EDF_PATH, fmt="edf", overwrite=True, verbose="ERROR")
 
-    features = extract_features_using_epochs(eeg3.reshape(12, 1, int(5 * fs)), fs)
+    features = extract_features_using_epochs(eeg3.reshape(120, 1, int(5 * fs)), fs)
     probabilities = model.predict_proba(scaler.transform(features))[:, 1]
     predictions = (probabilities >= 0.5).astype(int)
-    expected_stage_code = [0] * 12
-    expected_stage_code[5] = 1
-    expected_stage_code[6] = 1
+    expected_stage_code = [0] * 120
+    expected_stage_code[50] = 1
+    expected_stage_code[55] = 1
+    expected_stage_code[60] = 1
     if [int(value) for value in predictions] != expected_stage_code:
         raise RuntimeError(
             "Generated epilepsy ML fixture does not isolate the expected trigger window: "
@@ -127,7 +129,7 @@ def main() -> None:
         "epoch_probabilities": [float(value) for value in probabilities],
         "stage_code": [int(value) for value in predictions],
         "expected_stage_code": expected_stage_code,
-        "expected_trigger_epochs_zero_based": [5, 6],
+        "expected_trigger_epochs_zero_based": [50, 55, 60],
         "selected_channel": "EEG3",
         "unit_note": "EDF stores EEG in volts; migrated ML source_compatible mode multiplies EDF/BDF EEG by 1e6 before features.",
     }
@@ -143,8 +145,8 @@ def main() -> None:
                 "duration_sec": n_times / fs,
                 "channels": channels,
                 "selected_channel": "EEG3",
-                "expected_trigger_epochs_zero_based": [5, 6],
-                "expected_trigger_window_sec": [25.0, 35.0],
+                "expected_trigger_epochs_zero_based": [50, 55, 60],
+                "expected_trigger_window_sec": [250.0, 300.0],
                 "search_evidence_path": str(SEARCH_EVIDENCE_PATH),
                 "non_medical_boundary": "Synthetic research/demo data only; not clinical EEG and not for diagnosis.",
             },

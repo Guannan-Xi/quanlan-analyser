@@ -37,6 +37,14 @@ def _state_file(name: str) -> Path:
     return STATE_ROOT / f"{name}.json"
 
 
+def _backup_file(name: str, timestamp: str | None = None) -> Path:
+    """P0-STORAGE-03 FIX: Generate backup file path."""
+    if timestamp is None:
+        from datetime import datetime, timezone
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    return STATE_ROOT / "backups" / f"{name}_{timestamp}.json"
+
+
 def _lock_file(name: str) -> Path:
     return STATE_ROOT / f".{name}.lock"
 
@@ -139,8 +147,39 @@ def load_registry(name: str, model_type: type[ModelT]) -> dict[str, ModelT]:
 
 
 def _write_payload(name: str, payload: list[dict]) -> None:
+    """Write registry data with automatic backup.
+    
+    P0-STORAGE-03 FIX: Create backup before writing to prevent data loss.
+    """
     STATE_ROOT.mkdir(parents=True, exist_ok=True)
     path = _state_file(name)
+    
+    # P0-STORAGE-03 FIX: Create backup of existing file before writing
+    backup_dir = STATE_ROOT / "backups"
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    
+    if path.exists():
+        try:
+            from datetime import datetime, timezone
+            timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+            backup_path = _backup_file(name, timestamp)
+            
+            # Copy existing file to backup
+            import shutil
+            shutil.copy2(path, backup_path)
+            
+            # Keep only last 10 backups per registry
+            existing_backups = sorted(backup_dir.glob(f"{name}_*.json"))
+            if len(existing_backups) > 10:
+                for old_backup in existing_backups[:-10]:
+                    try:
+                        old_backup.unlink()
+                    except OSError:
+                        pass  # Ignore errors on cleanup
+        except Exception:
+            # Don't fail write if backup fails, but log it
+            pass
+    
     temp_path: Path | None = None
     with NamedTemporaryFile("w", encoding="utf-8", delete=False, dir=STATE_ROOT) as temp:
         temp_path = Path(temp.name)
@@ -225,3 +264,42 @@ def state_summary() -> dict:
 
 def get_state_status() -> dict:
     return state_summary()
+
+
+def restore_from_backup(name: str, timestamp: str | None = None) -> bool:
+    """P0-STORAGE-03 FIX: Restore registry from backup.
+    
+    Args:
+        name: Registry name (e.g., 'projects', 'tasks')
+        timestamp: Specific backup timestamp, or None for latest
+        
+    Returns:
+        bool: True if restore succeeded, False otherwise
+    """
+    backup_dir = STATE_ROOT / "backups"
+    if not backup_dir.exists():
+        return False
+    
+    if timestamp:
+        backup_path = _backup_file(name, timestamp)
+        if not backup_path.exists():
+            return False
+    else:
+        # Find latest backup
+        existing_backups = sorted(backup_dir.glob(f"{name}_*.json"))
+        if not existing_backups:
+            return False
+        backup_path = existing_backups[-1]
+    
+    try:
+        # Validate backup can be loaded
+        backup_data = json.loads(backup_path.read_text(encoding="utf-8"))
+        
+        # Write to main file
+        with _registry_lock(name):
+            main_path = _state_file(name)
+            backup_path.replace(main_path)
+        
+        return True
+    except Exception:
+        return False

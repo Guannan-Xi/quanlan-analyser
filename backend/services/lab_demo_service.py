@@ -21,6 +21,7 @@ EPILEPSY_DEMO_FILE_ID = "eeg_demo_epilepsy_high_amplitude"
 EPILEPSY_DEMO_FIXTURE_ID = "epilepsy_ml_demo_source_channels_v1"
 EPILEPSY_DEMO_ROOT = ROOT / "work" / "e2e_epilepsy_ml_demo"
 EPILEPSY_DEMO_RAW_PATH = EPILEPSY_DEMO_ROOT / "epilepsy_ml_demo_source_channels.edf"
+EPILEPSY_DEMO_FIF_PATH = EPILEPSY_DEMO_ROOT / "epilepsy_ml_demo_source_channels_raw.fif"
 EPILEPSY_DEMO_METADATA_PATH = EPILEPSY_DEMO_ROOT / "epilepsy_ml_demo_source_channels_metadata.json"
 
 WORKFLOW_BY_MODULE = {
@@ -30,6 +31,8 @@ WORKFLOW_BY_MODULE = {
     "epilepsy": "epilepsy_std_threshold",
     "epilepsy_ml": "epilepsy_ml_xgboost",
     "pac": "pac_cfc",
+    "pac_v2": "pac_cfc_v2",
+    "tfr": "tfr_ersp_itc",
     "reference_csd": "reference_csd",
     "multitaper_psd_tfr": "multitaper_psd_tfr",
     "connectivity": "connectivity",
@@ -91,6 +94,26 @@ def ensure_demo_dataset() -> dict:
                     }
                 )
 
+    # 从实际数据文件读取时长和事件数，避免硬编码不一致
+    try:
+        import mne as _mne
+        _raw_check = _mne.io.read_raw_fif(fif_path, preload=False, verbose="ERROR")
+        _duration_sec = float(_raw_check.times[-1])
+        _events_tsv_count = {"standard": 0, "target": 0}
+        if events_tsv_path.exists():
+            with events_tsv_path.open("r", encoding="utf-8") as _h:
+                _reader = csv.DictReader(_h, delimiter="\t")
+                for _row in _reader:
+                    _tt = str(_row.get("trial_type", "")).lower()
+                    if "target" in _tt:
+                        _events_tsv_count["target"] += 1
+                    elif "standard" in _tt:
+                        _events_tsv_count["standard"] += 1
+        _events_count = _events_tsv_count
+    except Exception:
+        _duration_sec = 600.0
+        _events_count = {"standard": 238, "target": 79}
+
     project = ProjectRead(
         id=DEMO_PROJECT_ID,
         name="体验中心示例项目",
@@ -116,7 +139,7 @@ def ensure_demo_dataset() -> dict:
         detected_format="fif",
         sampling_rate=250.0,
         channel_count=8,
-        duration_sec=60.0,
+        duration_sec=_duration_sec,
         metadata_json={
             "demo": True,
             "teaching_mode": True,
@@ -124,7 +147,7 @@ def ensure_demo_dataset() -> dict:
             "delete_policy": "not_allowed",
             "rename_policy": "not_allowed",
             "description": "Synthetic posterior 10 Hz alpha plus target-enhanced P300-like response.",
-            "events": {"standard": 24, "target": 12},
+            "events": _events_count,
             "channels": ["Fz", "Cz", "Pz", "Oz", "P3", "P4", "O1", "O2"],
             "edf_path": str(edf_path),
             "events_tsv_path": str(events_tsv_path),
@@ -169,14 +192,14 @@ def ensure_epilepsy_demo_dataset() -> dict:
         id=EPILEPSY_DEMO_FILE_ID,
         project_id=EPILEPSY_DEMO_PROJECT_ID,
         subject_id="epilepsy_demo_subject_01",
-        original_filename=EPILEPSY_DEMO_RAW_PATH.name,
-        stored_path=EPILEPSY_DEMO_RAW_PATH,
-        detected_format="edf",
+        original_filename=EPILEPSY_DEMO_FIF_PATH.name,
+        stored_path=EPILEPSY_DEMO_FIF_PATH,
+        detected_format="fif",
         sampling_rate=float(metadata.get("sfreq") or 250.0),
         channel_count=len(metadata.get("channels") or []),
         duration_sec=float(metadata.get("duration_sec") or 60.0),
-        size_bytes=EPILEPSY_DEMO_RAW_PATH.stat().st_size,
-        sha256=_sha256(EPILEPSY_DEMO_RAW_PATH),
+        size_bytes=EPILEPSY_DEMO_FIF_PATH.stat().st_size,
+        sha256=_sha256(EPILEPSY_DEMO_FIF_PATH),
         metadata_json={
             "demo": True,
             "teaching_mode": True,
@@ -265,6 +288,31 @@ def default_parameters(module: str) -> dict:
             "dynamic_window_sec": 8,
             "dynamic_step_sec": 4,
         }
+    if module == "pac_v2":
+        return {
+            "channels": ["Cz", "Pz"],
+            "phase_freqs": [4, 6, 8],
+            "phase_band_width": 2,
+            "amp_freqs": [30, 50, 70],
+            "amp_band_width": 20,
+            "n_phase_bins": 18,
+            "coupling_metric": "mi",
+            "n_surrogates": 100,
+            "random_state": 20260703,
+            "time_window": {"start_sec": 0, "end_sec": 20},
+        }
+    if module == "tfr":
+        return {
+            "tmin": -0.2,
+            "tmax": 0.8,
+            "baseline": [-0.2, 0],
+            "freqs": [8, 13, 30],
+            "n_cycles": 3.0,
+            "decim": 2,
+            "return_itc": True,
+            "method": "morlet",
+            "average": True,
+        }
     if module == "connectivity":
         return {"method": "correlation", "fmin": 8, "fmax": 12, "segment_length_sec": 4, "edge_top_n": 20}
     if module == "multitaper_psd_tfr":
@@ -295,7 +343,7 @@ def default_parameters(module: str) -> dict:
 def run_demo_task(module: str, parameters: dict | None = None) -> AnalysisTaskRead:
     module = module.lower()
     if module not in WORKFLOW_BY_MODULE:
-        raise ValueError("Demo supports qc, psd, erp, epilepsy, pac, reference_csd, multitaper_psd_tfr, and connectivity")
+        raise ValueError("Demo supports qc, psd, erp, tfr, epilepsy, pac, pac_v2, reference_csd, multitaper_psd_tfr, and connectivity")
     if module == "epilepsy_ml":
         ensure_epilepsy_demo_dataset()
         project_id = EPILEPSY_DEMO_PROJECT_ID
@@ -332,6 +380,9 @@ def _sha256(path: Path) -> str:
 
 
 def _ensure_epilepsy_fixture_exists() -> None:
+    # FIF 格式没有 EDF 的范围编码限制，优先用 FIF
+    if EPILEPSY_DEMO_FIF_PATH.exists():
+        return
     if EPILEPSY_DEMO_RAW_PATH.exists():
         return
     from scripts.generate_epilepsy_ml_trigger_fixture import main as generate_epilepsy_ml_trigger_fixture

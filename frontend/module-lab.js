@@ -178,6 +178,32 @@ const MODULES = {
       ["bad_channels", "坏道，用英文逗号分隔", "text", ""],
     ],
   },
+  pac_v2: {
+    title: "PAC V2 / 优化实验版",
+    workflow: "pac_cfc_v2",
+    description: "PAC 优化实验版本：支持多种耦合度量（MI/MVL/KL）、更快计算速度。实验室专用，不用于正式报告。",
+    statusLabel: "Dev",
+    lifecycle: "实验开发中",
+    boundaryNotes: [
+      "实验室开发功能，仅用于算法验证，不用于正式分析报告。",
+      "与 PAC V1 完全隔离，不影响生产环境。",
+      "输出为单记录描述性科研结果，不作为诊断、治疗或因果机制结论。"
+    ],
+    fields: [
+      ["channels", "通道，用英文逗号分隔", "text", "Cz,Pz"],
+      ["phase_freqs", "相位频率中心（Hz）", "text", "4,6,8"],
+      ["phase_band_width", "相位频带宽度（Hz）", "number", "2"],
+      ["amp_freqs", "振幅频率中心（Hz）", "text", "30,50,70"],
+      ["amp_band_width", "振幅频带宽度（Hz）", "number", "20"],
+      ["n_phase_bins", "相位分箱数", "number", "18"],
+      ["coupling_metric", "耦合度量", "select", "mi", ["mi", "mvl", "kl_divergence"]],
+      ["n_surrogates", "替代检验次数", "number", "100"],
+      ["random_state", "随机种子", "number", "20260703"],
+      ["window_start_sec", "窗口开始（秒）", "number", "0"],
+      ["window_end_sec", "窗口结束（秒，可选）", "number", "20"],
+      ["bad_channels", "坏道，用英文逗号分隔", "text", ""],
+    ],
+  },
   reference_csd: {
     title: "CSD 电流源密度计算",
     workflow: "reference_csd",
@@ -326,7 +352,7 @@ const METHOD_GROUPS = [
     title: "跨频耦合",
     lifecycle: "当前可用方法",
     description: "PAC / CFC 描述同一记录中低频相位和高频振幅之间的耦合，不等同于通道间连接性。",
-    ids: ["pac"],
+    ids: ["pac", "pac_v2"],
   },
   {
     id: "sensor-connectivity",
@@ -334,6 +360,14 @@ const METHOD_GROUPS = [
     lifecycle: "当前可用方法",
     description: "连接性分析描述通道之间的相关或相干结构，不与 PAC/CFC 合并。",
     ids: ["connectivity"],
+  },
+  {
+    id: "edf-waveform-reviewer",
+    title: "🔧 EDF 波形审阅工具",
+    lifecycle: "辅助工具",
+    description: "独立的 EDF 多通道波形浏览、滤波、时间窗审阅与 SVG 矢量快照导出工具。",
+    ids: [],
+    externalLink: "./lab-edf-reviewer.html",
   },
 ];
 
@@ -696,6 +730,26 @@ function collect参数(moduleId, form) {
       bad_channels: splitList("bad_channels"),
     });
   }
+  if (moduleId === "pac_v2") {
+    const splitList = (name) => String(form.elements[name]?.value || "").split(",").map((item) => item.trim()).filter(Boolean);
+    const splitNumbers = (name) => splitList(name).map((item) => Number(item)).filter((item) => Number.isFinite(item));
+    return stripUndefined({
+      channels: splitList("channels"),
+      phase_freqs: splitNumbers("phase_freqs"),
+      phase_band_width: readNumber(form, "phase_band_width"),
+      amp_freqs: splitNumbers("amp_freqs"),
+      amp_band_width: readNumber(form, "amp_band_width"),
+      n_phase_bins: readNumber(form, "n_phase_bins"),
+      coupling_metric: form.elements.coupling_metric?.value || "mi",
+      n_surrogates: readNumber(form, "n_surrogates"),
+      random_state: readNumber(form, "random_state"),
+      time_window: {
+        start_sec: readNumber(form, "window_start_sec"),
+        end_sec: readNumber(form, "window_end_sec"),
+      },
+      bad_channels: splitList("bad_channels"),
+    });
+  }
   if (moduleId === "connectivity") {
     const splitList = (name) => String(form.elements[name]?.value || "").split(",").map((item) => item.trim()).filter(Boolean);
     return stripUndefined({
@@ -725,6 +779,9 @@ function optionLabel(value) {
     correlation: "相关系数",
     coherence: "相干性",
     single_record_descriptive_beta: "单记录描述性预览",
+    mi: "MI (Tort Modulation Index)",
+    mvl: "MVL (Mean Vector Length)",
+    kl_divergence: "KL 散度",
   };
   return labels[value] || value;
 }
@@ -767,7 +824,7 @@ function renderPacModulePanel(id, module, hidden = false) {
         <legend>常用参数</legend>
         ${renderParameterFields(module.fields, 6)}
       </fieldset>
-      <details class="advanced-params pac-extra" data-testid="pac-analysis-scope">
+      <details class="advanced-params pac-extra" data-testid="pac-analysis-scope" open>
         <summary>PAC 范围与频率网格</summary>
         <fieldset>
           <legend>范围</legend>
@@ -821,6 +878,17 @@ function renderModulePanel(id, module, hidden = false) {
 }
 
 function renderMethodGroupCard(group) {
+  // 外部链接卡片（如 EDF Reviewer）
+  if (group.externalLink) {
+    return `<article class="module-card external-link-card" id="method-group-${h(group.id)}">
+      <div class="module-card-top"><span>${h(group.lifecycle)}</span><strong>外部工具</strong></div>
+      <h2>${h(group.title)}</h2>
+      <p>${h(group.description)}</p>
+      <a class="btn primary" href="${h(group.externalLink)}" target="_blank" rel="noopener">${icon("external-link")}打开工具</a>
+    </article>`;
+  }
+  
+  // 常规分析方法卡片
   const firstId = group.ids[0];
   return `<article class="module-card live-card method-group-card" id="method-group-${h(group.id)}" data-method-group="${h(group.id)}">
     <div class="module-card-top"><span>${h(group.lifecycle)}</span><strong>${h(group.ids.length)} 个入口</strong></div>

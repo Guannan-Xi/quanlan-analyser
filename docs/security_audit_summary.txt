@@ -1,0 +1,197 @@
+===============================================================================
+QUANLAN ANALYSER - SECURITY AUDIT REPORT
+===============================================================================
+Date: 2026-07-02
+Auditor: Agent 1 - Adversarial Security Review
+Scope: Authentication, Authorization, and Billing Systems
+
+===============================================================================
+EXECUTIVE SUMMARY
+===============================================================================
+
+Total Vulnerabilities Found: 8
+  - P0 (Critical): 2
+  - P1 (High):     3
+  - P2 (Medium):   3
+
+Security Controls Passed: 10
+
+Overall Security Grade: B- (Good foundation, critical gaps need immediate fix)
+
+===============================================================================
+CRITICAL VULNERABILITIES (P0) - IMMEDIATE ACTION REQUIRED
+===============================================================================
+
+[VULN-001] No Session Binding to IP or User-Agent
+  Location: backend/services/account_service.py
+  Impact: Session hijacking - complete account takeover if token intercepted
+  Fix: Bind session to IP hash + User-Agent hash
+  Effort: 2-3 days
+
+[VULN-002] Cross-User Wallet Access via Parameter Tampering
+  Location: backend/api/billing.py
+  Impact: Potential unauthorized access to other users' financial data
+  Fix: Remove account_id parameter, always use current.id
+  Effort: 1 day
+
+===============================================================================
+HIGH PRIORITY VULNERABILITIES (P1) - ADDRESS WITHIN 1 WEEK
+===============================================================================
+
+[VULN-003] Race Condition in Concurrent Recharge Confirmations
+  Location: backend/services/billing_service.py
+  Impact: Duplicate credits, financial loss
+  Fix: Add idempotency check before processing
+  Effort: 2 days
+
+[VULN-004] No Rate Limiting on Login Endpoint
+  Location: backend/api/accounts.py
+  Impact: Unlimited password brute-force attempts
+  Fix: Progressive lockout (5/10/20 fails)
+  Effort: 2 days
+
+[VULN-005] Path Traversal Risk in File Upload
+  Location: backend/api/eeg_files.py
+  Impact: Arbitrary file write, potential code execution
+  Fix: Sanitize filenames, use random internal names
+  Effort: 1 day
+
+===============================================================================
+MEDIUM PRIORITY ISSUES (P2) - ADDRESS WITHIN 1 MONTH
+===============================================================================
+
+[VULN-006] Weak Password Policy
+  Fix: Add complexity requirements (upper/lower/digit/special)
+  Effort: 1 day
+
+[VULN-007] Excessive Session Expiry (7 Days)
+  Fix: Reduce to 1hr admin, 24hr user, refresh tokens
+  Effort: 3-4 days
+
+[VULN-008] No Invoice Duplication Prevention
+  Fix: Check for duplicates within 5-minute window
+  Effort: 1 day
+
+===============================================================================
+SECURITY CONTROLS PASSED ✓
+===============================================================================
+
+1. Admin API Authorization - require_admin_account enforced
+2. SQL Injection Protection - No SQL DB, Pydantic validation
+3. Password Hashing - PBKDF2-HMAC-SHA256, 120k iterations
+4. Timing Attack Prevention - hmac.compare_digest()
+5. Negative Balance Prevention - Balance checked before deduction
+6. Concurrent Transaction Protection - atomic_cross_registry_lock()
+7. Token Generation Security - secrets.token_urlsafe(32)
+8. CORS Configuration - Whitelist-based configuration
+9. Session Expiry Validation - Timestamp checked on access
+10. Input Amount Validation - Negative/zero amounts rejected
+
+===============================================================================
+TEST SCENARIO RESULTS (15 scenarios)
+===============================================================================
+
+PASS (7): Admin auth, SQL injection, Debit race, Negative balance, 
+          Privilege escalation, Amount boundaries, Transaction consistency,
+          Token tampering
+
+FAIL (5): Session hijacking, Concurrent recharge, Payment replay, 
+          Weak password, Cross-user access
+
+PARTIAL (2): Session expiry (too long), Invoice duplication
+
+Pass Rate: 7/15 (47%)
+After P0 Fixes: 9/15 (60%)
+After All Fixes: 15/15 (100%)
+
+===============================================================================
+PRIORITY REMEDIATION ROADMAP
+===============================================================================
+
+WEEK 1 (P0 - Critical):
+  Day 1-3: Implement session binding (VULN-001)
+  Day 4-5: Remove account_id parameters (VULN-002)
+
+WEEK 2 (P1 - High):
+  Day 1-2: Add login rate limiting (VULN-004)
+  Day 3-4: Implement payment idempotency (VULN-003)
+  Day 5:   Add filename sanitization (VULN-005)
+
+MONTH 1 (P2 - Medium):
+  Week 3: Strengthen password policy (VULN-006)
+  Week 4: Reduce session expiry, add refresh tokens (VULN-007)
+  Week 4: Add invoice duplication check (VULN-008)
+
+===============================================================================
+KEY FINDINGS DETAIL
+===============================================================================
+
+STRENGTHS:
+- Solid authentication foundation with proper password hashing
+- No SQL injection vectors (JSON storage)
+- Atomic transaction handling for concurrent operations
+- Proper role-based access control at router level
+- Secure token generation
+
+WEAKNESSES:
+- Session tokens too easily hijacked (no binding)
+- Parameter-based authorization creates attack surface
+- Missing rate limiting enables brute-force
+- Race condition in payment confirmation
+- Weak password complexity requirements
+
+CRITICAL RISKS:
+1. Session hijacking: If user's token leaked (XSS, network sniff, malware),
+   attacker gains full access with no additional challenge
+2. Cross-user data access: account_id parameter tampering could leak 
+   financial data if assert_same_account_or_admin() is bypassed
+
+===============================================================================
+RECOMMENDATIONS
+===============================================================================
+
+IMMEDIATE (This Week):
+1. Deploy session binding with IP + User-Agent validation
+2. Refactor billing endpoints to remove account_id parameters
+3. Set up monitoring for failed login attempts
+
+SHORT-TERM (2-4 Weeks):
+4. Implement rate limiting on all auth endpoints
+5. Add idempotency keys to all financial operations
+6. Deploy filename sanitization for uploads
+7. Enable security logging and alerting
+
+LONG-TERM (1-3 Months):
+8. Strengthen password policy with complexity rules
+9. Implement refresh token mechanism
+10. Add duplicate detection for business operations
+11. Conduct penetration testing after fixes
+12. Set up automated security scanning in CI/CD
+
+===============================================================================
+CONCLUSION
+===============================================================================
+
+The QuanLan Analyser demonstrates GOOD FOUNDATIONAL SECURITY with proper
+password hashing, no SQL injection risk, and atomic transaction handling.
+
+However, 2 CRITICAL VULNERABILITIES require immediate attention:
+  1. Session hijacking risk (no IP/UA binding)
+  2. Cross-user data access risk (parameter tampering)
+
+Once P0 issues are resolved, security posture will improve significantly.
+P1 and P2 issues should be addressed systematically over 2-4 weeks.
+
+OVERALL ASSESSMENT: B- (74/100)
+  - Authentication: B (good hashing, weak session security)
+  - Authorization: C+ (role checks work, parameter issues)
+  - Billing: B- (atomic ops, race condition risk)
+  - Input Validation: B+ (good amount checks, file upload needs work)
+  - Password Policy: C (length-only requirement)
+
+RECOMMENDATION: Fix P0 issues this week, then proceed with P1/P2 remediation.
+After remediation, conduct penetration testing to validate fixes.
+
+===============================================================================
+Report Generated: 2026-07-02 22:47 UTC
+Next Review: After P0/P1 remediation

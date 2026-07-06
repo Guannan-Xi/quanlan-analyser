@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>癫痫样事件筛查报告预览 - QLanalyser</title>
+    <meta name="description" content="QLanalyser 癫痫样事件筛查与人工复核后的报告预览。" />
+    <link rel="stylesheet" href="./epilepsy-report-preview.css?v=20260706-preview" />
+    <script src="./vendor/lucide.min.js"></script>
+  </head>
+  <body>
+    <main class="ep-report-app" data-testid="epilepsy-report-preview">
+      <header class="ep-report-top">
+        <div class="ep-brand">
+          <div class="ep-kicker">
+            <i data-lucide="file-chart-column" aria-hidden="true"></i>
+            <span>癫痫样事件筛查报告</span>
+          </div>
+          <h1>复核后报告预览</h1>
+          <p id="reportSubtitle">科研筛查支持，不作为临床诊断结论。</p>
+        </div>
+        <div class="ep-top-actions">
+          <label class="ep-file-btn" for="reviewJsonInput">
+            <i data-lucide="upload" aria-hidden="true"></i>
+            <span>载入复核 JSON</span>
+          </label>
+          <input id="reviewJsonInput" type="file" accept=".json,application/json" hidden />
+          <a class="ep-btn ep-btn-secondary" href="./epilepsy-review-preview.html">
+            <i data-lucide="square-pen" aria-hidden="true"></i>
+            <span>返回复核</span>
+          </a>
+          <button class="ep-btn ep-btn-primary" type="button" id="exportReportBtn">
+            <i data-lucide="download" aria-hidden="true"></i>
+            <span>导出预览 JSON</span>
+          </button>
+        </div>
+      </header>
+
+      <section class="ep-report-banner" aria-label="报告边界">
+        <strong id="overallStatement">已载入示例复核数据。</strong>
+        <span>报告只统计人工保留事件；排除、存疑和未复核候选保留在追溯记录中。</span>
+      </section>
+
+      <section class="ep-summary-grid" aria-label="报告摘要">
+        <article>
+          <span>记录</span>
+          <strong id="recordName">-</strong>
+          <small id="recordMeta">-</small>
+        </article>
+        <article>
+          <span>人工保留</span>
+          <strong id="confirmedMetric">-</strong>
+          <small id="eventRateMetric">-</small>
+        </article>
+        <article>
+          <span>存疑 / 未复核</span>
+          <strong id="pendingMetric">-</strong>
+          <small>不形成临床结论</small>
+        </article>
+        <article>
+          <span>复核覆盖</span>
+          <strong id="coverageMetric">-</strong>
+          <small id="coverageHint">-</small>
+        </article>
+      </section>
+
+      <section class="ep-report-layout">
+        <aside class="ep-report-nav" aria-label="报告目录">
+          <a href="#summarySection" class="is-active">摘要</a>
+          <a href="#figuresSection">图表</a>
+          <a href="#eventsSection">事件表</a>
+          <a href="#methodsSection">方法</a>
+          <a href="#auditSection">追溯</a>
+        </aside>
+
+        <div class="ep-report-main">
+          <section class="ep-section" id="summarySection">
+            <div class="ep-section-head">
+              <div>
+                <span>Summary</span>
+                <h2>报告摘要</h2>
+              </div>
+              <button class="ep-icon-btn" type="button" id="copySummaryBtn" title="复制摘要">
+                <i data-lucide="copy" aria-hidden="true"></i>
+              </button>
+            </div>
+            <div class="ep-two-col">
+              <div class="ep-interpretation">
+                <h3>复核摘要</h3>
+                <p id="interpretationText">-</p>
+              </div>
+              <div class="ep-interpretation muted">
+                <h3>报告边界</h3>
+                <p>本报告描述算法候选经人工复核后的研究筛查结果。临床诊断、用药或治疗决策需要结合病史、视频、正式临床 EEG 判读和医生意见。</p>
+              </div>
+            </div>
+          </section>
+
+          <section class="ep-section" id="figuresSection">
+            <div class="ep-section-head">
+              <div>
+                <span>Figures</span>
+                <h2>核心图表</h2>
+              </div>
+              <button class="ep-icon-btn" type="button" id="redrawBtn" title="重绘图表">
+                <i data-lucide="refresh-cw" aria-hidden="true"></i>
+              </button>
+            </div>
+            <div class="ep-figure-grid">
+              <figure class="ep-figure wide">
+                <canvas id="timelineFigure" width="1200" height="260"></canvas>
+                <figcaption>全记录候选时间轴：展示人工保留、排除、存疑和未复核候选的分布。</figcaption>
+              </figure>
+              <figure class="ep-figure">
+                <canvas id="waveformFigure" width="760" height="360"></canvas>
+                <figcaption>代表事件波形示意：当前预览使用合成波形；正式报告需替换为真实 EDF waveform-window 或 evidence package。</figcaption>
+              </figure>
+              <figure class="ep-figure">
+                <canvas id="funnelFigure" width="760" height="360"></canvas>
+                <figcaption>复核漏斗：AI 候选到人工保留事件的状态流。</figcaption>
+              </figure>
+              <figure class="ep-figure">
+                <canvas id="densityFigure" width="760" height="320"></canvas>
+                <figcaption>已复核人工保留候选负荷：按记录小时统计已复核保留候选密度。</figcaption>
+              </figure>
+              <figure class="ep-figure">
+                <canvas id="qcFigure" width="760" height="320"></canvas>
+                <figcaption>通道证据概览：EEG、EMG、ACC 对事件判读的参与情况。</figcaption>
+              </figure>
+            </div>
+          </section>
+
+          <section class="ep-section" id="eventsSection">
+            <div class="ep-section-head">
+              <div>
+                <span>Events</span>
+                <h2>事件结果表</h2>
+              </div>
+              <button class="ep-btn ep-btn-secondary compact" type="button" id="exportCsvBtn">
+                <i data-lucide="table" aria-hidden="true"></i>
+                <span>导出 CSV</span>
+              </button>
+            </div>
+            <div class="ep-table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>事件</th>
+                    <th>时间</th>
+                    <th>持续</th>
+                    <th>类型</th>
+                    <th>通道</th>
+                    <th>证据</th>
+                    <th>状态</th>
+                  </tr>
+                </thead>
+                <tbody id="eventTableBody"></tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="ep-section" id="methodsSection">
+            <div class="ep-section-head">
+              <div>
+                <span>Methods</span>
+                <h2>方法与局限性</h2>
+              </div>
+              <button class="ep-icon-btn" type="button" id="copyMethodsBtn" title="复制 Methods">
+                <i data-lucide="clipboard" aria-hidden="true"></i>
+              </button>
+            </div>
+            <div class="ep-method-grid">
+              <article>
+                <h3>数据与通道</h3>
+                <p id="dataMethodText">-</p>
+              </article>
+              <article>
+                <h3>检测与复核</h3>
+                <p id="reviewMethodText">-</p>
+              </article>
+              <article>
+                <h3>报告规则</h3>
+                <p>仅人工保留候选进入负荷统计、代表图和结果摘要；排除候选不进入统计；存疑和未复核候选单列为待确认，不扩展为临床结论。</p>
+              </article>
+              <article>
+                <h3>局限性</h3>
+                <p>当前数据无同步视频和临床标注；EMG/ACC 只能辅助判断运动或肌电伪迹；自动检测敏感性和特异性需要外部标注集验证。</p>
+              </article>
+            </div>
+          </section>
+
+          <section class="ep-section" id="auditSection">
+            <div class="ep-section-head">
+              <div>
+                <span>Traceability</span>
+                <h2>复核追溯</h2>
+              </div>
+              <span class="ep-contract" id="contractLabel">-</span>
+            </div>
+            <div class="ep-audit-list" id="auditList"></div>
+          </section>
+        </div>
+      </section>
+    </main>
+
+    <script src="./epilepsy-report-preview.js?v=20260706-preview"></script>
+  </body>
+</html>

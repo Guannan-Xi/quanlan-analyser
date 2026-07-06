@@ -443,11 +443,9 @@ button {
 }
 
 .nav-item,
-.pay-option,
 .icon-btn,
 .primary-btn,
 .ghost-btn,
-.recharge button,
 .segmented button {
   border: 0;
   border-radius: 8px;
@@ -635,7 +633,7 @@ label span {
   white-space: nowrap;
   font-size: var(--text-sm);
   border-radius: var(--radius-md);
-  transition: all 0.18s ease;
+  transition: color 0.18s ease, background-color 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
 }
 
 .primary-btn {
@@ -2319,7 +2317,7 @@ button[aria-disabled="true"] {
   box-shadow: none !important;
 }
 
-@media (min-width: 1500px) {
+@media (min-width: 1800px) {
   .storage-workspace-grid {
     grid-template-columns: minmax(620px, 1fr) minmax(320px, 0.42fr);
   }
@@ -2457,53 +2455,10 @@ button[aria-disabled="true"] {
   background: #e56f55;
 }
 
-.balance {
-  margin: 8px 0 18px;
-  font-size: 44px;
-  font-weight: 800;
-}
-
-.pay-options,
-.recharge,
 .segmented {
   display: grid;
   gap: 8px;
   margin-bottom: 14px;
-}
-
-.pay-options {
-  grid-template-columns: 1fr 1fr;
-}
-
-.pay-option {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  min-height: 44px;
-  color: var(--steel);
-  background: #f2f5f5;
-}
-
-.pay-option.active {
-  color: var(--brand-blue-700);
-  outline: 2px solid var(--brand-blue-500);
-  background: white;
-}
-
-.recharge {
-  grid-template-columns: repeat(4, 1fr);
-}
-
-.recharge button {
-  height: 40px;
-  color: var(--steel);
-  background: #f2f5f5;
-}
-
-.recharge button.active {
-  color: white;
-  background: var(--steel);
 }
 
 .invoice-form {
@@ -2860,9 +2815,17 @@ button[aria-disabled="true"] {
   background: #fff;
 }
 
-.result-image-preview-card a {
+.result-image-preview-card button,
+.result-image-static-preview {
   display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
   background: #f8fbff;
+}
+
+.result-image-preview-card button {
+  cursor: pointer;
 }
 
 .result-image-preview-card img {
@@ -3007,6 +2970,10 @@ button[aria-disabled="true"] {
   background: var(--ql-primary-soft);
   color: var(--ql-primary);
 }
+/* P0-2: 当前波形窗口内的 epoch 高亮 */
+.inline-epoch-strip button.in-window {
+  box-shadow: 0 0 0 2px rgba(30, 120, 230, 0.35);
+}
 .inline-epoch-strip em {
   grid-column: 1 / -1;
   display: block;
@@ -3015,6 +2982,59 @@ button[aria-disabled="true"] {
   font-style: normal;
   line-height: 1.6;
 }
+
+/* Epoch strip: 时间刻度 + 窗口高亮条 + 发作起点标记 */
+.epoch-strip-outer {
+  position: relative;
+  padding-top: 18px;
+}
+
+.epoch-time-scale {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 16px;
+  pointer-events: none;
+  z-index: 3;
+}
+
+.epoch-window-overlay {
+  position: absolute;
+  top: 18px;
+  bottom: 0;
+  background: rgba(30, 120, 230, 0.15);
+  border-left: 3px solid rgba(30, 120, 230, 0.8);
+  border-right: 3px solid rgba(30, 120, 230, 0.8);
+  pointer-events: none;
+  z-index: 1;
+  border-radius: 2px;
+  box-shadow: 0 0 6px rgba(30, 120, 230, 0.25);
+}
+
+/* 发作起点红色竖线标记 */
+.epoch-onset-marker {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  border-left: 2px dashed rgba(220, 38, 38, 0.75);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.epoch-onset-marker::after {
+  content: "▼ 发作";
+  position: absolute;
+  top: -2px;
+  left: 2px;
+  font-size: 10px;
+  color: #dc2626;
+  font-weight: 700;
+  white-space: nowrap;
+  line-height: 1;
+}
+
 .inline-wave-toolbar {
   display: flex;
   gap: 8px;
@@ -3471,6 +3491,23 @@ button[aria-disabled="true"] {
   border-color: var(--ql-primary);
   box-shadow: 0 0 0 3px rgba(17, 108, 117, 0.12);
 }
+/* P1-2: 候选事件矫正状态色标 */
+.event-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+  margin-right: 4px;
+}
+.status-legend {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+.status-legend i {
+  font-style: normal;
+  margin: 0 1px 0 6px;
+}
 .inline-correction-actions {
   grid-template-columns: repeat(auto-fit, minmax(108px, 1fr));
   margin: 12px 0;
@@ -3549,6 +3586,15 @@ button[aria-disabled="true"] {
   background: #fbfcfd;
 }
 
+.result-empty-state .primary-btn {
+  min-width: 140px;
+  font-weight: 800;
+}
+
+.result-empty-state .primary-btn span {
+  color: #ffffff;
+}
+
 .artifact-details summary {
   cursor: pointer;
   color: var(--teal);
@@ -3576,7 +3622,10 @@ button[aria-disabled="true"] {
   border-radius: 8px;
   background: #fbfcfd;
   color: var(--ink);
+  font: inherit;
+  text-align: left;
   text-decoration: none;
+  cursor: pointer;
 }
 
 .artifact-link-chip:hover,
@@ -6591,12 +6640,39 @@ margin: 10px 0;
   font-size: 18px;
 }
 
-.compact-recharge {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-}
-
 .compact-invoice-form {
   grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.service-record-list {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-panel);
+  background: var(--surface-muted);
+}
+
+.service-record-list span {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.service-record-list b {
+  color: var(--text-muted);
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.service-record-list em {
+  color: var(--text-primary);
+  font-style: normal;
+  text-align: right;
 }
 
 .two-col-section {
@@ -7407,6 +7483,15 @@ margin: 10px 0;
   grid-template-columns: minmax(0, 1fr) !important;
 }
 
+#dashboard .project-management-only .project-data-master-detail {
+  grid-template-columns: minmax(0, 1fr) !important;
+}
+
+#dashboard .project-management-only .ia-project-ledger {
+  width: 100%;
+  min-width: 0;
+}
+
 #dashboard .next-action-strip {
   display: none;
 }
@@ -7563,7 +7648,6 @@ body,
 
 .ghost-btn,
 .icon-btn,
-.recharge button,
 .segmented button {
   color: var(--ql-primary);
   border: 1px solid var(--ql-border);
@@ -7573,7 +7657,6 @@ body,
 
 .ghost-btn:hover,
 .icon-btn:hover,
-.recharge button:hover,
 .segmented button:hover {
   border-color: var(--ql-primary-border);
   background: var(--ql-primary-soft);
@@ -8103,6 +8186,7 @@ body.teaching-sandbox-active .main {
   border: 1px solid var(--line, #e2e5ea);
   border-radius: 8px;
   background: #fff;
+  font-family: inherit;
   font-size: 12px;
   font-weight: 600;
   color: var(--teal, #0f8f5f);
@@ -8257,7 +8341,7 @@ body.teaching-sandbox-active .main {
   color: var(--steel, #667085);
   font-size: 13px;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: color 0.2s ease, background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
 }
 
 .view-mode-btn:hover {
@@ -8330,7 +8414,7 @@ body.teaching-sandbox-active .main {
   border-radius: 10px;
   background: var(--surface, #ffffff);
   overflow: hidden;
-  transition: all 0.2s ease;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
 }
 
 .artifact-card:hover {
@@ -8409,7 +8493,7 @@ body.teaching-sandbox-active .main {
   background: transparent;
   color: var(--steel, #667085);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: color 0.15s ease, background-color 0.15s ease, transform 0.15s ease;
 }
 
 .artifact-action-btn:hover {
@@ -8438,7 +8522,7 @@ body.teaching-sandbox-active .main {
   border: 1px solid var(--line, #e2e5ea);
   border-radius: 8px;
   background: var(--surface, #ffffff);
-  transition: all 0.2s ease;
+  transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
 }
 
 .artifact-list-item:hover {
@@ -8536,6 +8620,151 @@ body.teaching-sandbox-active .main {
     justify-content: center;
   }
 }
+/* Zoom resilience: browser zoom increases effective text/control size, so dense panels must wrap instead of overlapping. */
+.result-toolbar,
+.result-view-switcher,
+.module-batch-actions,
+.artifact-card-actions,
+.artifact-list-item,
+.artifact-list-actions,
+.epilepsy-v3-download-row,
+.epilepsy-v3-viewer-toolbar,
+.epilepsy-v3-summary-pills,
+.inline-staging-title,
+.inline-staging-callout,
+.inline-reader-toolbar,
+.real-actions,
+.compact-actions {
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.view-mode-btn,
+.artifact-action-btn,
+.epilepsy-v3-dl-btn,
+.epilepsy-v3-filter-btn,
+.epilepsy-v3-view-btn,
+.epilepsy-v3-review-btn,
+.inline-reader-group,
+.inline-mode-pill,
+.real-actions button,
+.compact-actions button {
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.artifact-card,
+.artifact-list-item,
+.artifact-list-content,
+.result-item,
+.epilepsy-v3-workspace,
+.epilepsy-v3-viewer,
+.epilepsy-v3-event-info,
+.epilepsy-v3-review-panel,
+.epilepsy-inline-main,
+.epilepsy-inline-grid > * {
+  min-width: 0;
+}
+
+.artifact-card-title,
+.artifact-card-meta,
+.artifact-list-content strong,
+.artifact-list-content span,
+.result-item-header strong,
+.result-item-header span,
+.epilepsy-v3-event-info strong,
+.epilepsy-v3-event-time,
+.epilepsy-v3-event-meta,
+.epilepsy-v3-viewer-sub,
+.epilepsy-v3-viewer-hint,
+.inline-draft-ledger span,
+.inline-staging-context-grid span {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  white-space: normal;
+}
+
+.artifact-card-preview {
+  height: clamp(120px, 24vw, 180px);
+}
+
+@media (max-width: 1280px) {
+  .epilepsy-v3-layout,
+  .epilepsy-inline-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .epilepsy-v3-review-panel {
+    position: static;
+    top: auto;
+  }
+
+  .epilepsy-v3-review-panel,
+  .epilepsy-inline-main,
+  .epilepsy-inline-review {
+    grid-column: auto !important;
+  }
+
+  .epilepsy-v3-event-index {
+    max-height: none;
+  }
+
+  .epilepsy-v3-event-list {
+    max-height: min(60vh, 520px);
+  }
+
+  .inline-staging-context-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 920px) {
+  .inline-staging-title,
+  .inline-staging-callout,
+  .result-toolbar,
+  .artifact-list-item {
+    align-items: stretch;
+  }
+
+  .inline-staging-title,
+  .inline-staging-callout,
+  .artifact-list-item {
+    flex-direction: column;
+  }
+
+  .epilepsy-v3-detail-grid,
+  .inline-staging-context-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .epilepsy-v3-event-item {
+    align-items: flex-start;
+  }
+
+  .epoch-onset-marker::after {
+    content: "▼";
+  }
+}
+
+@media (max-width: 640px) {
+  .artifacts-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .view-mode-btn,
+  .epilepsy-v3-dl-btn,
+  .module-batch-actions .compact-btn,
+  .artifact-list-actions .compact-btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .inline-epoch-strip {
+    grid-template-columns: repeat(6, minmax(28px, 1fr));
+  }
+}
+
 /* ===== End Result Detail Enhancement ===== */
 
 /* ===== Global Loading Overlay ===== */
@@ -8703,7 +8932,7 @@ textarea:focus-visible {
 button,
 .nav-item,
 .card {
-  transition: all 0.18s ease;
+  transition: color 0.18s ease, background-color 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease, opacity 0.18s ease;
 }
 
 /* P2: Tooltip support */
@@ -8867,7 +9096,7 @@ time,
   border: 1px solid transparent;
   white-space: nowrap;
   cursor: pointer;
-  transition: all 0.18s ease;
+  transition: color 0.18s ease, background-color 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
 }
 
 .progress-step:hover {
@@ -9067,7 +9296,7 @@ time,
   border-bottom: 2px solid transparent;
   margin-bottom: -2px;
   white-space: nowrap;
-  transition: all 0.18s ease;
+  transition: color 0.18s ease, background-color 0.18s ease, border-color 0.18s ease;
 }
 
 .user-center-tab:hover {
@@ -9100,3 +9329,1948 @@ time,
   }
 }
 /* ===== End Workspace Logic UI ===== */
+
+/* ===== Login Entry P0 Fixes ===== */
+.login-tabs button[disabled],
+.login-tabs button[aria-disabled="true"] {
+  cursor: not-allowed;
+  color: #94a3b8;
+  background: transparent;
+  opacity: 0.72;
+}
+
+.remember-row {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 8px !important;
+  min-height: 32px;
+  color: #475569;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.remember-row input[type="checkbox"] {
+  width: 18px;
+  min-width: 18px;
+  height: 18px;
+  min-height: 18px;
+  margin: 0;
+  padding: 0;
+  flex: 0 0 auto;
+  accent-color: var(--brand-blue-700);
+}
+
+.register-unavailable-note {
+  margin: 0 0 10px;
+  padding: 10px 12px;
+  border: 1px solid #d6e2e2;
+  border-radius: 8px;
+  background: #f7faf9;
+  color: #475569;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.55;
+}
+/* ===== End Login Entry P0 Fixes ===== */
+
+/* ===== Branded Cover Refinement ===== */
+.login-screen {
+  position: relative;
+  grid-template-columns: minmax(420px, 1fr) minmax(360px, 440px);
+  gap: clamp(28px, 5vw, 72px);
+  min-height: 100vh;
+  padding: clamp(24px, 4vw, 64px);
+  overflow: hidden;
+  background:
+    linear-gradient(90deg, rgba(3, 14, 22, 0.82) 0%, rgba(3, 14, 22, 0.58) 48%, rgba(235, 244, 244, 0.82) 100%),
+    url("./assets/qlanalyser-neuron-firing-bg.png") center / cover no-repeat,
+    #06151d;
+}
+
+.login-screen::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 24% 18%, rgba(76, 211, 194, 0.14), transparent 30%),
+    linear-gradient(180deg, rgba(2, 12, 18, 0.10), rgba(2, 12, 18, 0.34));
+}
+
+.login-brand {
+  min-height: auto;
+  padding: clamp(22px, 4vw, 48px);
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.login-brand::before,
+.login-brand::after {
+  display: none;
+}
+
+.entry-brand-lockup {
+  max-width: 640px;
+}
+
+.entry-kicker {
+  color: rgba(235, 252, 251, 0.86);
+  letter-spacing: 0.08em;
+  text-transform: none;
+}
+
+.entry-kicker sup {
+  position: relative;
+  top: -0.42em;
+  margin-left: 1px;
+  font-size: 0.62em;
+  line-height: 0;
+}
+
+.entry-brand-lockup strong {
+  font-size: clamp(42px, 5.6vw, 76px);
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+
+.entry-brand-lockup small {
+  margin-top: 8px;
+  color: rgba(235, 252, 251, 0.82);
+  font-size: clamp(15px, 1.25vw, 18px);
+  font-weight: 800;
+  line-height: 1.55;
+}
+
+.cover-copy {
+  max-width: 520px;
+}
+
+.cover-copy p {
+  max-width: 520px;
+  color: rgba(235, 252, 251, 0.70);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.login-panel {
+  position: relative;
+  z-index: 1;
+  align-self: center;
+  padding: clamp(30px, 4vw, 44px);
+  border: 1px solid rgba(235, 245, 247, 0.68);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(244, 249, 250, 0.66));
+  box-shadow:
+    0 30px 90px rgba(2, 12, 18, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.78);
+  backdrop-filter: blur(22px) saturate(1.05);
+}
+
+.login-panel::before {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  pointer-events: none;
+  border-radius: inherit;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.32), transparent 42%);
+  display: block;
+}
+
+.login-panel > * {
+  position: relative;
+  z-index: 1;
+}
+
+.account-title {
+  margin-bottom: 18px;
+}
+
+.account-title strong {
+  font-size: clamp(28px, 2.4vw, 34px);
+  letter-spacing: 0;
+}
+
+.account-title small:empty {
+  display: none;
+}
+
+.login-tabs {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 16px 0 18px;
+  border-color: rgba(209, 225, 230, 0.72);
+  background: rgba(247, 251, 251, 0.58);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.74);
+}
+
+.login-form {
+  gap: 13px;
+}
+
+.login-form input {
+  border-color: rgba(198, 216, 223, 0.78);
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.login-form input::placeholder {
+  color: rgba(91, 107, 128, 0.62);
+}
+
+.remember-row {
+  color: #334155;
+}
+
+.ghost-btn.full {
+  min-height: 42px;
+  border-color: rgba(204, 219, 226, 0.78);
+  background: rgba(255, 255, 255, 0.74);
+}
+
+.login-message[hidden] {
+  display: none;
+}
+
+.admin-corner {
+  position: absolute;
+  top: clamp(14px, 2vw, 24px);
+  right: clamp(14px, 2vw, 24px);
+  z-index: 2;
+  min-width: 34px;
+  min-height: 30px;
+  padding: 0 8px;
+  border-color: rgba(235, 245, 247, 0.46);
+  background: rgba(255, 255, 255, 0.24);
+  color: rgba(248, 253, 253, 0.72);
+  opacity: 0.62;
+}
+
+.admin-corner span {
+  max-width: 0;
+  overflow: hidden;
+  opacity: 0;
+  white-space: nowrap;
+  transition: max-width 0.16s ease, opacity 0.16s ease;
+}
+
+.admin-corner:hover,
+.admin-corner:focus-visible {
+  color: #0f5f91;
+  background: rgba(255, 255, 255, 0.80);
+  opacity: 0.96;
+}
+
+.admin-corner:hover span,
+.admin-corner:focus-visible span {
+  max-width: 42px;
+  opacity: 1;
+}
+
+@media (max-width: 980px) {
+  .login-screen {
+    grid-template-columns: 1fr;
+    gap: 18px;
+    padding: 18px 10px;
+    background:
+      linear-gradient(180deg, rgba(236, 246, 246, 0.86) 0%, rgba(236, 246, 246, 0.76) 36%, rgba(3, 14, 22, 0.70) 100%),
+      url("./assets/qlanalyser-neuron-firing-bg.png") center / cover no-repeat,
+      #06151d;
+  }
+
+  .login-panel {
+    order: 1;
+    width: min(100%, 420px);
+    justify-self: center;
+  }
+
+  .login-brand {
+    order: 2;
+    min-height: 260px;
+    width: min(100%, 520px);
+    justify-self: center;
+  }
+
+  .entry-brand-lockup strong {
+    font-size: 34px;
+    white-space: normal;
+  }
+}
+
+@media (max-width: 520px) {
+  .login-screen {
+    padding: 6px 10px 14px;
+  }
+
+  .admin-corner {
+    top: 10px;
+    right: 12px;
+    border-color: rgba(207, 222, 228, 0.66);
+    background: rgba(255, 255, 255, 0.64);
+    color: #64748b;
+    opacity: 0.86;
+  }
+
+  .login-panel {
+    padding: 28px;
+  }
+
+  .entry-brand-lockup small {
+    font-size: 14px;
+  }
+}
+/* ===== End Branded Cover Refinement ===== */
+
+/* ===== Desktop Workspace Density ===== */
+:root {
+  --btn-height: 32px;
+  --btn-height-compact: 28px;
+  --control-height: 32px;
+  --panel-gap: 12px;
+}
+
+.shell {
+  grid-template-columns: 196px 1fr;
+}
+
+.main {
+  padding: 14px 18px;
+}
+
+.topbar {
+  min-height: 38px;
+  margin-bottom: 10px;
+}
+
+.topbar h1 {
+  font-size: 22px;
+}
+
+.top-actions {
+  gap: 6px;
+}
+
+.icon-btn {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+}
+
+.dot {
+  top: 8px;
+  right: 8px;
+  width: 7px;
+  height: 7px;
+}
+
+.primary-btn,
+.ghost-btn,
+.lab-entry-btn,
+.segmented button {
+  min-height: 32px;
+  padding: 0 10px;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.primary-btn.mini,
+.ghost-btn.mini {
+  min-height: 26px;
+  padding: 0 8px;
+  font-size: 11px;
+}
+
+.sidebar {
+  gap: 12px;
+  padding: 16px 12px;
+}
+
+.brand {
+  min-height: 38px;
+  padding-bottom: 12px;
+  gap: 10px;
+}
+
+.brand-mark {
+  width: 30px;
+  height: 30px;
+  font-size: 12px;
+}
+
+.brand-copy strong {
+  font-size: 15px;
+}
+
+.brand-copy span {
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.nav {
+  gap: 3px;
+  padding-top: 6px;
+}
+
+.nav-item {
+  min-height: 32px;
+  padding: 0 9px 0 10px;
+  gap: 7px;
+  border-radius: 8px;
+  font-size: 12px;
+}
+
+.nav-item svg,
+button svg,
+.nav-item [data-lucide],
+button [data-lucide],
+.lucide {
+  width: 12px;
+  height: 12px;
+  stroke-width: 2;
+}
+
+.nav-item [data-lucide],
+button [data-lucide] {
+  min-width: 12px;
+  max-width: 12px;
+  min-height: 12px;
+  max-height: 12px;
+  line-height: 12px;
+}
+
+.nav-item[data-view="analysis"],
+.nav-item[data-view="statistics"],
+.nav-item[data-view="userCenter"],
+.nav-item[data-view="adminOperations"],
+.nav-item[data-view="adminFinance"] {
+  margin-top: 6px;
+}
+
+.account-panel {
+  padding: 12px;
+}
+
+.account-panel strong {
+  margin: 6px 0;
+  font-size: 17px;
+}
+
+.metric-grid,
+.work-grid,
+.billing-grid,
+.invoice-layout,
+.user-center-grid {
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.metric,
+.panel {
+  border-radius: 8px;
+  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.035);
+}
+
+.panel {
+  padding: 12px;
+}
+
+.panel-head {
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.panel h2 {
+  font-size: 16px;
+}
+
+.panel p {
+  font-size: 12px;
+}
+
+.storage-context-bar {
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.storage-context-bar div {
+  min-height: 52px;
+  padding: 8px;
+}
+
+.storage-context-bar strong {
+  font-size: 17px;
+}
+
+.storage-workspace-grid {
+  gap: 12px;
+}
+
+.storage-file-ledger {
+  padding: 10px;
+}
+
+.storage-file-detail {
+  gap: 10px;
+  padding: 10px;
+}
+
+.storage-toolbar {
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.storage-toolbar-actions {
+  gap: 7px;
+}
+
+.file-picker-btn {
+  min-height: 38px;
+  padding: 0 14px;
+  font-size: 13px;
+}
+
+.storage-empty-state {
+  padding: 26px 22px;
+}
+
+.table-row {
+  min-height: 40px;
+  padding: 0 10px;
+  font-size: 13px;
+}
+
+.progress-step {
+  min-height: 24px;
+  padding: 0 9px;
+  gap: 4px;
+  font-size: 11px;
+}
+
+.progress-step .step-num {
+  width: 14px;
+  height: 14px;
+  font-size: 9px;
+}
+
+.workspace-progress-bar {
+  gap: 5px;
+  padding: 6px 10px;
+  margin-bottom: 10px;
+}
+
+.progress-step-divider {
+  font-size: 12px;
+}
+
+.ia-prep-steps {
+  gap: 8px;
+}
+
+.ia-step-card {
+  min-height: 58px;
+  padding: 8px 10px;
+  gap: 4px;
+  grid-template-columns: 20px minmax(0, 1fr);
+  align-items: center;
+}
+
+.ia-step-card b {
+  width: 18px;
+  height: 18px;
+  font-size: 9px;
+  grid-row: auto;
+}
+
+.ia-step-card strong {
+  font-size: 13px;
+}
+
+.ia-step-card span {
+  font-size: 11px;
+  line-height: 1.25;
+  opacity: 0.72;
+  grid-column: 2;
+}
+
+.customer-analysis-surface .ia-prep-main {
+  gap: 10px;
+}
+
+.customer-analysis-surface.ia-prep-layout {
+  grid-template-columns: minmax(220px, 260px) minmax(760px, 1fr);
+  gap: 10px;
+}
+
+.customer-analysis-surface .customer-context-card {
+  padding: 10px;
+}
+
+.customer-analysis-surface:not(.has-current-file) .eeg-canvas-wrap {
+  min-height: 440px;
+}
+
+.customer-analysis-surface .ia-prep-steps {
+  grid-template-columns: repeat(5, minmax(140px, 1fr));
+  gap: 6px;
+}
+
+.customer-analysis-surface .ia-step-card {
+  min-height: 50px;
+  grid-template-columns: 20px minmax(0, 1fr);
+  padding: 7px 8px;
+  align-items: center;
+}
+
+.customer-analysis-surface .ia-step-card b {
+  width: 18px;
+  height: 18px;
+  grid-row: auto;
+}
+
+.customer-analysis-surface .ia-step-card span {
+  font-size: 11px;
+  line-height: 1.25;
+  opacity: 0.72;
+}
+
+.empty-object-state {
+  padding: 24px 20px;
+}
+
+.work-grid,
+.publication-grid,
+.workflow-grid,
+.user-center-grid {
+  gap: 10px;
+}
+
+.user-center-grid {
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1fr);
+}
+
+.user-center-column {
+  padding: 12px;
+}
+
+.publication-status,
+.workflow-result-callout,
+.artifact-empty-state {
+  padding: 12px;
+}
+
+.method-group {
+  margin-bottom: 14px;
+}
+
+.method-group-title {
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  font-size: 14px;
+}
+
+.method-group-grid {
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.ia-method-card {
+  min-height: 112px;
+  padding: 12px;
+  gap: 6px;
+}
+
+.ia-method-card strong {
+  font-size: 14px;
+}
+
+.ia-method-card span {
+  font-size: 11px;
+  line-height: 1.42;
+}
+
+.ia-method-card b {
+  padding: 3px 7px;
+  font-size: 10px;
+}
+/* ===== End Desktop Workspace Density ===== */
+
+/* ===== Workbench UI Upgrade ===== */
+:root {
+  --ql-workspace-bg: #f5f8fb;
+  --ql-surface: rgba(255, 255, 255, 0.92);
+  --ql-surface-muted: rgba(248, 251, 253, 0.86);
+  --ql-hairline: #d8e3ec;
+  --ql-hairline-soft: #e7eef5;
+  --ql-ink-strong: #102033;
+  --ql-ink: #24384d;
+  --ql-ink-muted: #66798d;
+  --ql-blue: #155f9f;
+  --ql-blue-soft: #eaf4ff;
+  --ql-focus: 0 0 0 3px rgba(21, 95, 159, 0.16);
+}
+
+body,
+.app-main {
+  background: var(--ql-workspace-bg);
+  color: var(--ql-ink);
+}
+
+.shell {
+  grid-template-columns: 184px minmax(0, 1fr);
+}
+
+.main {
+  min-width: 0;
+  padding: 12px 16px 16px;
+}
+
+.sidebar {
+  padding: 14px 10px;
+  background: linear-gradient(180deg, #07172d 0%, #09213c 48%, #061326 100%);
+}
+
+.brand {
+  min-height: 34px;
+  gap: 8px;
+  padding-bottom: 10px;
+}
+
+.brand-mark {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+}
+
+.brand-copy strong {
+  font-size: 14px;
+}
+
+.brand-copy span,
+.account-panel small {
+  font-size: 10px;
+}
+
+.nav {
+  gap: 2px;
+}
+
+.nav-item {
+  min-height: 30px;
+  padding: 0 8px;
+  border-radius: 7px;
+  color: rgba(230, 240, 252, 0.82);
+  font-size: 12px;
+}
+
+.nav-item.active,
+.nav-item:hover {
+  color: #0d2948;
+  background: rgba(255, 255, 255, 0.94);
+}
+
+.account-panel {
+  padding: 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.07);
+  box-shadow: none;
+}
+
+.account-panel strong {
+  font-size: 15px;
+}
+
+.topbar {
+  min-height: 36px;
+  margin-bottom: 8px;
+}
+
+.topbar h1 {
+  font-size: 21px;
+  line-height: 1.1;
+}
+
+.eyebrow {
+  font-size: 11px;
+}
+
+.top-actions {
+  gap: 5px;
+}
+
+.icon-btn {
+  width: 28px;
+  height: 28px;
+}
+
+.primary-btn,
+.ghost-btn,
+.lab-entry-btn,
+.segmented button,
+.file-picker-btn {
+  min-height: 30px;
+  padding: 0 10px;
+  border-radius: 7px;
+  font-size: 12px;
+}
+
+.primary-btn.mini,
+.ghost-btn.mini {
+  min-height: 24px;
+  padding: 0 7px;
+  font-size: 11px;
+}
+
+.panel,
+.metric,
+.ia-data-ledger,
+#dashboard [data-testid="project-crud-panel"],
+.nested-panel,
+.result-item,
+.review-gate-card,
+.ia-method-card,
+.empty-object-state,
+.storage-file-ledger,
+.storage-file-detail,
+.account-panel,
+.user-center-column {
+  border-color: var(--ql-hairline);
+  border-radius: 7px;
+  background: var(--ql-surface);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.035);
+}
+
+.panel:hover,
+.metric:hover,
+.ia-method-card:hover,
+.ia-table button.table-row:hover {
+  border-color: #b9d3e9;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.055);
+}
+
+.panel {
+  padding: 10px;
+}
+
+.panel-head {
+  margin-bottom: 7px;
+}
+
+.panel h2,
+.panel-head h2 {
+  font-size: 15px;
+  line-height: 1.2;
+}
+
+.panel p,
+.panel-head p,
+.metric small,
+.table-row span {
+  color: var(--ql-ink-muted);
+  font-size: 11px;
+  line-height: 1.42;
+}
+
+.metric-grid,
+.work-grid,
+.billing-grid,
+.invoice-layout,
+.user-center-grid,
+.publication-grid,
+.workflow-grid {
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.metric {
+  padding: 10px;
+}
+
+.metric strong {
+  margin: 3px 0;
+  font-size: 18px;
+}
+
+.workspace-progress-bar {
+  margin-bottom: 8px;
+  padding: 5px 9px;
+  border-radius: 7px;
+  background: var(--ql-surface);
+}
+
+.progress-step {
+  min-height: 22px;
+  padding: 0 8px;
+}
+
+.progress-step .step-num {
+  width: 13px;
+  height: 13px;
+}
+
+.table-row,
+.ia-table .table-row {
+  min-height: 34px;
+  padding: 0 9px;
+  border-radius: 6px;
+}
+
+.storage-context-bar {
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.storage-context-bar div {
+  min-height: 46px;
+  padding: 7px 9px;
+}
+
+.storage-workspace-grid {
+  gap: 8px;
+}
+
+#storage [data-testid="storage-workbench"] {
+  grid-column: 1 / -1;
+}
+
+.storage-file-ledger {
+  padding: 9px;
+}
+
+.storage-file-detail {
+  padding: 9px;
+}
+
+.storage-empty-state,
+.empty-object-state,
+.artifact-empty-state {
+  padding: 18px 16px;
+}
+
+.customer-analysis-surface.ia-prep-layout {
+  grid-template-columns: minmax(190px, 230px) minmax(0, 1fr);
+  gap: 8px;
+}
+
+.customer-analysis-surface .ia-prep-main {
+  gap: 8px;
+}
+
+.customer-analysis-surface .ia-prep-steps {
+  gap: 6px;
+}
+
+.customer-analysis-surface .ia-step-card,
+.ia-step-card {
+  min-height: 44px;
+  padding: 6px 8px;
+  border-radius: 7px;
+}
+
+.customer-analysis-surface .ia-step-card b,
+.ia-step-card b {
+  width: 16px;
+  height: 16px;
+  font-size: 8px;
+}
+
+.customer-analysis-surface:not(.has-current-file) .eeg-canvas-wrap {
+  min-height: 480px;
+}
+
+.eeg-canvas-wrap,
+.eeg-overview-bar-wrap {
+  border-color: var(--ql-hairline);
+  border-radius: 6px;
+}
+
+.method-group {
+  margin-bottom: 12px;
+}
+
+.method-group-title {
+  margin-bottom: 6px;
+  padding-bottom: 5px;
+  font-size: 13px;
+}
+
+.method-group-grid {
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 8px;
+}
+
+.ia-method-card {
+  min-height: 94px;
+  padding: 10px;
+  gap: 5px;
+}
+
+.ia-method-card strong {
+  font-size: 13px;
+}
+
+.ia-method-card span {
+  font-size: 11px;
+  line-height: 1.36;
+}
+
+.user-center-grid {
+  grid-template-columns: minmax(0, 0.72fr) minmax(0, 1fr);
+}
+
+.user-center-section {
+  gap: 7px;
+  padding: 9px 0;
+}
+
+.publication-status,
+.workflow-result-callout {
+  padding: 10px;
+}
+
+@media (min-width: 1800px) {
+  .main {
+    padding-right: 18px;
+    padding-left: 18px;
+  }
+
+  .method-group-grid {
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  }
+}
+/* ===== End Workbench UI Upgrade ===== */
+
+/* ===== EEG Duration Hint ===== */
+.eeg-duration-hint {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  font-weight: 400;
+  margin-left: 4px;
+}
+.eeg-duration-hint[hidden] {
+  display: none;
+}
+
+/* ===== EEG Overview Bar (minimap) ===== */
+.eeg-overview-bar-wrap {
+  margin-bottom: 4px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--surface-subtle);
+}
+
+.eeg-overview-bar-wrap[hidden] {
+  display: none;
+}
+
+.eeg-overview-bar-wrap canvas {
+  display: block;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.eeg-overview-bar-wrap canvas:hover {
+  opacity: 0.92;
+}
+
+/* ===== System-wide UI Optimization 2026-07-05 ===== */
+.progress-step-list {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.workspace-progress-bar {
+  justify-content: space-between;
+}
+
+.progress-step {
+  transition-property: color, background-color, border-color, box-shadow, transform;
+  transition-duration: 0.18s;
+  transition-timing-function: ease;
+}
+
+.progress-step.recommended:not(.active):not(.completed) {
+  border-color: #c8d8e8;
+  background: #f6f9fc;
+  color: #31516f;
+}
+
+.progress-step.active.completed {
+  background: var(--brand-blue-700);
+  color: #ffffff;
+}
+
+.workflow-next-hint {
+  appearance: none;
+  display: inline-grid;
+  grid-template-columns: auto auto;
+  gap: 6px;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 9px;
+  border: 1px solid #d7e4ef;
+  border-radius: 999px;
+  background: #ffffff;
+  color: var(--ql-ink-muted, #66798d);
+  font-size: 11px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.workflow-next-hint strong {
+  color: var(--ql-ink-strong, #102033);
+  font-weight: 700;
+}
+
+#storage.storage-no-project .storage-toolbar-actions,
+#storage.storage-no-project .storage-file-detail {
+  display: none !important;
+}
+
+#storage.storage-no-project .storage-workspace-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+#storage.storage-no-project .storage-file-ledger {
+  min-height: 360px;
+}
+
+.storage-empty-state {
+  justify-items: center;
+  text-align: center;
+}
+
+.storage-empty-state strong,
+.analysis-empty-placeholder strong,
+.workflow-primary-action strong {
+  color: var(--ql-ink-strong, #102033);
+  font-size: 15px;
+}
+
+.analysis-empty-placeholder {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  min-height: 300px;
+  padding: 28px 20px;
+  border: 1px dashed #c9d8e7;
+  border-radius: 8px;
+  background: #fbfdff;
+  text-align: center;
+}
+
+.analysis-empty-placeholder span {
+  max-width: 560px;
+  color: var(--ql-ink-muted, #66798d);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.customer-analysis-surface:not(.has-current-file) .waveform-prep-layout,
+.customer-analysis-surface:not(.has-current-file) .eeg-canvas-wrap,
+.customer-analysis-surface:not(.has-current-file) .eeg-overview-bar-wrap {
+  display: none !important;
+}
+
+.workflow-primary-action {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 12px;
+  align-items: center;
+  margin-top: 10px;
+  padding: 12px;
+  border: 1px solid #c9d8e7;
+  border-radius: 8px;
+  background: #f8fbff;
+}
+
+.workflow-primary-action span {
+  color: var(--ql-ink-muted, #66798d);
+  font-size: 12px;
+}
+
+.workflow-primary-action .primary-btn {
+  grid-row: span 2;
+  justify-self: end;
+}
+
+.method-group-collapsible {
+  border-top: 1px solid #e1e9f1;
+  padding-top: 8px;
+}
+
+.method-group-collapsible > summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.method-group-collapsible > summary::-webkit-details-marker {
+  display: none;
+}
+
+.method-group-note {
+  margin: -2px 0 8px;
+  color: var(--ql-ink-muted, #66798d);
+  font-size: 12px;
+}
+
+.ia-method-card.recommended {
+  border-color: #9fc5e8;
+  background: #f3f9ff;
+}
+
+.ia-method-card.conditional {
+  border-style: dashed;
+}
+
+.ia-method-card.advanced {
+  opacity: 0.78;
+}
+
+.method-group[data-method-group="special"] {
+  opacity: 0.9;
+}
+
+.method-group[data-method-group="special"] .method-group-title {
+  color: var(--ql-ink-muted, #66798d);
+}
+
+.method-group[data-method-group="special"] .ia-method-card {
+  border-style: dashed;
+  background: #fbfcfd;
+}
+
+.ia-method-card.recommended b {
+  color: #0f4c81;
+  background: #dceeff;
+}
+
+.ia-method-card.conditional b {
+  color: #775b19;
+  background: #fff2c6;
+}
+
+.ia-method-card.advanced b {
+  color: #596574;
+  background: #eef1f4;
+}
+
+.result-empty-state .real-actions,
+.result-item[data-report-state="empty"] .real-actions {
+  margin-top: 10px;
+}
+
+[data-testid="report-package-contract"][hidden] {
+  display: none !important;
+}
+
+[data-testid="user-finance-column"] {
+  opacity: 0.92;
+}
+
+[data-testid="user-finance-column"] .ghost-btn {
+  justify-self: start;
+}
+
+.subdued-service-column {
+  background: #fbfcfd;
+}
+
+.subdued-service-details {
+  display: grid;
+  gap: 10px;
+  margin-top: 2px;
+}
+
+.subdued-service-details > summary {
+  cursor: pointer;
+  width: fit-content;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.subdued-service-details > summary:hover,
+.subdued-service-details > summary:focus-visible {
+  color: var(--text-primary);
+}
+
+.subdued-service-details:not([open]) + .two-col-section {
+  margin-top: 4px;
+}
+
+.finance-summary strong {
+  font-size: 16px;
+}
+
+.workbench-status-placeholder.single-empty-action {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  min-height: 260px;
+  padding: 28px;
+  text-align: center;
+}
+
+.workbench-status-placeholder.single-empty-action .status-message {
+  max-width: 620px;
+}
+
+@media (max-width: 900px) {
+  .workspace-progress-bar,
+  .workflow-primary-action {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .workflow-next-hint,
+  .workflow-primary-action .primary-btn {
+    justify-self: start;
+  }
+}
+
+/* ===== Final Workbench Density Contract 2026-07-05 ===== */
+body:not(.login-active) {
+  --app-shell-sidebar-width: 188px;
+  --app-shell-topbar-height: 50px;
+  --workspace-padding-x: 16px;
+  --section-gap: 12px;
+  --panel-gap: 10px;
+  --control-height: 30px;
+  --btn-height: 30px;
+  --btn-height-compact: 26px;
+  --compact-row-height: 34px;
+}
+
+body:not(.login-active) .shell {
+  grid-template-columns: var(--app-shell-sidebar-width) minmax(0, 1fr);
+}
+
+body:not(.login-active) .main {
+  padding: 12px 16px 16px;
+}
+
+body:not(.login-active) .sidebar {
+  width: var(--app-shell-sidebar-width);
+  padding: 14px 10px;
+}
+
+body:not(.login-active) .brand {
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+body:not(.login-active) .brand-mark {
+  width: 30px;
+  height: 30px;
+  font-size: 13px;
+}
+
+body:not(.login-active) .brand-copy strong {
+  font-size: 14px;
+}
+
+body:not(.login-active) .brand-copy span,
+body:not(.login-active) .account-panel small {
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+body:not(.login-active) .nav {
+  gap: 4px;
+}
+
+body:not(.login-active) .nav-item {
+  min-height: 31px;
+  padding: 0 9px;
+  gap: 7px;
+  font-size: 12px;
+  border-radius: 6px;
+}
+
+body:not(.login-active) .nav-item svg,
+body:not(.login-active) .nav-item [data-lucide],
+body:not(.login-active) button svg,
+body:not(.login-active) button [data-lucide] {
+  width: 14px !important;
+  height: 14px !important;
+  stroke-width: 1.8;
+  flex: 0 0 14px;
+}
+
+body:not(.login-active) .icon-btn {
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  padding: 0;
+}
+
+body:not(.login-active) .primary-btn,
+body:not(.login-active) .ghost-btn,
+body:not(.login-active) .file-picker-btn,
+body:not(.login-active) .lab-entry-btn,
+body:not(.login-active) .segmented button {
+  min-height: var(--btn-height);
+  padding: 0 9px;
+  gap: 5px;
+  font-size: 12px;
+  line-height: 1.2;
+  border-radius: 6px;
+}
+
+body:not(.login-active) .primary-btn.mini,
+body:not(.login-active) .ghost-btn.mini,
+body:not(.login-active) .file-picker-btn.mini {
+  min-height: var(--btn-height-compact);
+  padding: 0 7px;
+  font-size: 11px;
+}
+
+body:not(.login-active) .topbar {
+  min-height: 36px;
+  margin-bottom: 9px;
+}
+
+body:not(.login-active) .topbar h1 {
+  font-size: 20px;
+  line-height: 1.18;
+}
+
+body:not(.login-active) .eyebrow {
+  margin-bottom: 2px;
+  font-size: 11px;
+}
+
+body:not(.login-active) .metric-grid,
+body:not(.login-active) .work-grid,
+body:not(.login-active) .storage-workspace-grid,
+body:not(.login-active) .delivery-grid,
+body:not(.login-active) .user-center-product-grid,
+body:not(.login-active) .review-gate-grid,
+body:not(.login-active) .method-group-grid {
+  gap: var(--panel-gap);
+}
+
+body:not(.login-active) .panel,
+body:not(.login-active) .metric {
+  padding: 10px;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.03);
+}
+
+body:not(.login-active) .panel-head {
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+body:not(.login-active) .panel-head h2,
+body:not(.login-active) .panel h2 {
+  font-size: 15px;
+  line-height: 1.25;
+}
+
+body:not(.login-active) .panel-head p,
+body:not(.login-active) .panel p,
+body:not(.login-active) .customer-note {
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+body:not(.login-active) .metric {
+  min-height: 68px;
+}
+
+body:not(.login-active) .metric strong {
+  font-size: 20px;
+  line-height: 1.15;
+}
+
+body:not(.login-active) .metric span,
+body:not(.login-active) .metric small,
+body:not(.login-active) .badge,
+body:not(.login-active) .table-row,
+body:not(.login-active) .storage-context-bar small,
+body:not(.login-active) .storage-file-detail small {
+  font-size: 12px;
+}
+
+body:not(.login-active) .table-row {
+  min-height: var(--compact-row-height);
+  padding: 0 8px;
+}
+
+body:not(.login-active) .workspace-progress-bar {
+  min-height: 34px;
+  padding: 5px 8px;
+  margin-bottom: 9px;
+  border-radius: 8px;
+}
+
+body:not(.login-active) .progress-step {
+  min-height: 22px;
+  padding: 0 7px;
+  gap: 4px;
+  font-size: 11px;
+}
+
+body:not(.login-active) .progress-step .step-num {
+  width: 13px;
+  height: 13px;
+  font-size: 8px;
+}
+
+body:not(.login-active) .workflow-next-hint {
+  min-height: 22px;
+  padding: 0 8px;
+  font-size: 11px;
+}
+
+body:not(.login-active) .ia-method-card {
+  min-height: 88px;
+  padding: 10px;
+  gap: 6px;
+  border-radius: 8px;
+}
+
+body:not(.login-active) .ia-method-card strong {
+  font-size: 14px;
+  line-height: 1.25;
+}
+
+body:not(.login-active) .ia-method-card span {
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+body:not(.login-active) .ia-method-card b {
+  align-self: flex-start;
+  min-height: 20px;
+  padding: 2px 7px;
+  font-size: 10px;
+  border-radius: 999px;
+}
+
+body:not(.login-active) .artifact-card-icon {
+  width: 36px;
+  height: 36px;
+}
+
+body:not(.login-active) .artifact-card-icon svg {
+  width: 18px !important;
+  height: 18px !important;
+}
+
+body:not(.login-active) .empty-state svg,
+body:not(.login-active) .workbench-status-placeholder .status-icon {
+  width: 32px;
+  height: 32px;
+}
+
+body:not(.login-active) .workbench-status-placeholder .status-icon svg {
+  width: 16px !important;
+  height: 16px !important;
+}
+
+body:not(.login-active) .analysis-empty-placeholder {
+  min-height: 220px;
+  padding: 20px 18px;
+}
+
+body:not(.login-active) .workbench-status-placeholder.single-empty-action {
+  min-height: 210px;
+  padding: 22px;
+}
+
+body:not(.login-active) .eeg-toolbar .labeled-icon-btn {
+  min-width: 0;
+  min-height: 32px;
+  padding: 4px 6px;
+  border-radius: 8px;
+}
+
+body:not(.login-active) .eeg-tool-group .ghost-btn:not(.mini) {
+  min-width: 0;
+  min-height: 30px;
+  padding-inline: 8px;
+}
+
+body:not(.login-active) .eeg-toolbar .icon-btn svg,
+body:not(.login-active) .eeg-toolbar .ghost-btn svg {
+  width: 14px !important;
+  height: 14px !important;
+}
+
+body:not(.login-active) button,
+body:not(.login-active) .nav-item,
+body:not(.login-active) .card,
+body:not(.login-active) .view-mode-btn,
+body:not(.login-active) .artifact-card,
+body:not(.login-active) .artifact-action-btn,
+body:not(.login-active) .artifact-list-item,
+body:not(.login-active) .user-center-tab {
+  transition-property: color, background-color, border-color, box-shadow, transform, opacity;
+  transition-duration: 0.16s;
+  transition-timing-function: ease;
+}
+
+@media (min-width: 1800px) {
+  body:not(.login-active) .main {
+    padding-left: 18px;
+    padding-right: 18px;
+  }
+
+  body:not(.login-active) .method-group-grid {
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  }
+
+  body:not(.login-active) .work-grid,
+  body:not(.login-active) .storage-workspace-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (min-width: 2048px) {
+  body:not(.login-active) .work-grid {
+    grid-template-columns: minmax(0, 1fr) 300px;
+  }
+
+  body:not(.login-active) .storage-workspace-grid {
+    grid-template-columns: minmax(0, 1fr) 310px;
+  }
+}
+
+@media (max-width: 1366px) {
+  body:not(.login-active) {
+    --app-shell-sidebar-width: 176px;
+    --workspace-padding-x: 12px;
+  }
+
+  body:not(.login-active) .main {
+    padding: 10px 12px 14px;
+  }
+
+  body:not(.login-active) .nav-item {
+    padding: 0 8px;
+  }
+
+  body:not(.login-active) .storage-file-row,
+  body:not(.login-active) .storage-file-row-head {
+    grid-template-columns: minmax(180px, 1.1fr) minmax(120px, 0.8fr) minmax(96px, 0.65fr) minmax(92px, 0.55fr) !important;
+  }
+}
+/* ===== End Final Workbench Density Contract ===== */
+
+/* ===== Workspace UI Upgrade v4: flow clarity + calmer density ===== */
+body.workspace-active {
+  --app-shell-sidebar-width: 176px;
+  --app-shell-topbar-height: 46px;
+  --control-height: 28px;
+  --btn-height: 28px;
+  --btn-height-compact: 24px;
+  --compact-row-height: 32px;
+  --panel-gap: 10px;
+}
+
+body.workspace-active .shell {
+  grid-template-columns: var(--app-shell-sidebar-width) minmax(0, 1fr);
+}
+
+body.workspace-active .main {
+  padding: 12px 18px 18px;
+}
+
+body.workspace-active .sidebar {
+  width: var(--app-shell-sidebar-width);
+  padding: 12px 9px;
+}
+
+body.workspace-active .nav-item {
+  min-height: 29px;
+  padding-inline: 8px;
+  gap: 6px;
+  font-size: 12px;
+}
+
+body.workspace-active .nav-item svg,
+body.workspace-active .nav-item [data-lucide],
+body.workspace-active button svg,
+body.workspace-active button [data-lucide] {
+  width: 12px !important;
+  height: 12px !important;
+  stroke-width: 1.8;
+  flex-basis: 12px;
+}
+
+body.workspace-active .primary-btn,
+body.workspace-active .ghost-btn,
+body.workspace-active .file-picker-btn,
+body.workspace-active .segmented button {
+  min-height: var(--btn-height);
+  padding: 0 8px;
+  gap: 5px;
+  font-size: 12px;
+  border-radius: 6px;
+}
+
+body.workspace-active .primary-btn.mini,
+body.workspace-active .ghost-btn.mini,
+body.workspace-active .file-picker-btn.mini {
+  min-height: var(--btn-height-compact);
+  padding-inline: 7px;
+  font-size: 11px;
+}
+
+body.workspace-active .icon-btn {
+  width: 26px;
+  height: 26px;
+  min-width: 26px;
+}
+
+body.workspace-active .topbar {
+  min-height: 34px;
+  margin-bottom: 8px;
+}
+
+body.workspace-active .topbar h1 {
+  font-size: 19px;
+}
+
+body.workspace-active .panel,
+body.workspace-active .metric {
+  padding: 9px 10px;
+  border-radius: 8px;
+  box-shadow: 0 3px 10px rgba(15, 23, 42, 0.025);
+}
+
+body.workspace-active .panel-head {
+  margin-bottom: 7px;
+}
+
+body.workspace-active .metric {
+  min-height: 58px;
+}
+
+body.workspace-active .metric strong {
+  font-size: 18px;
+}
+
+body.workspace-active .table-row {
+  min-height: var(--compact-row-height);
+}
+
+body.workspace-active .workspace-progress-bar {
+  min-height: 30px;
+  padding: 4px 7px;
+  margin-bottom: 8px;
+}
+
+body.workspace-active .progress-step {
+  min-height: 20px;
+  padding-inline: 6px;
+  font-size: 10.5px;
+}
+
+body.workspace-active .progress-step .step-num {
+  width: 12px;
+  height: 12px;
+  font-size: 8px;
+}
+
+.dashboard-starter {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px;
+  padding: 7px 8px;
+  border: 1px solid #dbe6ee;
+  border-radius: 8px;
+  background: #f8fbfd;
+}
+
+.starter-steps {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 5px;
+  min-width: 0;
+}
+
+.starter-step {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 0;
+  min-height: 24px;
+  padding: 0 6px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.starter-step span {
+  display: inline-grid;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  background: #edf3f8;
+  color: #5b7085;
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+}
+
+.starter-step strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.starter-step.active {
+  border-color: #b9cee0;
+  background: #ffffff;
+  color: var(--text-primary);
+}
+
+.starter-step.completed span {
+  background: #dff3ec;
+  color: #0f8f5f;
+}
+
+.starter-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  min-width: 0;
+}
+
+.starter-next,
+.starter-demo {
+  white-space: nowrap;
+}
+
+[data-testid="analysis-method-scope-panel"][hidden],
+.workflow-methods-locked,
+body[data-analysis-ready="false"] #workflow [data-testid="analysis-method-scope-panel"] {
+  display: none !important;
+}
+
+body[data-has-file="false"] #analysis [data-real-action="confirm-plan-inline"] {
+  display: none !important;
+}
+
+body.workspace-active .workflow-primary-action,
+body.workspace-active .analysis-empty-placeholder,
+body.workspace-active .storage-empty-state,
+body.workspace-active .result-empty-state,
+body.workspace-active .workbench-status-placeholder.single-empty-action {
+  max-width: 820px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+body.workspace-active .workflow-primary-action {
+  padding: 10px;
+}
+
+body.workspace-active .ia-method-card {
+  min-height: 76px;
+  padding: 8px 9px;
+  gap: 5px;
+}
+
+body.workspace-active .ia-method-card strong {
+  font-size: 13px;
+}
+
+body.workspace-active .ia-method-card span {
+  font-size: 11.5px;
+  line-height: 1.38;
+}
+
+body.workspace-active .ia-method-card b {
+  min-height: 18px;
+  padding: 2px 6px;
+  font-size: 10px;
+}
+
+body.workspace-active .ia-method-card:disabled,
+body.workspace-active .ia-method-card[aria-disabled="true"] {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+body.workspace-active .ia-method-card:disabled b,
+body.workspace-active .ia-method-card[aria-disabled="true"] b {
+  color: #667085;
+  background: #eef1f4;
+}
+
+body.workspace-active .method-group-grid {
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  max-width: 1040px;
+}
+
+.profile-card strong,
+#userCenterEmail,
+#accountHint {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+@media (min-width: 1800px) {
+  body.workspace-active .main {
+    padding: 16px 26px 28px;
+  }
+
+  body.workspace-active .work-grid,
+  body.workspace-active .storage-workspace-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  body.workspace-active .ia-method-card {
+    min-height: 72px;
+  }
+}
+
+@media (max-width: 1366px) {
+  body.workspace-active {
+    --app-shell-sidebar-width: 168px;
+  }
+
+  .dashboard-starter {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .starter-actions {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .starter-steps {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 1536px) {
+  body.workspace-active .customer-analysis-surface .waveform-prep-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  body.workspace-active .customer-analysis-surface .preprocessing-side-panel.customer-compact-panel {
+    position: static;
+  }
+
+  body.workspace-active .user-center-product-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+/* ===== End Workspace UI Upgrade v4 ===== */

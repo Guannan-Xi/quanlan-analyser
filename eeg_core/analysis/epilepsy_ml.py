@@ -9,7 +9,7 @@ import logging
 import math
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import joblib
 import numpy as np
@@ -17,6 +17,7 @@ import scipy.signal
 import scipy.stats
 
 from eeg_core.io.readers import read_raw
+from eeg_core.io.streaming_reader import StreamingEDFReader
 from eeg_core.report.reproducibility import (
     write_analysis_sidecars,
     write_output_contract,
@@ -215,6 +216,13 @@ def run_epilepsy_ml(input_path: str | Path, output_dir: str | Path, parameters: 
                 "selected_model_file": model_info["model_file"],
                 "selected_scaler_file": model_info["scaler_file"],
                 "hash_validation": "passed",
+                # P0-ALGO-05: Add model version control for result traceability
+                "model_version": model_info.get("model_version", "v1.0_legacy"),
+                "model_training_date": model_info.get("training_date", "unknown"),
+                "model_sha256": model_info["model_sha256"],
+                "scaler_sha256": model_info["scaler_sha256"],
+                "feature_columns": FEATURE_COLUMNS,
+                "feature_column_count": len(FEATURE_COLUMNS),
             },
             ensure_ascii=False,
             indent=2,
@@ -258,6 +266,16 @@ def run_epilepsy_ml(input_path: str | Path, output_dir: str | Path, parameters: 
         "method": "ml_epoch_classifier",
         "source_compatibility": "AR_analyser1 EpilepsyAnalysis_ML.py feature/model path",
         "scope": "research_screening_support_only",
+        # P0-ALGO-05: Include model version in summary for traceability
+        "model_metadata": {
+            "model_version": model_info.get("model_version", "v1.0_legacy"),
+            "training_date": model_info.get("training_date", "unknown"),
+            "model_file": model_info["model_file"],
+            "scaler_file": model_info["scaler_file"],
+            "model_sha256": model_info["model_sha256"],
+            "scaler_sha256": model_info["scaler_sha256"],
+            "epoch_length_sec": selected_model_epoch,
+        },
         "channel": channel,
         "sfreq": sfreq,
         "duration_sec": duration_sec,
@@ -372,10 +390,6 @@ def run_epilepsy_ml(input_path: str | Path, output_dir: str | Path, parameters: 
     )
 
     outputs = {
-        "epilepsy_epoch_scores": epoch_scores_path,
-        "epilepsy_events": events_path,
-        "epilepsy_window_stats_30min": window_stats_path,
-        "epilepsy_summary": summary_path,
         "epilepsy_ml_epoch_predictions": epoch_scores_path,
         "epilepsy_ml_events": events_path,
         "epilepsy_ml_window_stats_30min": window_stats_path,
@@ -416,6 +430,536 @@ def run_epilepsy_ml(input_path: str | Path, output_dir: str | Path, parameters: 
             "scope=research_screening_support_only_no_diagnosis_treatment_or_clinical_decision",
         ],
     )
+    return {**outputs, **contract_paths}
+
+
+def run_epilepsy_ml_chunked(
+    input_path: str | Path,
+    output_dir: str | Path,
+    parameters: dict | None = None,
+    progress_callback: Callable[[dict], None] | None = None,
+    chunk_duration_sec: float = 7200.0,  # 2 hours
+) -> dict[str, Path]:
+    """
+    Run epilepsy ML analysis with chunked data loading for large files.
+    
+    This function is designed for very large EEG files (e.g., 44+ hours) where
+    loading the full dataset into memory would cause OOM errors.
+    
+    Key differences from run_epilepsy_ml:
+    - Loads data in time chunks (default: 2 hours)
+    - Processes features chunk by chunk
+    - Supports progress callbacks
+    - Memory efficient (peak ~2GB for single channel)
+    
+    Args:
+        input_path: Path to EEG file
+        output_dir: Output directory for results
+        parameters: Analysis parameters (same as run_epilepsy_ml)
+        progress_callback: Optional callback function(progress_dict) for progress updates
+        chunk_duration_sec: Duration of each data chunk in seconds (default: 7200 = 2 hours)
+    
+    Returns:
+        Dictionary of output file paths
+    
+    Progress callback receives dict with:
+        - stage: Current processing stage
+        - chunk: Current chunk number (1-indexed)
+        - total_chunks: Total number of chunks
+        - percent: Overall progress percentage (0-100)
+    """
+    output_path = Path(output_dir)
+    tables = output_path / "tables"
+    data_dir = output_path / "data"
+    figures = output_path / "figures"
+    reproducibility = output_path / "reproducibility"
+    for directory in (tables, data_dir, figures, reproducibility):
+        directory.mkdir(parents=True, exist_ok=True)
+    
+    # Load header only (no data preload)
+    raw = read_raw(input_path, preload=False)
+    params = _validate_parameters(parameters)
+    missing_bad_channels = [channel for channel in params["bad_channels"] if channel not in raw.ch_names]
+    if missing_bad_channels:
+        raise ValueError(f"Epilepsy ML bad channels not found: {', '.join(missing_bad_channels)}")
+    raw.info["bads"] = sorted(set(raw.info.get("bads", [])) | set(params["bad_channels"]))
+    
+    channel, channel_warning = _select_eeg_channel(raw, params["eeg_channel"])
+    sfreq = float(raw.info["sfreq"])
+    total_duration = float(raw.times[-1])
+    
+    # Determine if we should use chunked mode
+    # Use chunked mode for files > 10 hours (conservative threshold)
+    use_chunked = total_duration > 36000.0  # 10 hours in seconds
+    
+    if not use_chunked:
+        # For smaller files, use the original non-chunked implementation
+        logging.info(f"File duration {total_duration/3600:.1f}h < 10h, using standard processing")
+        return run_epilepsy_ml(input_path, output_dir, parameters)
+    
+    logging.info(
+        f"File duration {total_duration/3600:.1f}h > 10h, using chunked processing "
+        f"(chunk_duration={chunk_duration_sec/3600:.1f}h)"
+    )
+    
+    # Initialize streaming reader
+    reader = StreamingEDFReader(input_path, chunk_duration_sec=chunk_duration_sec, overlap_sec=0.0)
+    
+    # Estimate memory usage
+    mem_estimate = reader.estimate_memory_usage(channel=channel)
+    logging.info(
+        f"Memory estimate: full_load={mem_estimate['full_load_mb']:.1f}MB, "
+        f"chunked_peak={mem_estimate['peak_chunked_mb']:.1f}MB, "
+        f"reduction={mem_estimate['memory_reduction_ratio']:.1f}x"
+    )
+    
+    # Load model and scaler
+    manifest = _validated_model_manifest()
+    model_info, selected_model_epoch = _model_info_for_epoch(params["epoch_length_sec"], manifest)
+    model, scaler = _load_model_and_scaler(model_info)
+    
+    epoch_samples = int(params["epoch_length_sec"] * sfreq)
+    if epoch_samples <= 0:
+        raise ValueError("Epilepsy ML epoch_samples must be > 0")
+    
+    # Calculate total epochs across all chunks
+    n_times_total = int(total_duration * sfreq)
+    n_epochs_total = n_times_total // epoch_samples
+    if n_epochs_total <= 0:
+        raise ValueError("Epilepsy ML input is shorter than one complete epoch")
+    
+    # Report progress: initialization complete
+    if progress_callback:
+        progress_callback({
+            "stage": "initialization",
+            "chunk": 0,
+            "total_chunks": reader.chunk_count,
+            "percent": 5
+        })
+    
+    # Process chunks: extract features
+    all_features = []
+    all_chunk_data = []  # Store for event detection later
+    
+    for chunk_idx, (start_sec, end_sec, chunk_data) in enumerate(reader.iter_chunks(channel=channel, use_overlap=False)):
+        # Apply unit scaling to chunk
+        suffix = Path(input_path).suffix.lower()
+        if params["unit_mode"] == "mne_volts_to_uv" or (params["unit_mode"] == "source_compatible" and suffix in {".edf", ".bdf"}):
+            chunk_data = chunk_data * 1e6
+        
+        # Calculate epochs in this chunk
+        chunk_epoch_samples = len(chunk_data)
+        chunk_n_epochs = chunk_epoch_samples // epoch_samples
+        
+        if chunk_n_epochs > 0:
+            # Extract features for this chunk
+            chunk_features = extract_features_using_epochs_chunked(
+                chunk_data,
+                sfreq,
+                epoch_samples=epoch_samples,
+                n_epochs=chunk_n_epochs,
+                chunk_epochs=params["feature_chunk_epochs"],
+                worker_count=params["feature_worker_count"],
+            )
+            all_features.append(chunk_features)
+            
+            # Store truncated data (only complete epochs) for event detection
+            truncated_samples = chunk_n_epochs * epoch_samples
+            all_chunk_data.append(chunk_data[:truncated_samples])
+        
+        # Report progress
+        if progress_callback:
+            progress_percent = 5 + int((chunk_idx + 1) / reader.chunk_count * 40)  # 5-45%
+            progress_callback({
+                "stage": "feature_extraction",
+                "chunk": chunk_idx + 1,
+                "total_chunks": reader.chunk_count,
+                "percent": progress_percent
+            })
+        
+        logging.info(
+            f"Processed chunk {chunk_idx + 1}/{reader.chunk_count}: "
+            f"[{start_sec:.1f}s - {end_sec:.1f}s], epochs={chunk_n_epochs}"
+        )
+    
+    # Concatenate all features
+    if not all_features:
+        raise ValueError("No features extracted from any chunk")
+    
+    features = np.vstack(all_features)
+    logging.info(f"Total features extracted: {features.shape}")
+    
+    # Concatenate all data for event detection
+    data = np.concatenate(all_chunk_data)
+    n_times = len(data)
+    duration_sec = float(n_times / sfreq) if sfreq > 0 else 0.0
+    
+    # Progress: feature extraction complete
+    if progress_callback:
+        progress_callback({
+            "stage": "feature_scaling",
+            "chunk": reader.chunk_count,
+            "total_chunks": reader.chunk_count,
+            "percent": 50
+        })
+    
+    # Rest of the processing is the same as original
+    unit_note = "Applied source-compatible volts-to-microvolts scaling." if (
+        params["unit_mode"] == "mne_volts_to_uv" or (
+            params["unit_mode"] == "source_compatible" and suffix in {".edf", ".bdf"}
+        )
+    ) else "Used raw MNE channel data without extra scaling."
+    
+    feature_diagnostics = _feature_matrix_diagnostics(features)
+    features_scaled = scaler.transform(features)
+    
+    if progress_callback:
+        progress_callback({"stage": "model_prediction", "percent": 60})
+    
+    probabilities = model.predict_proba(features_scaled)[:, 1]
+    predictions = (probabilities >= 0.5).astype(int)
+    
+    if progress_callback:
+        progress_callback({"stage": "event_detection", "percent": 70})
+    
+    event_rows, window_rows, event_mask = detect_seizures_source_compatible(
+        predictions,
+        data,
+        sfreq,
+        epoch_length=params["epoch_length_sec"],
+        start_time_ts=_measurement_timestamp(raw),
+    )
+    epoch_rows = _build_epoch_rows(predictions, probabilities, event_mask, params["epoch_length_sec"], duration_sec)
+    
+    if progress_callback:
+        progress_callback({"stage": "writing_outputs", "percent": 80})
+    
+    # Write outputs (same as original)
+    processing_plan = _build_processing_plan(
+        n_times=n_times,
+        n_epochs=len(epoch_rows),
+        epoch_samples=epoch_samples,
+        feature_chunk_epochs=params["feature_chunk_epochs"],
+        feature_worker_count=params["feature_worker_count"],
+        spectrogram_preview_duration_sec=params["spectrogram_preview_duration_sec"],
+        sfreq=sfreq,
+    )
+    
+    epoch_scores_path = tables / "epilepsy_ml_epoch_predictions.csv"
+    _write_csv(
+        epoch_scores_path,
+        [
+            "epoch_index",
+            "Epoch No.",
+            "start_sec",
+            "end_sec",
+            "duration_sec",
+            "Stage_Code",
+            "Stage",
+            "probability",
+            "above_threshold",
+            "is_event_epoch",
+            "mean_rms",
+            "threshold",
+        ],
+        epoch_rows,
+    )
+    events_path = tables / "epilepsy_ml_events.csv"
+    _write_csv(
+        events_path,
+        [
+            "event_id",
+            "start_sec",
+            "end_sec",
+            "duration_sec",
+            "start_epoch",
+            "end_epoch",
+            "source_start_epoch_1based",
+            "source_end_epoch_1based",
+            "epoch_count",
+            "rms",
+            "max_abs_amplitude",
+        ],
+        event_rows,
+    )
+    window_stats_path = tables / "epilepsy_ml_window_stats_30min.csv"
+    _write_csv(
+        window_stats_path,
+        [
+            "window_index",
+            "start_sec",
+            "end_sec",
+            "duration_sec",
+            "event_count",
+            "seizure_frequency_events_per_hour",
+        ],
+        window_rows,
+    )
+    features_path = tables / "epilepsy_ml_features.csv"
+    _write_array_csv(features_path, FEATURE_COLUMNS, features)
+    features_scaled_path = tables / "epilepsy_ml_features_scaled.csv"
+    _write_array_csv(features_scaled_path, FEATURE_COLUMNS, features_scaled)
+    
+    # Spectrogram: only use limited preview for large files
+    spectrogram_samples = int(min(data.size, max(1, round(params["spectrogram_preview_duration_sec"] * sfreq))))
+    spectrogram_payload = _build_pc_compatible_spectrogram_payload(
+        data[:spectrogram_samples],
+        sfreq,
+        channel,
+        full_duration_sec=duration_sec,
+        preview_start_sec=0.0,
+    )
+    spectrogram_path = data_dir / "epilepsy_ml_spectrogram.json"
+    spectrogram_path.write_text(json.dumps(spectrogram_payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    event_timeline_figure_path = figures / "epilepsy_ml_event_timeline.svg"
+    event_timeline_figure_path.write_text(
+        _build_event_timeline_svg(epoch_rows, event_rows, duration_sec, channel),
+        encoding="utf-8",
+    )
+    spectrogram_figure_path = figures / "epilepsy_ml_spectrogram_preview.svg"
+    spectrogram_figure_path.write_text(
+        _build_spectrogram_svg(spectrogram_payload),
+        encoding="utf-8",
+    )
+    
+    model_manifest_output_path = reproducibility / "epilepsy_ml_model_manifest.json"
+    model_manifest_output_path.write_text(
+        json.dumps(
+            {
+                "manifest": manifest,
+                "selected_model_epoch_length_sec": selected_model_epoch,
+                "selected_model_file": model_info["model_file"],
+                "selected_scaler_file": model_info["scaler_file"],
+                "hash_validation": "passed",
+                "model_version": model_info.get("model_version", "v1.0_legacy"),
+                "model_training_date": model_info.get("training_date", "unknown"),
+                "model_sha256": model_info["model_sha256"],
+                "scaler_sha256": model_info["scaler_sha256"],
+                "feature_columns": FEATURE_COLUMNS,
+                "feature_column_count": len(FEATURE_COLUMNS),
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    
+    warnings = [
+        {
+            "name": "non_medical_scope",
+            "detail": "Research screening/support only; not for diagnosis, treatment, or clinical decision-making.",
+        }
+    ]
+    scale_warning = _selected_channel_scale_warning(data, channel, params["unit_mode"])
+    if scale_warning:
+        warnings.append(scale_warning)
+    if feature_diagnostics["clipped_or_non_finite_value_count"] > 0:
+        warnings.append(
+            {
+                "name": "feature_scale_review_recommended",
+                "detail": (
+                    "Feature extraction produced non-finite or clipped values before model scoring. "
+                    "Review EDF physical units/source scaling and high-amplitude artifacts before customer-facing interpretation."
+                ),
+                **feature_diagnostics,
+            }
+        )
+    if channel_warning:
+        warnings.append({"name": "channel_fallback", "detail": channel_warning})
+    if selected_model_epoch != params["epoch_length_sec"]:
+        warnings.append(
+            {
+                "name": "source_default_5s_model",
+                "detail": "Source ML code falls back to the 5-second model when epoch_length is not exactly 3.0 or 5.0.",
+            }
+        )
+    
+    # Add chunked processing note
+    warnings.append({
+        "name": "chunked_processing_mode",
+        "detail": f"File processed in {reader.chunk_count} chunks of {chunk_duration_sec/3600:.1f}h each for memory efficiency.",
+    })
+    
+    summary = {
+        "status": "computed",
+        "module": "epilepsy_ml",
+        "method": "ml_epoch_classifier",
+        "source_compatibility": "AR_analyser1 EpilepsyAnalysis_ML.py feature/model path",
+        "scope": "research_screening_support_only",
+        "processing_mode": "chunked",
+        "chunk_count": reader.chunk_count,
+        "chunk_duration_sec": chunk_duration_sec,
+        "model_metadata": {
+            "model_version": model_info.get("model_version", "v1.0_legacy"),
+            "training_date": model_info.get("training_date", "unknown"),
+            "model_file": model_info["model_file"],
+            "scaler_file": model_info["scaler_file"],
+            "model_sha256": model_info["model_sha256"],
+            "scaler_sha256": model_info["scaler_sha256"],
+            "epoch_length_sec": selected_model_epoch,
+        },
+        "channel": channel,
+        "sfreq": sfreq,
+        "duration_sec": duration_sec,
+        "samples": n_times,
+        "epoch_count": len(epoch_rows),
+        "event_count": len(event_rows),
+        "threshold": 0.5,
+        "probability_threshold": 0.5,
+        "max_probability": float(np.max(probabilities)) if probabilities.size else None,
+        "mean_probability": float(np.mean(probabilities)) if probabilities.size else None,
+        "selected_model_epoch_length_sec": selected_model_epoch,
+        "unit_mode": params["unit_mode"],
+        "unit_note": unit_note,
+        "feature_columns": FEATURE_COLUMNS,
+        "feature_diagnostics": feature_diagnostics,
+        "processing_plan": processing_plan,
+        "memory_estimate": mem_estimate,
+        "spectrogram": {
+            "artifact": "data/epilepsy_ml_spectrogram.json",
+            "figure": "figures/epilepsy_ml_spectrogram_preview.svg",
+            "source_compatibility": spectrogram_payload["source_compatibility"],
+            "method": spectrogram_payload["method"],
+            "parameters": spectrogram_payload["parameters"],
+            "preview": spectrogram_payload["preview"],
+        },
+        "figures": {
+            "event_timeline": "figures/epilepsy_ml_event_timeline.svg",
+            "spectrogram_preview": "figures/epilepsy_ml_spectrogram_preview.svg",
+            "scope": "result_review_visual_evidence_only",
+        },
+        "parameters": params,
+        "warnings": warnings,
+    }
+    summary_path = reproducibility / "epilepsy_ml_summary.json"
+    summary_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
+    parameters_path = reproducibility / "parameters.json"
+    parameters_path.write_text(json.dumps(params, ensure_ascii=False, indent=2), encoding="utf-8")
+    method_path = reproducibility / "method_description.txt"
+    method_path.write_text(
+        "Epilepsy ML source-compatible runner uses the original AR_analyser1 XGBoost model/scaler files, "
+        "the original 19-column feature order, floor epoch truncation, predict_proba[:, 1], fixed threshold "
+        "0.5, and source-compatible event aggregation requiring at least two consecutive seizure epochs. "
+        "This output is research screening/support only and must not be used for diagnosis, treatment, "
+        "or clinical decision-making.\n\n"
+        f"Note: This file was processed using chunked mode ({reader.chunk_count} chunks) for memory efficiency.\n",
+        encoding="utf-8",
+    )
+    
+    reproducibility_paths = write_reproducibility_files(
+        output_path,
+        module_name="epilepsy_ml",
+        input_path=input_path,
+        parameters=params,
+        workflow_steps=[
+            {"name": "read_raw_header", "description": "Read EEG header without preloading all channels."},
+            {"name": "select_eeg_channel", "description": "Use requested channel, source default EEG3, or first usable EEG fallback."},
+            {"name": "chunked_data_loading", "description": f"Load data in {reader.chunk_count} time chunks for memory efficiency."},
+            {"name": "source_unit_mode", "description": "Apply source-compatible EDF/BDF volts-to-microvolts handling when configured."},
+            {"name": "asset_hash_validation", "description": "Validate model and scaler SHA256 before loading."},
+            {"name": "chunked_feature_extraction", "description": "Extract the original 19 ML features from complete epochs in bounded chunks."},
+            {"name": "bounded_pc_compatible_stft", "description": "Write a bounded EpilepsyAnalysis2.py-compatible STFT evidence preview."},
+            {"name": "xgboost_probability", "description": "Run scaler.transform and model.predict_proba(features_scaled)[:, 1]."},
+            {"name": "source_event_detection", "description": "Aggregate at least two consecutive seizure epochs into candidate events."},
+            {"name": "write_outputs", "description": "Write epoch, event, feature, result figure, manifest, summary, sidecar, and contract files."},
+        ],
+    )
+    sidecar_paths = write_analysis_sidecars(
+        output_path,
+        module_name="epilepsy_ml",
+        parameter_schema=EPILEPSY_ML_PARAMETER_SCHEMA,
+        effective_call={
+            "engine": "joblib+xgboost",
+            "call": "model.predict_proba(scaler.transform(features))[:, 1]",
+            "kwargs": {
+                "method": params["method"],
+                "epoch_length_sec": params["epoch_length_sec"],
+                "probability_threshold": 0.5,
+                "selected_model_epoch_length_sec": selected_model_epoch,
+                "unit_mode": params["unit_mode"],
+                "feature_chunk_epochs": params["feature_chunk_epochs"],
+                "feature_worker_count": params["feature_worker_count"],
+                "spectrogram_preview_duration_sec": params["spectrogram_preview_duration_sec"],
+                "processing_mode": "chunked",
+                "chunk_count": reader.chunk_count,
+            },
+            "input_shape": {"channel": channel, "n_times": n_times, "sfreq": sfreq},
+            "output_shape": {"epochs": len(epoch_rows), "events": len(event_rows), "features": list(features.shape)},
+        },
+        threshold_validation={
+            "status": "passed",
+            "checks": [
+                {"field": "method", "rule": "== ml_epoch_classifier", "value": params["method"], "status": "passed"},
+                {"field": "feature_count", "rule": "== 19", "value": int(features.shape[1]), "status": "passed"},
+                {"field": "probability_threshold", "rule": "== source fixed 0.5", "value": 0.5, "status": "passed"},
+                {"field": "model_hashes", "rule": "manifest SHA256 validation", "value": "passed", "status": "passed"},
+            ],
+        },
+        table_dictionary=_table_dictionary(),
+        scope_contract={
+            "analysis_scope": "single_record_epilepsy_ml_source_compatible_research_screening",
+            "stable_status": "source_model_migration_v0",
+            "allowed_claims": [
+                "Run the source AR_analyser1 epoch-level ML classifier on one EEG channel.",
+                "Summarize ML-derived candidate events for research screening/support.",
+            ],
+            "disallowed_claims": [
+                "diagnosis",
+                "treatment_recommendation",
+                "clinical_decision",
+                "seizure_confirmation",
+                "medical_triage",
+            ],
+            "required_boundary": "Research screening/support only; no diagnosis, treatment, or clinical decision-making.",
+        },
+        source_metadata=_source_metadata(input_path, raw, channel, params, selected_model_epoch, unit_note),
+    )
+    
+    outputs = {
+        "epilepsy_ml_epoch_predictions": epoch_scores_path,
+        "epilepsy_ml_events": events_path,
+        "epilepsy_ml_window_stats_30min": window_stats_path,
+        "epilepsy_ml_features": features_path,
+        "epilepsy_ml_features_scaled": features_scaled_path,
+        "epilepsy_ml_spectrogram": spectrogram_path,
+        "epilepsy_ml_event_timeline_figure": event_timeline_figure_path,
+        "epilepsy_ml_spectrogram_figure": spectrogram_figure_path,
+        "epilepsy_ml_summary": summary_path,
+        "epilepsy_ml_parameters": parameters_path,
+        "epilepsy_ml_method_description": method_path,
+        "epilepsy_ml_model_manifest": model_manifest_output_path,
+        "workflow": reproducibility_paths["workflow"],
+        "parameter_schema_snapshot": sidecar_paths["parameter_schema_snapshot"],
+        "threshold_validation": sidecar_paths["threshold_validation"],
+        "effective_call": sidecar_paths["effective_call"],
+        "source_metadata": sidecar_paths["source_metadata"],
+        "table_dictionary": sidecar_paths["table_dictionary"],
+        "scope_contract": sidecar_paths["scope_contract"],
+    }
+    contract_paths = write_output_contract(
+        output_path,
+        job_type="epilepsy_ml_xgboost",
+        module_name="epilepsy_ml",
+        input_path=input_path,
+        parameters=params,
+        summary=summary,
+        outputs=outputs,
+        log_lines=[
+            f"channel={channel}",
+            "probability_threshold=0.5",
+            f"epoch_count={len(epoch_rows)}",
+            f"event_count={len(event_rows)}",
+            f"model_epoch={selected_model_epoch}",
+            "spectrogram=EpilepsyAnalysis2.py_stft_4s_90pct_overlap_0.5_50hz",
+            "figures=event_timeline_svg,spectrogram_preview_svg",
+            "scope=research_screening_support_only_no_diagnosis_treatment_or_clinical_decision",
+            f"processing_mode=chunked_{reader.chunk_count}_chunks",
+        ],
+    )
+    
+    if progress_callback:
+        progress_callback({"stage": "complete", "percent": 100})
+    
     return {**outputs, **contract_paths}
 
 

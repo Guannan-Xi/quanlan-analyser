@@ -25,3 +25,25 @@ def record_event(
     )
     state_store.upsert_item(REGISTRY, event)
     return event
+
+
+def list_events(
+    *,
+    action: str | None = None,
+    object_type: str | None = None,
+    object_id: str | None = None,
+    actor_user_id: str | None = None,
+    project_id: str | None = None,
+) -> list[AuditEventRead]:
+    events = list(state_store.load_registry(REGISTRY, AuditEventRead).values())
+    if action is not None:
+        events = [event for event in events if event.action == action]
+    if object_type is not None:
+        events = [event for event in events if event.object_type == object_type]
+    if object_id is not None:
+        events = [event for event in events if event.object_id == object_id]
+    if actor_user_id is not None:
+        events = [event for event in events if event.actor_user_id == actor_user_id]
+    if project_id is not None:
+        events = [event for event in events if event.project_id == project_id]
+    return sorted(events, key=lambda event: event.created_at, reverse=True)

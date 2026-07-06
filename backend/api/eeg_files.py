@@ -10,15 +10,34 @@ router = APIRouter()
 _TEACHING_FILE_IDS = {"eeg_demo_teaching_oddball", "eeg_demo_epilepsy_high_amplitude"}
 
 
+def _requesting_user_id(current: AccountRead) -> str | None:
+    return None if current.role == "admin" else current.id
+
+
+def _file_is_teaching_demo(eeg_file: EEGFileRead) -> bool:
+    metadata = eeg_file.metadata_json or {}
+    policy = eeg_file.permission_policy or {}
+    return bool(
+        eeg_file.id in _TEACHING_FILE_IDS
+        or metadata.get("protected_teaching_dataset")
+        or metadata.get("teaching_mode")
+        or policy.get("protected_teaching_dataset")
+        or policy.get("teaching_mode")
+        or eeg_file.retention_policy == "protected_teaching_demo"
+    )
+
+
+def _file_visible_to_current(eeg_file: EEGFileRead, current: AccountRead) -> bool:
+    return current.role == "admin" or eeg_file.owner_user_id == current.id or _file_is_teaching_demo(eeg_file)
+
+
 def _assert_file_visible(file_id: str, current: AccountRead) -> EEGFileRead:
-    """Read endpoints remain open in V01 sandbox (owner checks on mutations only).
-    Teaching files are exempt from all authz gates."""
-    return storage_service.get_eeg_file(file_id)
+    return storage_service.get_eeg_file(file_id, requesting_user_id=_requesting_user_id(current))
 
 
 @router.get("/eeg/files", response_model=list[EEGFileRead])
 def list_eeg_files(current: AccountRead = Depends(account_service.require_current_account)) -> list[EEGFileRead]:
-    return storage_service.list_eeg_files()
+    return [item for item in storage_service.list_eeg_files() if _file_visible_to_current(item, current)]
 
 
 @router.post("/eeg/upload", response_model=EEGFileRead)
@@ -39,6 +58,9 @@ async def upload_eeg(
                 "suggested_action": "Tick the upload authorization confirmation before uploading.",
             },
         )
+    project = storage_service.get_project(project_id)
+    if current.role != "admin" and project.owner_user_id != current.id:
+        raise HTTPException(status_code=403, detail="You do not have permission to upload EEG data into this project")
     text = upload_authorization_text or "Uploader confirms authorization to upload this EEG file for research trial analysis."
     return await storage_service.create_eeg_file(
         project_id=project_id,

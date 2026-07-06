@@ -15,12 +15,16 @@ def get_wallet(account_id: str = "demo-customer", current: AccountRead = Depends
 
 @router.post("/billing/recharge")
 def create_recharge_order(payload: RechargeCreate, current: AccountRead = Depends(account_service.require_current_account)) -> dict:
+    if current.role != "admin":
+        raise HTTPException(status_code=403, detail="Recharge orders are managed by operations staff")
     account_service.assert_same_account_or_admin(payload.account_id, current)
     return billing_service.create_recharge_order(payload).model_dump(mode="json")
 
 
 @router.post("/billing/recharge/{order_id}/confirm")
 def confirm_recharge_order(order_id: str, payload: PaymentConfirm | None = None, current: AccountRead = Depends(account_service.require_current_account)) -> dict:
+    if current.role != "admin":
+        raise HTTPException(status_code=403, detail="Recharge confirmation is managed by operations staff")
     order = billing_service.get_recharge_order(order_id)
     account_service.assert_same_account_or_admin(order.account_id, current)
     return billing_service.confirm_recharge_order(order_id, payload).model_dump(mode="json")

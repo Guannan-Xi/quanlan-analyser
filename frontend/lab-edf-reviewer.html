@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>EDF 波形审阅器 - QLanalyser 分析实验室</title>
+    <meta name="description" content="用于研究数据的多通道 EEG/ACC 波形浏览、滤波、时间窗审阅与 SVG 矢量快照导出。" />
+    <link rel="stylesheet" href="./lab-edf-reviewer.css" />
+  </head>
+  <body>
+    <div class="lab-container">
+      <header class="lab-header">
+        <h1>EDF 波形审阅器</h1>
+        <p class="subtitle">用于研究数据的多通道 EEG/ACC 波形浏览、滤波、时间窗审阅与 SVG 矢量快照导出</p>
+        <div class="info-banner">
+          <strong>工具定位：</strong>本工具用于研究数据审阅与沟通演示，不提供自动睡眠分期、医学诊断或临床结论。
+        </div>
+      </header>
+
+      <section class="upload-section">
+        <div class="upload-control">
+          <label for="edfUpload" class="upload-button">
+            <span class="upload-icon">📁</span>
+            <span>选择 EDF 文件</span>
+          </label>
+          <input type="file" id="edfUpload" accept=".edf" style="display: none;" />
+        </div>
+        <div id="fileInfo" class="file-info"></div>
+      </section>
+
+      <section class="controls-section" id="controlsSection" style="display: none;">
+        <div class="control-panel">
+          <div class="control-group">
+            <label class="control-label">显示通道</label>
+            <div id="channelSelect" class="channel-selector"></div>
+          </div>
+
+          <div class="filter-controls">
+            <div class="control-group">
+              <label class="control-label" for="highpass">高通 Hz（0 为关闭）</label>
+              <input type="number" id="highpass" value="1.0" step="0.5" min="0" max="100" />
+            </div>
+
+            <div class="control-group">
+              <label class="control-label" for="lowpass">低通 Hz（0 为关闭）</label>
+              <input type="number" id="lowpass" value="35.0" step="1" min="0" max="250" />
+            </div>
+
+            <div class="control-group">
+              <label class="control-label" for="notch">陷波</label>
+              <select id="notch">
+                <option value="0">关闭</option>
+                <option value="50" selected>50 Hz</option>
+                <option value="60">60 Hz</option>
+              </select>
+            </div>
+
+            <div class="control-group">
+              <label class="control-label" for="maxPoints">前端预览采样点数</label>
+              <select id="maxPoints">
+                <option value="10000">10000</option>
+                <option value="20000" selected>20000</option>
+                <option value="40000">40000</option>
+                <option value="60000">60000</option>
+              </select>
+            </div>
+
+            <div class="control-group">
+              <label class="control-label" for="windowSeconds">审阅窗口长度（秒）</label>
+              <input type="number" id="windowSeconds" value="20" step="1" min="1" max="300" />
+            </div>
+
+            <div class="control-group checkbox-group">
+              <label class="checkbox-label">
+                <input type="checkbox" id="gainLinkToggle" />
+                <span>双窗口幅值缩放联动</span>
+              </label>
+            </div>
+          </div>
+
+          <button id="renderBtn" class="render-button" disabled>
+            <span class="button-text">加载波形</span>
+          </button>
+        </div>
+      </section>
+
+      <section class="viewer-section" id="viewerSection" style="display: none;">
+        <div id="waveformViewer" class="waveform-viewer"></div>
+      </section>
+
+      <section class="info-section">
+        <details>
+          <summary>使用说明</summary>
+          <div class="info-content">
+            <h3>流程说明</h3>
+            <ol>
+              <li>上传 EDF 文件，系统读取通道、采样率和总时长</li>
+              <li>选择要进入截图的通道（默认选中所有 EEG 通道）</li>
+              <li>调整滤波参数（默认：高通 1 Hz、低通 35 Hz、50 Hz 陷波）</li>
+              <li>点击"加载波形"按钮渲染双窗口波形审阅器</li>
+              <li>在波形区域滚轮缩放振幅，拖动时间范围条移动窗口</li>
+              <li>点击"保存 SVG"导出矢量快照</li>
+            </ol>
+
+            <h3>数据与解释边界</h3>
+            <ul>
+              <li>当前显示为 EDF 原始/滤波后信号的可视化审阅，不代表自动睡眠分期结果</li>
+              <li>未标明 EOG/EMG 的文件不应仅凭 EEG/ACC 直接推断 Wake / NREM / REM 结论</li>
+              <li>ACC 可辅助观察体动变化，但不能等同于肌电或正式睡眠分期依据</li>
+              <li>SVG 快照用于沟通与报告插图，建议在正式报告中补充参数、数据来源和审阅人</li>
+              <li>上传 EDF 不持久落盘，不保存原始文件，会话期间仅在内存/临时文件中处理</li>
+            </ul>
+          </div>
+        </details>
+      </section>
+    </div>
+
+    <div id="loadingOverlay" class="loading-overlay" style="display: none;">
+      <div class="loading-spinner"></div>
+      <div class="loading-text">处理中...</div>
+    </div>
+
+    <script src="./lab-edf-reviewer.js"></script>
+  </body>
+</html>

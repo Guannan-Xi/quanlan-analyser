@@ -213,3 +213,53 @@ def assert_sufficient_balance(account_id: str | None, amount_credits: float) -> 
                 "balance_credits": account.balance_credits,
             },
         )
+
+
+def refund_failed_task(*, account_id: str, task_id: str, amount_credits: float, reason: str = "Task failed") -> BillingTransactionRead:
+    """P0-TASK-02 FIX: Refund credits when analysis task fails.
+    
+    Args:
+        account_id: The account to refund
+        task_id: The failed task ID
+        amount_credits: Amount to refund
+        reason: Reason for refund
+        
+    Returns:
+        BillingTransactionRead: The refund transaction record
+    """
+    with state_store.atomic_cross_registry_lock([TRANSACTIONS, "accounts"]):
+        account = account_service.get_account(normalize_account_id(account_id))
+        amount = round(max(float(amount_credits), 0.0), 2)
+        
+        if amount <= 0:
+            return None
+        
+        # Credit back to account
+        account.balance_credits = round(account.balance_credits + amount, 2)
+        account.total_spent_credits = round(account.total_spent_credits - amount, 2)
+        account_service.update_account(account)
+        
+        # Create refund transaction
+        tx = BillingTransactionRead(
+            account_id=account.id,
+            direction="credit",
+            amount_credits=amount,
+            balance_after_credits=account.balance_credits,
+            source_type="task_refund",
+            source_id=task_id,
+            description=f"Refund: {reason}",
+            metadata_json={"reason": reason, "original_task_id": task_id},
+        )
+        state_store.upsert_item(TRANSACTIONS, tx)
+        
+        # Audit the refund
+        audit_service.record_event(
+            action="billing.task_refund.completed",
+            object_type="analysis_task",
+            object_id=task_id,
+            organization_id=account.organization_name or "local-org",
+            actor_user_id=account.id,
+            metadata_json={"amount_credits": amount, "reason": reason},
+        )
+        
+        return tx

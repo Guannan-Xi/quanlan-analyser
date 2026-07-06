@@ -1,0 +1,341 @@
+from __future__ import annotations
+
+import math
+from datetime import datetime, timezone
+from functools import lru_cache
+from pathlib import Path
+from typing import Any
+from uuid import uuid4
+
+import numpy as np
+from fastapi import APIRouter, Body, HTTPException, Query, Request
+
+from eeg_core.io.readers import read_raw
+
+
+router = APIRouter()
+
+HE_SAMPLE_ROOT = Path(r"D:\Quanlan\Data\HE脑电\HE脑电")
+SAFE_SAMPLE_ROOT = "HE脑电/HE脑电/"
+SUPPORTED_SUFFIXES = {".edf", ".bdf", ".fif", ".fiff"}
+MAX_WAVEFORM_DURATION_SEC = 120.0
+MAX_WAVEFORM_POINTS = 4000
+DEFAULT_CHANNELS = ["EEG1", "EEG2", "EMG", "ACC"]
+
+
+def _seed(event_id: str, start_sec: float, duration_sec: float, event_type: str, priority: str, channels: list[str]) -> dict[str, Any]:
+    return {
+        "event_id": event_id,
+        "start_sec": float(start_sec),
+        "duration_sec": float(duration_sec),
+        "end_sec": float(start_sec + duration_sec),
+        "event_type": event_type,
+        "priority": priority,
+        "channels": channels,
+    }
+
+
+HE_CANDIDATE_SEEDS: dict[str, list[dict[str, Any]]] = {
+    "he-105": [
+        _seed("HE105-E001", 14 * 60 + 18.4, 1.7, "ied", "high", ["EEG1", "EEG2"]),
+        _seed("HE105-E002", 4 * 3600 + 26 * 60 + 8.2, 12.6, "seizure_like", "high", ["EEG1", "EEG2"]),
+        _seed("HE105-E003", 8 * 3600 + 6 * 60 + 12.0, 1.2, "ied", "medium", ["EEG1"]),
+        _seed("HE105-E004", 17 * 3600 + 44 * 60 + 30.2, 7.8, "rhythmic", "medium", ["EEG2"]),
+        _seed("HE105-E005", 28 * 3600 + 11 * 60 + 2.4, 0.9, "artifact_suspect", "low", ["EEG1", "EMG"]),
+        _seed("HE105-E006", 41 * 3600 + 32 * 60 + 18.7, 2.1, "ied", "medium", ["EEG1", "EEG2"]),
+        _seed("HE105-E007", 58 * 3600 + 5 * 60 + 44.0, 15.1, "seizure_like", "high", ["EEG2"]),
+        _seed("HE105-E008", 67 * 3600 + 19 * 60 + 6.5, 1.5, "ied", "low", ["EEG1"]),
+    ],
+    "he-106": [
+        _seed("HE106-E001", 1 * 3600 + 10 * 60 + 4.5, 6.9, "rhythmic", "high", ["EEG2"]),
+        _seed("HE106-E002", 6 * 3600 + 49 * 60 + 2.0, 1.1, "ied", "medium", ["EEG1"]),
+        _seed("HE106-E003", 13 * 3600 + 28 * 60 + 51.3, 2.4, "ied", "medium", ["EEG1", "EEG2"]),
+        _seed("HE106-E004", 21 * 3600 + 9 * 60 + 13.1, 9.6, "seizure_like", "high", ["EEG1", "EEG2"]),
+        _seed("HE106-E005", 35 * 3600 + 18 * 60 + 42.9, 1.0, "artifact_suspect", "low", ["EMG"]),
+        _seed("HE106-E006", 49 * 3600 + 10 * 60 + 2.2, 2.2, "rhythmic", "low", ["EEG2"]),
+        _seed("HE106-E007", 61 * 3600 + 52 * 60 + 24.4, 1.8, "ied", "medium", ["EEG1"]),
+    ],
+    "he-118": [
+        _seed("HE118-E001", 38 * 60 + 14.1, 1.4, "ied", "medium", ["EEG1"]),
+        _seed("HE118-E002", 3 * 3600 + 22 * 60 + 7.4, 11.4, "seizure_like", "high", ["EEG1", "EEG2"]),
+        _seed("HE118-E003", 12 * 3600 + 8 * 60 + 37.5, 1.6, "ied", "high", ["EEG2"]),
+        _seed("HE118-E004", 19 * 3600 + 47 * 60 + 54.0, 8.0, "rhythmic", "medium", ["EEG1", "EEG2"]),
+        _seed("HE118-E005", 31 * 3600 + 40 * 60 + 9.6, 0.8, "artifact_suspect", "low", ["ACC"]),
+        _seed("HE118-E006", 52 * 3600 + 2 * 60 + 30.2, 13.2, "seizure_like", "high", ["EEG2"]),
+        _seed("HE118-E007", 64 * 3600 + 56 * 60 + 16.8, 1.3, "ied", "medium", ["EEG1"]),
+    ],
+}
+
+LAB_REVIEW_SESSIONS: dict[str, dict[str, Any]] = {}
+
+
+def _is_local_request(request: Request) -> bool:
+    host = (request.client.host if request.client else "") or ""
+    return host in {"127.0.0.1", "::1", "localhost"}
+
+
+def _record_id_from_path(path: Path) -> str:
+    return path.stem.lower().replace("_", "-")
+
+
+def _sample_paths() -> list[Path]:
+    if not HE_SAMPLE_ROOT.exists():
+        return []
+    return [
+        path
+        for path in sorted(HE_SAMPLE_ROOT.iterdir())
+        if path.is_file() and path.suffix.lower() in SUPPORTED_SUFFIXES
+    ]
+
+
+def _sample_path(record_id: str) -> Path:
+    for path in _sample_paths():
+        if _record_id_from_path(path) == record_id:
+            return path
+    raise HTTPException(status_code=404, detail="HE sample record not found")
+
+
+@lru_cache(maxsize=8)
+def _metadata_for_path(path_text: str) -> dict[str, Any]:
+    path = Path(path_text)
+    raw = read_raw(path, preload=False)
+    sfreq = float(raw.info["sfreq"])
+    duration_sec = float(raw.n_times / sfreq) if sfreq > 0 else 0.0
+    return {
+        "sfreq": sfreq,
+        "duration_sec": duration_sec,
+        "channels": list(raw.ch_names),
+        "channel_count": len(raw.ch_names),
+        "n_times": int(raw.n_times),
+        "meas_date": str(raw.info.get("meas_date")),
+    }
+
+
+def _record_payload(path: Path, request: Request, include_metadata: bool = False) -> dict[str, Any]:
+    record_id = _record_id_from_path(path)
+    payload: dict[str, Any] = {
+        "id": record_id,
+        "file_id": f"he_sample_{record_id.replace('-', '_')}",
+        "filename": path.name,
+        "format": path.suffix.lower().lstrip("."),
+        "size_bytes": path.stat().st_size,
+        "source_path_display": str(path) if _is_local_request(request) else f"{SAFE_SAMPLE_ROOT}{path.name}",
+        "safe_source_path": f"{SAFE_SAMPLE_ROOT}{path.name}",
+        "candidate_seed_count": len(HE_CANDIDATE_SEEDS.get(record_id, [])),
+        "non_medical_scope": "research_screening_support_only",
+    }
+    if include_metadata:
+        payload.update(_metadata_for_path(str(path)))
+    return payload
+
+
+def _pick_channels(raw_channels: list[str], requested: str = "") -> list[str]:
+    exact = {name: name for name in raw_channels}
+    upper_map = {name.upper(): name for name in raw_channels}
+    if requested:
+        picks = []
+        for item in [part.strip() for part in requested.split(",") if part.strip()]:
+            match = exact.get(item) or upper_map.get(item.upper())
+            if match and match not in picks:
+                picks.append(match)
+        if picks:
+            return picks[:8]
+    selected = []
+    for preferred in DEFAULT_CHANNELS:
+        match = upper_map.get(preferred.upper())
+        if match and match not in selected:
+            selected.append(match)
+    return (selected or raw_channels[:4])[:8]
+
+
+def _scale_to_uv(data: np.ndarray) -> np.ndarray:
+    finite = data[np.isfinite(data)]
+    if finite.size == 0:
+        return data
+    robust = float(np.nanpercentile(np.abs(finite), 95))
+    if robust < 1e-3:
+        return data * 1_000_000.0
+    return data
+
+
+def _window_data(path: Path, start_sec: float, duration_sec: float, channels: str, max_points: int) -> dict[str, Any]:
+    raw = read_raw(path, preload=False)
+    sfreq = float(raw.info["sfreq"])
+    duration_sec = min(max(float(duration_sec), 0.1), MAX_WAVEFORM_DURATION_SEC)
+    start_sec = max(0.0, min(float(start_sec), max(0.0, float(raw.n_times / sfreq) - 0.1)))
+    stop_sec = min(float(raw.n_times / sfreq), start_sec + duration_sec)
+    start_sample = int(start_sec * sfreq)
+    stop_sample = max(start_sample + 1, int(stop_sec * sfreq))
+    picks = _pick_channels(list(raw.ch_names), channels)
+    data = raw.get_data(picks=picks, start=start_sample, stop=stop_sample)
+    data = _scale_to_uv(np.asarray(data, dtype=float))
+    max_points = max(100, min(int(max_points), MAX_WAVEFORM_POINTS))
+    sample_count = data.shape[1]
+    step = max(1, int(math.ceil(sample_count / max_points)))
+    data = data[:, ::step]
+    times = (np.arange(data.shape[1]) * step + start_sample) / sfreq
+    return {
+        "record_id": _record_id_from_path(path),
+        "filename": path.name,
+        "start_sec": round(float(start_sec), 6),
+        "duration_sec": round(float(stop_sec - start_sec), 6),
+        "stop_sec": round(float(stop_sec), 6),
+        "sfreq": sfreq,
+        "decimation": step,
+        "unit": "uV",
+        "channels": [
+            {
+                "name": name,
+                "times_sec": [round(float(value), 6) for value in times],
+                "values": [round(float(value), 6) for value in row],
+            }
+            for name, row in zip(picks, data, strict=False)
+        ],
+        "source": "real_edf_window",
+        "non_medical_scope": "research_screening_support_only",
+    }
+
+
+def _candidate_metrics(path: Path, event: dict[str, Any]) -> dict[str, Any]:
+    window = _window_data(
+        path,
+        start_sec=max(0.0, float(event["start_sec"]) - 1.0),
+        duration_sec=min(20.0, float(event["duration_sec"]) + 2.0),
+        channels=",".join(event["channels"]),
+        max_points=2000,
+    )
+    values = []
+    for channel in window["channels"]:
+        arr = np.asarray(channel["values"], dtype=float)
+        if arr.size:
+            values.append(arr)
+    if not values:
+        return {"rms_uv": 0.0, "ptp_uv": 0.0, "backend_score": 0.5}
+    data = np.vstack(values)
+    rms = float(np.sqrt(np.nanmean(np.square(data))))
+    ptp = float(np.nanpercentile(data, 99) - np.nanpercentile(data, 1))
+    score = max(0.05, min(0.99, 0.35 + np.log1p(max(rms, 0.0)) / 12.0 + np.log1p(max(ptp, 0.0)) / 18.0))
+    return {
+        "rms_uv": round(rms, 4),
+        "ptp_uv": round(ptp, 4),
+        "backend_score": round(score, 4),
+    }
+
+
+@router.get("/lab/epilepsy-full-flow/records")
+def list_he_records(request: Request, inspect: bool = Query(False)) -> dict[str, Any]:
+    records = [_record_payload(path, request, include_metadata=inspect) for path in _sample_paths()]
+    return {
+        "root": str(HE_SAMPLE_ROOT) if _is_local_request(request) else SAFE_SAMPLE_ROOT,
+        "safe_root": SAFE_SAMPLE_ROOT,
+        "is_local_request": _is_local_request(request),
+        "records": records,
+        "non_medical_scope": "research_screening_support_only",
+    }
+
+
+@router.get("/lab/epilepsy-full-flow/records/{record_id}/preflight")
+def preflight_he_record(record_id: str, request: Request) -> dict[str, Any]:
+    path = _sample_path(record_id)
+    record = _record_payload(path, request, include_metadata=True)
+    record["preflight"] = {
+        "status": "pass",
+        "reader": "mne_preload_false",
+        "large_file_strategy": "windowed_reading_only",
+        "browser_full_load_allowed": False,
+        "candidate_generation": "backend_seeded_real_window_metrics_v1",
+        "report_boundary": "research_screening_support_only",
+    }
+    return record
+
+
+@router.post("/lab/epilepsy-full-flow/records/{record_id}/candidates")
+def generate_he_candidates(record_id: str, request: Request) -> dict[str, Any]:
+    path = _sample_path(record_id)
+    record = _record_payload(path, request, include_metadata=True)
+    seeds = HE_CANDIDATE_SEEDS.get(record_id, [])
+    candidates = []
+    for index, seed in enumerate(seeds, start=1):
+        metrics = _candidate_metrics(path, seed)
+        candidates.append({
+            **seed,
+            "id": seed["event_id"],
+            "index": index,
+            "score": metrics["backend_score"],
+            "backend_metrics": metrics,
+            "source": "backend_real_edf_window_metrics",
+            "evidence_window": {
+                "start_sec": max(0.0, float(seed["start_sec"]) - 10.0),
+                "duration_sec": min(30.0, float(seed["duration_sec"]) + 20.0),
+                "channels": DEFAULT_CHANNELS,
+            },
+        })
+    return {
+        "record": record,
+        "candidates": candidates,
+        "candidate_source": "backend_seeded_real_edf_window_metrics_v1",
+        "algorithm_status": "windowed_backend_preview",
+        "limitations": [
+            "候选时间点来自 HE 开发种子，后端分数来自真实 EDF 小窗口指标。",
+            "尚未完成全记录训练模型扫描，不能估计敏感性或特异性。",
+            "正式报告仍需 evidence package 和人工复核层。",
+        ],
+        "non_medical_scope": "research_screening_support_only",
+    }
+
+
+@router.get("/lab/epilepsy-full-flow/records/{record_id}/waveform-window")
+def he_waveform_window(
+    record_id: str,
+    start_sec: float = Query(0.0, ge=0.0),
+    duration_sec: float = Query(30.0, gt=0.0, le=MAX_WAVEFORM_DURATION_SEC),
+    channels: str = Query("EEG1,EEG2,EMG,ACC"),
+    max_points: int = Query(2000, ge=100, le=MAX_WAVEFORM_POINTS),
+) -> dict[str, Any]:
+    path = _sample_path(record_id)
+    return _window_data(path, start_sec=start_sec, duration_sec=duration_sec, channels=channels, max_points=max_points)
+
+
+@router.post("/lab/epilepsy-full-flow/review-sessions")
+def save_lab_review_session(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    if payload.get("non_medical_scope") != "research_screening_support_only":
+        raise HTTPException(status_code=422, detail="non_medical_scope must be research_screening_support_only")
+    record = payload.get("record") or {}
+    events = payload.get("reviewed_events") or []
+    if not record.get("filename"):
+        raise HTTPException(status_code=422, detail="record.filename is required")
+    if not isinstance(events, list):
+        raise HTTPException(status_code=422, detail="reviewed_events must be a list")
+    session_id = f"lab_ep_review_{uuid4().hex[:12]}"
+    saved_at = datetime.now(timezone.utc).isoformat()
+    stored = {
+        "session_id": session_id,
+        "saved_at": saved_at,
+        "schema_version": payload.get("schema_version"),
+        "review_session_schema_version": payload.get("review_session_schema_version"),
+        "non_medical_scope": payload.get("non_medical_scope"),
+        "record": record,
+        "summary": payload.get("summary") or {},
+        "event_reviews": payload.get("event_reviews") or {},
+        "reviewed_events": events,
+        "actions": payload.get("actions") or [],
+        "source": "lab_epilepsy_full_flow_backend_memory",
+    }
+    LAB_REVIEW_SESSIONS[session_id] = stored
+    return {
+        "session_id": session_id,
+        "saved_at": saved_at,
+        "record_filename": record.get("filename"),
+        "event_count": len(events),
+        "reviewed_count": sum(1 for item in events if item.get("status") != "unreviewed"),
+        "source": stored["source"],
+        "non_medical_scope": stored["non_medical_scope"],
+    }
+
+
+@router.get("/lab/epilepsy-full-flow/review-sessions/{session_id}")
+def get_lab_review_session(session_id: str) -> dict[str, Any]:
+    session = LAB_REVIEW_SESSIONS.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Lab review session not found")
+    return session

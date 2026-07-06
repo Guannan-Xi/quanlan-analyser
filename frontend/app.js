@@ -1,4 +1,4 @@
-(() => {
+﻿(() => {
 const qs = (selector) => document.querySelector(selector);
 const qsa = (selector) => [...document.querySelectorAll(selector)];
 const money = (value) => `\u00a5${Number(value).toFixed(2)}`;
@@ -23,6 +23,17 @@ const DEFAULT_API_BASE = ["localhost", "127.0.0.1"].includes(window.location.hos
   ? "http://127.0.0.1:8001/api"
   : "/api";
 const isLocalHost = () => ["localhost", "127.0.0.1"].includes(window.location.hostname);
+function initialApiBase() {
+  const requested = new URLSearchParams(window.location.search).get("api");
+  if (!requested) return DEFAULT_API_BASE;
+  try {
+    const parsed = new URL(requested, window.location.href);
+    const allowedLocal = isLocalHost() && ["localhost", "127.0.0.1"].includes(parsed.hostname);
+    const allowedSameOrigin = parsed.origin === window.location.origin && parsed.pathname.startsWith("/api");
+    if (allowedLocal || allowedSameOrigin) return requested;
+  } catch {}
+  return DEFAULT_API_BASE;
+}
 const isE2EAutomationContext = () => {
   if (isLocalHost()) return true;
   const params = new URLSearchParams(window.location.search);
@@ -54,14 +65,12 @@ const demoCustomer = {
 
 const state = {
   balance: 0,
-  rechargeAmount: 1000,
-  paymentMethod: "alipay",
   wallet: null,
   activeTemplate: "ERP \u4e8b\u4ef6\u76f8\u5173\u7535\u4f4d",
   segmentMode: "time",
   role: null,
   tasks: [],
-  apiBase: new URLSearchParams(window.location.search).get("api") || DEFAULT_API_BASE,
+  apiBase: initialApiBase(),
   real: {
     project: null,
     eegFile: null,
@@ -71,6 +80,7 @@ const state = {
     report: null,
     epochSet: null,
     latestTaskModule: null,
+    resultsViewed: false,
   },
   workspace: {
     projects: [],
@@ -150,6 +160,20 @@ const state = {
 };
 
 function publishE2EState() {
+  const activeView = qs(".view.active")?.id || "";
+  document.body.dataset.activeView = activeView;
+  document.body.dataset.currentRole = state.role || "logged-out";
+  document.body.dataset.teachingGuide = state.teaching.guideActive ? "active" : "inactive";
+  document.body.dataset.analysisReady = isAnalysisReady() ? "true" : "false";
+  document.body.dataset.hasProject = state.real.project?.id ? "true" : "false";
+  document.body.dataset.hasFile = state.real.eegFile?.id ? "true" : "false";
+  window.__QLANALYSER_ROUTE_STATE__ = {
+    role: state.role || null,
+    activeView,
+    requestedView: document.body.dataset.requestedView || activeView,
+    teachingActive: Boolean(state.teaching.active),
+    teachingGuideActive: Boolean(state.teaching.guideActive),
+  };
   if (!isE2EAutomationContext()) return;
   window.__QLANALYSER_E2E_STATE__ = state;
 }
@@ -178,6 +202,12 @@ const EDF_BROWSER_INTERACTION_CONSTANTS = Object.freeze({
 });
 const INLINE_EPILEPSY_WAVEFORM_CACHE_LIMIT = 16;
 const INLINE_EPILEPSY_WAVEFORM_FETCH_DEBOUNCE_MS = 120;
+const authenticatedArtifactImageUrls = new Map();
+
+function clearAuthenticatedArtifactObjectUrls() {
+  authenticatedArtifactImageUrls.forEach((url) => URL.revokeObjectURL(url));
+  authenticatedArtifactImageUrls.clear();
+}
 
 const DATA_PREPARATION_CONTRACT_VERSION = "qlanalyser-data-preparation-v0.2";
 
@@ -189,11 +219,13 @@ const eegState = {
   taskId: "",
   autoloaded: false,
   uploaded: false,
-  selectedFilePreviewId: "",
-  autoPreviewInFlight: false,
-  autoPreviewError: "",
-  start: 0,
-  windowSec: 10,
+      selectedFilePreviewId: "",
+      autoPreviewInFlight: false,
+      autoPreviewError: "",
+      overviewPayload: null,
+      overviewLoading: false,
+      start: 0,
+      windowSec: 10,
   gain: 2,
   sensitivityUvPerRow: 50,
   visibleChannels: 8,
@@ -271,65 +303,49 @@ const teachingSteps = [
   {
     view: "dashboard",
     selector: "#teachingModeBtn",
-    title: "示例模式 1/8",
-    body: "这里会载入一份练习用 EEG 数据，帮助你从项目、数据准备、分析到报告完整走一遍。",
+    title: "示例模式 1/6：项目",
+    body: "先建立项目，并载入一份练习用 EEG 数据。",
     require: () => state.teaching.datasetLoaded,
     blocked: "练习数据正在载入，请稍候。",
   },
   {
-    view: "dashboard",
-    selector: '[data-testid="project-data-crud-panel"]',
-    title: "示例模式 2/8",
-    body: "先看当前项目和数据。普通模式不会自动放入这份练习数据。",
+    view: "storage",
+    selector: '[data-testid="selected-file-summary"]',
+    title: "示例模式 2/6：数据",
+    body: "确认当前项目里的 EEG 文件。自己的数据也会从这里上传或选择。",
     require: () => Boolean(state.real.project?.id && state.real.eegFile?.id),
     blocked: "请等待练习项目和样本数据载入完成。",
   },
   {
     view: "analysis",
     selector: '[data-testid="single-file-preview-panel"]',
-    title: "示例模式 3/8",
-    body: "单击数据后，波形和基础质量信息会自动预览，无需再点运行按钮。",
+    title: "示例模式 3/6：准备",
+    body: "预览波形、质量信息、坏道和参考设置；确认后再进入分析。",
     require: () => Boolean(state.real.eegFile?.id),
     blocked: "请先选择示例 EEG 数据。",
     onEnter: () => requestAutoQcPreviewForSelectedFile(state.real.eegFile).catch(() => null),
   },
   {
-    view: "analysis",
-    selector: ".eeg-toolbar",
-    title: "示例模式 4/8",
-    body: "在波形附近完成坏道、片段和事件修改，所有修改都可以恢复。",
-    require: () => Boolean(state.real.eegFile?.id),
-    blocked: "请先载入示例 EEG 数据。",
-  },
-  {
-    view: "analysis",
-    selector: "#presetPrepReference",
-    title: "示例模式 5/8",
-    body: "重参考属于预处理，可选择保留原始参考、平均参考、指定通道或双极参考。",
-    require: () => Boolean(state.real.eegFile?.id),
-    blocked: "请先载入示例 EEG 数据。",
-  },
-  {
-    view: "analysis",
-    selector: '[data-real-action="confirm-plan-inline"]',
-    title: "示例模式 6/8",
-    body: "确认数据准备后，再进入分析方法选择。",
-    require: () => Boolean(state.real.eegFile?.id),
-    blocked: "请先载入示例 EEG 数据。",
-  },
-  {
     view: "workflow",
     selector: '[data-testid="analysis-method-scope-panel"]',
-    title: "示例模式 7/8",
-    body: "这里只放分析方法；重参考和质量检查留在数据准备里。",
+    title: "示例模式 4/6：分析",
+    body: "选择当前数据真正可以运行的方法。推荐先从 PSD 开始。",
     require: () => Boolean(state.real.eegFile?.id),
     blocked: "请先完成示例数据载入。",
   },
   {
     view: "statistics",
     selector: '[data-testid="result-review-workbench"]',
-    title: "示例模式 8/8",
-    body: "运行分析后，在结果和报告页查看图表、参数记录和边界说明。",
+    title: "示例模式 5/6：结果",
+    body: "查看图表、表格、参数和边界说明，确认结果可复核。",
+    require: () => Boolean(state.real.eegFile?.id),
+    blocked: "请先完成示例数据载入。",
+  },
+  {
+    view: "publication",
+    selector: '[data-testid="report-delivery-workbench"]',
+    title: "示例模式 6/6：报告",
+    body: "查看结果后再生成报告，下载图表、表格和复现记录。",
     require: () => Boolean(state.real.eegFile?.id),
     blocked: "请先完成示例数据载入。",
   },
@@ -369,23 +385,23 @@ const paradigms = [
 ];
 
 const titles = {
-  dashboard: "\u9879\u76ee\u5de5\u4f5c\u53f0",
-  journey: "\u6d41\u7a0b\u8bf4\u660e",
-  analysis: "\u6570\u636e\u51c6\u5907",
-  workflow: "\u5206\u6790\u4efb\u52a1",
-  epilepsyWorkbenchInline: "癫痫样事件分析台",
+  dashboard: "第 1 步：创建或打开项目",
+  journey: "交付质检",
+  analysis: "检查 EEG 数据",
+  workflow: "选择分析方法",
+  epilepsyWorkbenchInline: "癫痫样候选事件复核台",
   paradigms: "\u8303\u5f0f\u5e93",
-  statistics: "\u7ed3\u679c\u67e5\u770b",
-  publication: "\u62a5\u544a\u4e0b\u8f7d",
+  statistics: "查看分析结果",
+  publication: "生成和下载报告",
   upload: "\u6570\u636e\u6587\u4ef6",
-  storage: "\u6570\u636e\u7ba1\u7406",
-  billing: "\u8d39\u7528\u4e0e\u5145\u503c",
+  storage: "上传或选择 EEG 数据",
+  billing: "服务记录",
   invoice: "\u53d1\u7968\u7533\u8bf7",
   inbox: "\u53d1\u7968\u7bb1",
   userCenter: "\u4e2a\u4eba\u4e2d\u5fc3",
-  adminDashboard: "\u8fd0\u8425\u9996\u9875",
-  adminOperations: "\u4efb\u52a1\u8fd0\u8425",
-  adminFinance: "\u8d22\u52a1\u7ba1\u7406",
+  adminDashboard: "后台总览",
+  adminOperations: "任务队列",
+  adminFinance: "结算记录",
   adminSystem: "\u7cfb\u7edf\u72b6\u6001",
 };
 
@@ -416,46 +432,34 @@ const journeyDetails = [
     title: "第 1 步：创建项目",
     body: "先为这次分析建立一个项目名称。",
     action: "创建项目后，再选择或上传项目内数据。",
+    view: "dashboard",
+  },
+  {
+    title: "第 2 步：选择数据",
+    body: "把 EDF、SET 或 FIF 数据放入当前项目，或选择已有文件。",
+    action: "系统会读取文件信息，并保存到当前项目下。",
+    view: "storage",
+  },
+  {
+    title: "第 3 步：准备数据",
+    body: "检查波形、通道信息和数据质量，并确认准备方案。",
+    action: "准备确认后，再进入分析方法选择。",
     view: "analysis",
   },
   {
-    title: "第 2 步：上传 EEG 数据",
-    body: "把 EDF、SET 或 FIF 数据放入当前项目。",
-    action: "系统会读取文件信息，并把数据保存在当前项目下。",
-    view: "upload",
-  },
-  {
-    title: "第 3 步：确认费用",
-    body: "费用与分析分开显示，便于团队核对支出。",
-    action: "如本次分析需要扣费，请先确认费用再提交。",
-    view: "billing",
-  },
-  {
-    title: "第 4 步：选择分析方法",
+    title: "第 4 步：运行分析",
     body: "数据准备确认后，再选择实际要运行的分析方法。",
-    action: "平台会根据任务类型和数据情况提示合适的方法。",
-    view: "journey",
+    action: "推荐先运行 PSD；不满足条件的方法保持锁定。",
+    view: "workflow",
   },
   {
-    title: "第 5 步：确认参数",
-    body: "先使用推荐的分段、基线和通道设置作为起点。",
-    action: "确认基础流程后，再按研究问题调整高级参数。",
-    view: "analysis",
-  },
-  {
-    title: "第 6 步：检查数据准备",
-    body: "质量检查属于数据准备，分析前应先复核。",
-    action: "继续前请确认坏段、标签和参考设置。",
+    title: "第 5 步：查看结果",
+    body: "分析完成后，查看图表、表格、参数和质量提示。",
+    action: "确认结果后，再进入报告页整理交付材料。",
     view: "statistics",
   },
   {
-    title: "第 7 步：查看图表和表格",
-    body: "分析完成后，可以查看 ERP、PSD 等结果图表。",
-    action: "进入报告交付页下载图表、表格和方法说明。",
-    view: "publication",
-  },
-  {
-    title: "第 8 步：下载并交付",
+    title: "第 6 步：生成报告",
     body: "下载结果材料，用于复核、共享或归档。",
     action: "图表、表格和复现记录会一起保存在下载材料中。",
     view: "publication",
@@ -477,7 +481,7 @@ const modalContent = {
     body: `
       <div class="audit-list">
         <span>09:00 \u521b\u5efa\u4e86\u5ba2\u6237\u8d26\u6237\u5e76\u542f\u52a8\u4e86\u9879\u76ee\u3002</span>
-        <span>09:03 \u8bb0\u5f55\u4e86\u5145\u503c\uff0c\u4f59\u989d\u5df2\u66f4\u65b0\u3002</span>
+        <span>09:03 \u670d\u52a1\u72b6\u6001\u5df2\u8bb0\u5f55\uff0c\u7ebf\u4e0b\u786e\u8ba4\u540e\u66f4\u65b0\u3002</span>
         <span>09:05 EEG \u6587\u4ef6\u548c\u4e8b\u4ef6\u8868\u5df2\u751f\u6210\u5e76\u9a8c\u8bc1\u3002</span>
         <span>09:08 ERP/P300 \u5df2\u88ab\u63a8\u8350\uff0c\u65b9\u6cd5\u53c2\u6570\u5df2\u4fdd\u5b58\u3002</span>
         <span>09:16 \u56fe\u8868\u3001\u8868\u683c\u548c\u65b9\u6cd5\u6587\u6848\u5df2\u5bfc\u51fa\u5f85\u5ba1\u67e5\u3002</span>
@@ -511,14 +515,12 @@ const modalContent = {
     title: "\u8d26\u6237\u4fe1\u606f",
     body: () => {
       const customer = getStoredCustomer();
-      const balanceText = String(qs("#balanceSide")?.textContent || "").replace(/[^\d.]/g, "");
-      const balance = Number(balanceText || state.balance || 0);
       return `
         <div class="audit-list">
           <span><b>\u8d26\u53f7\u663e\u793a\uff1a</b>${escapeHtml(customer.name || "\u5ba2\u6237\u8d26\u53f7")}</span>
           <span><b>\u90ae\u7bb1\uff1a</b>${escapeHtml(customer.email || "\u672a\u7ed1\u5b9a\u90ae\u7bb1")}</span>
           <span><b>\u673a\u6784\uff1a</b>${escapeHtml(customer.org || "Quanlan Neuro Lab")}</span>
-          <span><b>\u5f53\u524d\u4f59\u989d\uff1a</b>${money(balance)}</span>
+          <span><b>服务记录：</b>试用服务状态由运营线下确认</span>
           <span><b>\u8d26\u53f7\u6743\u9650\uff1a</b>\u9879\u76ee\u67e5\u770b\u4e0e\u5206\u6790\u64cd\u4f5c</span>
         </div>
       `;
@@ -733,6 +735,17 @@ function dataPreparationContractVersion(plan) {
     || plan?.data_preparation_contract_version
     || plan?.contract_version
     || DATA_PREPARATION_CONTRACT_VERSION;
+}
+
+function isAnalysisReady(plan = state.real.plan) {
+  return Boolean(
+    plan
+      && !plan.is_default
+      && plan.status === "confirmed"
+      && plan.id
+      && Number.isFinite(Number(plan.revision))
+      && dataPreparationContractVersion(plan) === DATA_PREPARATION_CONTRACT_VERSION
+  );
 }
 
 function latestAnalysisTask() {
@@ -1003,6 +1016,7 @@ async function loadTeachingDatasetForModule(moduleName = "") {
 async function startTeachingMode(options = {}) {
   if (state.teaching.loading) return;
   const { showGuide = true } = options;
+  const quickStartTarget = options.quickStart ? (options.targetView || "analysis") : "";
   const intendedModuleName = options.moduleName || options.module || (isEpilepsyWorkbenchDeepLinkIntent() ? "epilepsy_ml" : "");
   const isEpilepsyIntent = intendedModuleName === "epilepsy_ml";
   const viewAtStart = qs(".view.active")?.id || "";
@@ -1023,7 +1037,13 @@ async function startTeachingMode(options = {}) {
       if (isEpilepsyIntent) setView("epilepsyWorkbenchInline");
       await ensureTeachingSandboxReady({ preview: false, moduleName: "epilepsy_ml" });
     } else {
-      if (!userMovedToAnotherView && !options.preserveView) setView("dashboard");
+      if (quickStartTarget) {
+        setView(quickStartTarget);
+      } else if (!userMovedToAnotherView && !options.preserveView) {
+        // FIX: 如果用户从数据准备页进入，返回数据准备页以触发波形预览
+        const returnView = (viewAtStart === "analysis") ? "analysis" : "dashboard";
+        setView(returnView);
+      }
       await ensureTeachingSandboxReady({ preview: false });
     }
     recordUiAction("teaching:start", "pass", "示例模式已载入合成 EEG 数据。", {
@@ -1037,8 +1057,21 @@ async function startTeachingMode(options = {}) {
   }
   state.teaching.loading = false;
   applyTeachingModeChrome();
-  if (state.teaching.guideActive) renderTeachingOverlay();
-  else hideTeachingGuideOverlay();
+  // FIX: 如果用户从数据准备页进入教学模式，不要弹引导覆盖层（引导会强制切到 dashboard），
+  // 而是直接留在 analysis 页并触发波形预览
+  if (viewAtStart === "analysis" && state.teaching.guideActive && !isEpilepsyIntent) {
+    state.teaching.guideActive = false;
+    hideTeachingGuideOverlay();
+    setView("analysis");
+    // 触发波形自动预览（setView 内部会调用，这里双重保障）
+    const file = currentWorkspaceFile();
+    if (file?.id) requestAutoQcPreviewForSelectedFile(file).catch(() => null);
+  } else if (state.teaching.guideActive) {
+    renderTeachingOverlay();
+  } else {
+    hideTeachingGuideOverlay();
+  }
+  publishE2EState();
 }
 
 function hideTeachingGuideOverlay() {
@@ -1222,6 +1255,10 @@ function hiddenProjectCount(projects = state.workspace.projects || []) {
 function updateProjectVisibilityToggleLabel(projects = state.workspace.projects || []) {
   const span = qs('label[for="workspaceShowReviewProjects"] span');
   if (!span) return;
+  if (state.role !== "admin") {
+    span.textContent = "显示更多项目";
+    return;
+  }
   const count = hiddenProjectCount(projects);
   span.textContent = count > 0 ? `显示内部/归档项目（${count}）` : "显示内部/归档项目";
 }
@@ -1375,6 +1412,11 @@ function isCustomerTrialP0Mode() {
   return ["auto", "demo", "login"].includes(String(params.get("customer_demo") || "").toLowerCase());
 }
 
+function hasExplicitCustomerDemoMode() {
+  const params = new URLSearchParams(window.location.search || "");
+  return ["auto", "demo", "login"].includes(String(params.get("customer_demo") || "").toLowerCase());
+}
+
 function isEpilepsyResultReviewV3() {
   const params = new URLSearchParams(window.location.search || "");
   return params.get("epilepsy_result_review_v3") === "1";
@@ -1426,7 +1468,7 @@ function epilepsyV3CurrentMeta() {
  */
 async function fetchEpilepsyV3LiveEvents(taskId) {
   if (!taskId) throw new Error("missing task id");
-  const resp = await fetch(`${state.apiBase}/epilepsy-workbench/${encodeURIComponent(taskId)}/events`, { headers: { "Accept": "application/json" } });
+  const resp = await fetch(`${state.apiBase}/epilepsy-workbench/${encodeURIComponent(taskId)}/events`, { headers: withAuthHeaders({ "Accept": "application/json" }) });
   if (!resp.ok) throw new Error(`events endpoint ${resp.status}`);
   const dto = await resp.json();
   const events = Array.isArray(dto?.events) ? dto.events : [];
@@ -1443,7 +1485,8 @@ async function fetchEpilepsyV3LiveEvents(taskId) {
       const durSec = Number(ev.event_duration_sec ?? ev.duration_sec ?? 0);
       // Prefer backend computed score over recalculating from raw rms (GLM-02).
       const scoreRaw = ev.score ? parseFloat(ev.score) : Number(ev.rms ?? ev.max_abs_amplitude ?? 0);
-      const reviewStatus = ev.statusFilter || ev.review_status || "pending";
+      const reviewStatusRaw = String(ev.statusFilter || ev.review_status || "pending");
+      const reviewStatus = ["keep", "exclude", "pending"].includes(reviewStatusRaw) ? reviewStatusRaw : "pending";
       const statusClass = reviewStatus === "keep" ? "ok" : reviewStatus === "exclude" ? "bad" : "warn";
       const statusShort = reviewStatus === "keep" ? "保留" : reviewStatus === "exclude" ? "不纳入" : "待复核";
       return {
@@ -1516,7 +1559,14 @@ function renderEpilepsyResultReviewV3Panel() {
   }
   const meta = epilepsyV3CurrentMeta();
   const st = epilepsyV3ReviewState[ev.id] || {status: ev.statusFilter, note: ""};
-  const s = EPILEPSY_V3.summary;
+  const s = EPILEPSY_V3.summary || {};
+  const safeSummary = {
+    auto_candidates: Number(s.auto_candidates || 0),
+    visible_events: Number(s.visible_events || 0),
+    kept_candidates: Number(s.kept_candidates || 0),
+    pending_review: Number(s.pending_review || 0),
+    candidate_rate_per_hour: String(s.candidate_rate_per_hour || "0.0/h"),
+  };
   const isLive = !!EPILEPSY_V3._liveTaskId;
   const evidenceBase = isLive ? `${state.apiBase}/epilepsy-workbench/${encodeURIComponent(EPILEPSY_V3._liveTaskId)}/events` : EPILEPSY_V3.assetBase;
   const taskArtifacts = state.real.artifacts?.epilepsy_ml || [];
@@ -1530,24 +1580,24 @@ function renderEpilepsyResultReviewV3Panel() {
           <p>选择候选事件 → 查看 1-35 Hz 证据图 → 记录复核结论 → 到交付中心导出证据包。科研筛查辅助工具，仅供研究参考。</p>
         </div>
         <div class="epilepsy-v3-summary-pills">
-          <span class="epilepsy-v3-pill info">自动候选 ${s.auto_candidates}</span>
-          <span class="epilepsy-v3-pill ok">保留 ${s.kept_candidates}</span>
-          <span class="epilepsy-v3-pill warn">待复核 ${s.pending_review}</span>
-          <span class="epilepsy-v3-pill soft">${s.candidate_rate_per_hour}</span>
+              <span class="epilepsy-v3-pill info">自动候选 ${safeSummary.auto_candidates}</span>
+              <span class="epilepsy-v3-pill ok">保留 ${safeSummary.kept_candidates}</span>
+              <span class="epilepsy-v3-pill warn">待复核 ${safeSummary.pending_review}</span>
+              <span class="epilepsy-v3-pill soft">${escapeHtml(safeSummary.candidate_rate_per_hour)}</span>
         </div>
       </div>
       <div class="epilepsy-v3-layout">
         <aside class="epilepsy-v3-event-index" data-testid="v3-event-index">
           <div class="epilepsy-v3-filter-bar">
-            <button class="epilepsy-v3-filter-btn active" data-v3-filter="all">全部 (${s.visible_events})</button>
+            <button class="epilepsy-v3-filter-btn active" data-v3-filter="all">全部 (${safeSummary.visible_events})</button>
             <button class="epilepsy-v3-filter-btn" data-v3-filter="keep">保留</button>
             <button class="epilepsy-v3-filter-btn" data-v3-filter="pending">待复核</button>
             <button class="epilepsy-v3-filter-btn" data-v3-filter="exclude">不纳入</button>
           </div>
           <div class="epilepsy-v3-event-list">
             ${EPILEPSY_V3.events.map(e => `
-              <div class="epilepsy-v3-event-item ${e.id === ev.id ? "selected" : ""}" data-v3-event="${escapeHtml(e.id)}" data-v3-status="${e.statusFilter}">
-                <span class="epilepsy-v3-event-thumb"><img src="${isLive ? `${evidenceBase}/${encodeURIComponent(e.id)}/evidence` : `${EPILEPSY_V3.assetBase}event_previews/${e.id}.png`}" alt="${escapeHtml(e.id)}" loading="lazy" onerror="this.style.display='none'"></span>
+              <div class="epilepsy-v3-event-item ${e.id === ev.id ? "selected" : ""}" data-v3-event="${escapeHtml(e.id)}" data-v3-status="${escapeHtml(e.statusFilter)}">
+                <span class="epilepsy-v3-event-thumb"><img ${isLive ? `data-auth-image-url="${escapeHtml(`${evidenceBase}/${encodeURIComponent(e.id)}/evidence`)}"` : `src="${EPILEPSY_V3.assetBase}event_previews/${e.id}.png"`} alt="${escapeHtml(e.id)}" loading="lazy" onerror="this.style.display='none'"></span>
                 <div class="epilepsy-v3-event-info">
                   <strong>${escapeHtml(e.id)}</strong>
                   <span class="epilepsy-v3-event-time">${escapeHtml(e.start)}</span>
@@ -1578,11 +1628,15 @@ function renderEpilepsyResultReviewV3Panel() {
             <div><small>筛查分数</small><strong>${escapeHtml(ev.score)}</strong></div>
           </div>
           <div class="epilepsy-v3-image-frame" id="epilepsyV3ImageFrame">
-            <img id="epilepsyV3MainImage" src="${isLive ? `${evidenceBase}/${encodeURIComponent(ev.id)}/evidence` : `${EPILEPSY_V3.assetBase}event_previews/${ev.id}_${meta.suffix}.png`}" alt="${escapeHtml(ev.id)} ${escapeHtml(meta.label)}" onerror="this.alt='证据图加载中…'">
+            <img id="epilepsyV3MainImage" ${isLive ? `data-auth-image-url="${escapeHtml(`${evidenceBase}/${encodeURIComponent(ev.id)}/evidence`)}"` : `src="${EPILEPSY_V3.assetBase}event_previews/${ev.id}_${meta.suffix}.png"`} alt="${escapeHtml(ev.id)} ${escapeHtml(meta.label)}" onerror="this.alt='证据图加载中…'">
           </div>
           <div class="epilepsy-v3-download-row">
-            <a id="epilepsyV3DlPng" class="epilepsy-v3-dl-btn" href="${isLive ? `${evidenceBase}/${encodeURIComponent(ev.id)}/evidence` : `${EPILEPSY_V3.assetBase}event_previews/${ev.id}_${meta.suffix}.png`}" download="${ev.id}_${epilepsyV3SelectedView}_evidence.png">导出当前视图 PNG</a>
-            <a id="epilepsyV3DlSvg" class="epilepsy-v3-dl-btn" href="${EPILEPSY_V3.assetBase}event_previews/${ev.id}_${meta.suffix}.svg" download="${ev.id}_${epilepsyV3SelectedView}_1_35hz.svg">导出当前视图 SVG</a>
+            ${isLive
+              ? `<button id="epilepsyV3DlPng" type="button" class="epilepsy-v3-dl-btn" data-auth-download-url="${escapeHtml(`${evidenceBase}/${encodeURIComponent(ev.id)}/evidence`)}" data-auth-download-filename="${escapeHtml(`${ev.id}_${epilepsyV3SelectedView}_evidence.png`)}">导出当前视图 PNG</button>`
+              : `<a id="epilepsyV3DlPng" class="epilepsy-v3-dl-btn" href="${EPILEPSY_V3.assetBase}event_previews/${ev.id}_${meta.suffix}.png" download="${ev.id}_${epilepsyV3SelectedView}_evidence.png">导出当前视图 PNG</a>`}
+            ${isLive
+              ? ""
+              : `<a id="epilepsyV3DlSvg" class="epilepsy-v3-dl-btn" href="${EPILEPSY_V3.assetBase}event_previews/${ev.id}_${meta.suffix}.svg" download="${ev.id}_${epilepsyV3SelectedView}_1_35hz.svg">导出当前视图 SVG</a>`}
           </div>
         </section>
         <aside class="epilepsy-v3-review-panel" data-testid="v3-review-panel">
@@ -1600,22 +1654,27 @@ function renderEpilepsyResultReviewV3Panel() {
           </div>
           <div class="epilepsy-v3-review-note">
             <h4>复核备注</h4>
-            <textarea id="epilepsyV3ReviewNote" rows="3" placeholder="输入科研复核备注（可选）">${st.note || ""}</textarea>
+            <textarea id="epilepsyV3ReviewNote" rows="3" placeholder="输入科研复核备注（可选）">${escapeHtml(st.note || "")}</textarea>
           </div>
           <div class="epilepsy-v3-current-zip">
-            <a id="epilepsyV3CurrentZip" class="epilepsy-v3-dl-btn primary" href="${isLive ? `${evidenceBase}/${encodeURIComponent(ev.id)}/evidence` : `${EPILEPSY_V3.assetBase}event_previews/qlanalyser_epilepsy_event_${ev.id}_evidence_package.zip`}" download="${isLive ? `${ev.id}_evidence.png` : `qlanalyser_epilepsy_event_${ev.id}_evidence_package.zip`}">导出 ${ev.id} 事件证据${isLive ? "图 PNG" : "包 ZIP"}</a>
+            ${isLive
+              ? `<button id="epilepsyV3CurrentZip" type="button" class="epilepsy-v3-dl-btn primary" data-auth-download-url="${escapeHtml(`${evidenceBase}/${encodeURIComponent(ev.id)}/evidence`)}" data-auth-download-filename="${escapeHtml(`${ev.id}_evidence.png`)}">导出 ${escapeHtml(ev.id)} 事件证据图 PNG</button>`
+              : `<a id="epilepsyV3CurrentZip" class="epilepsy-v3-dl-btn primary" href="${EPILEPSY_V3.assetBase}event_previews/qlanalyser_epilepsy_event_${ev.id}_evidence_package.zip" download="qlanalyser_epilepsy_event_${ev.id}_evidence_package.zip">导出 ${ev.id} 事件证据包 ZIP</a>`}
           </div>
         </aside>
       </div>
       <section class="epilepsy-v3-delivery-center" data-testid="v3-delivery-center">
         <div class="panel-head compact"><h3>交付中心</h3><p>全量证据包下载，含所有候选事件的证据图、数据文件和校验信息。</p></div>
-        <a id="epilepsyV3AllZip" class="epilepsy-v3-dl-btn" href="${isLive && allEventZipArtifact ? `${state.apiBase}/artifacts/${encodeURIComponent(allEventZipArtifact.id)}/download` : `${EPILEPSY_V3.assetBase}event_previews/qlanalyser_epilepsy_all_events_evidence_package.zip`}" download="${isLive && allEventZipArtifact ? `qlanalyser_epilepsy_all_events_evidence_package.zip` : `qlanalyser_epilepsy_all_events_evidence_package.zip`}">导出全部事件证据包 ZIP</a>
-        <p class="epilepsy-v3-delivery-note">包含 ${s.visible_events} 个候选事件的 PNG/SVG 证据图、manifest.json、manifest.csv 和 checksums.sha256。科研证据包，仅供研究参考。</p>
+        ${isLive && allEventZipArtifact
+          ? `<button id="epilepsyV3AllZip" type="button" class="epilepsy-v3-dl-btn" data-artifact-download="${escapeHtml(allEventZipArtifact.id)}">导出全部事件证据包 ZIP</button>`
+          : `<a id="epilepsyV3AllZip" class="epilepsy-v3-dl-btn" href="${EPILEPSY_V3.assetBase}event_previews/qlanalyser_epilepsy_all_events_evidence_package.zip" download="qlanalyser_epilepsy_all_events_evidence_package.zip">导出全部事件证据包 ZIP</a>`}
+        <p class="epilepsy-v3-delivery-note">包含 ${safeSummary.visible_events} 个候选事件的 PNG/SVG 证据图、manifest.json、manifest.csv 和 checksums.sha256。科研证据包，仅供研究参考。</p>
       </section>
     </section>
   `;
 
   initEpilepsyResultReviewV3Interactions();
+  loadAuthenticatedUrlImages();
 }
 
 function initEpilepsyResultReviewV3Interactions() {
@@ -1625,6 +1684,18 @@ function initEpilepsyResultReviewV3Interactions() {
 
   /* event selection */
   workspace.addEventListener("click", (ev) => {
+    const authDownload = ev.target.closest("[data-auth-download-url]");
+    if (authDownload) {
+      const url = authDownload.dataset.authDownloadUrl || "";
+      const filename = authDownload.dataset.authDownloadFilename || "download";
+      downloadAuthorizedUrl(url, filename, "image/png,application/octet-stream").catch((error) => showToast(`下载失败: ${error.message || error}`));
+      return;
+    }
+    const artifactDownload = ev.target.closest("[data-artifact-download]");
+    if (artifactDownload) {
+      downloadArtifactAs(artifactDownload.dataset.artifactDownload || "", "");
+      return;
+    }
     const eventItem = ev.target.closest("[data-v3-event]");
     if (eventItem) {
       epilepsyV3SelectedId = eventItem.dataset.v3Event;
@@ -1810,6 +1881,8 @@ function applyCustomerTrialAnalysisSurfaceCleanup() {
   if (layout) {
     layout.classList.toggle("customer-analysis-surface", enabled);
     layout.classList.toggle("has-current-file", enabled && hasFile);
+    layout.classList.toggle("no-current-project", enabled && !hasProject);
+    layout.classList.toggle("no-current-file", enabled && !hasFile);
     layout.classList.toggle("teaching-customer-analysis-surface", teachingSurface);
   }
 
@@ -1842,7 +1915,7 @@ function applyCustomerTrialAnalysisSurfaceCleanup() {
       if (subtitle) subtitle.textContent = hasFile ? "当前数据已选择，可继续预览与确认" : "先选择或上传 EEG 数据";
       const boundary = queuePanel.querySelector('[data-testid="prep-no-upload-boundary"] span');
       if (boundary) boundary.textContent = hasProject
-        ? "当前项目已就绪。请到数据管理上传或选择 EEG 数据。"
+        ? "当前项目已就绪。请到数据页上传或选择 EEG 数据。"
         : "请先创建或打开项目，再上传 EEG 数据。";
       const dashboardButton = queuePanel.querySelector('[data-view-jump="dashboard"]');
       const storageButton = queuePanel.querySelector('[data-view-jump="storage"]');
@@ -1880,10 +1953,11 @@ function applyCustomerTrialAnalysisSurfaceCleanup() {
 
   const previewPanel = qs('[data-testid="single-file-preview-panel"]');
   if (previewPanel) {
-    setTextIfPresent('[data-testid="single-file-preview-panel"] h2', "波形预览与数据准备");
+    previewPanel.classList.toggle("analysis-empty-state-panel", enabled && !hasFile);
+    setTextIfPresent('[data-testid="single-file-preview-panel"] h2', "波形预览与准备方案");
     setTextIfPresent("#previewCaption", hasFile
       ? "先确认波形和数据概况，再进入分析任务。高级片段、坏道和事件记录已收起。"
-      : "请先在当前项目中选择或上传 EEG 数据；页面会自动显示波形预览和必要检查。");
+      : "选择 EEG 数据后，这里会显示波形预览、通道信息和必要检查。");
   }
 
   const editWorkbench = qs('[data-testid="preview-edit-workbench"]');
@@ -1903,9 +1977,9 @@ function applyCustomerTrialAnalysisSurfaceCleanup() {
 
   const confirmButtons = qsa('[data-real-action="confirm-plan-inline"]');
   confirmButtons.forEach((button, index) => {
-    const hideDuplicate = enabled && index > 0;
-    button.hidden = hideDuplicate;
-    button.setAttribute("aria-hidden", hideDuplicate ? "true" : "false");
+    const hideButton = enabled && (!hasFile || index > 0);
+    button.hidden = hideButton;
+    button.setAttribute("aria-hidden", hideButton ? "true" : "false");
   });
 
   const prepContextSummary = qs("#prepContextSummary");
@@ -1963,68 +2037,7 @@ function applyCustomerTrialAnalysisSurfaceCleanup() {
 }
 
 function applyCustomerTrialP0Fixes() {
-  Object.assign(titles, {
-    dashboard: "项目管理",
-    storage: "数据管理",
-    analysis: "数据准备",
-    workflow: "分析任务",
-    epilepsyWorkbenchInline: "癫痫样事件分析台",
-    statistics: "结果查看",
-    publication: "报告交付",
-    journey: "质量检查",
-    userCenter: "个人中心",
-  });
-  Object.assign(PRODUCT_NAV_LABELS, {
-    dashboard: "项目管理",
-    storage: "数据管理",
-    analysis: "数据准备",
-    workflow: "分析任务",
-    statistics: "结果查看",
-    publication: "报告交付",
-    journey: "质量检查",
-    userCenter: "个人中心",
-  });
-  Object.assign(PRODUCT_VIEW_TITLES, {
-    dashboard: "项目管理",
-    storage: "数据管理",
-    analysis: "数据准备",
-    workflow: "分析任务",
-    epilepsyWorkbenchInline: "癫痫样事件分析台",
-    statistics: "结果查看",
-    publication: "报告交付",
-    journey: "质量检查",
-    userCenter: "个人中心",
-  });
-  Object.entries(PRODUCT_NAV_LABELS).forEach(([view, label]) => setTextIfPresent(`[data-view="${view}"] span`, label));
-  const activeView = qs(".view.active")?.id || "dashboard";
-  setTextIfPresent("#viewTitle", PRODUCT_VIEW_TITLES[activeView] || "项目分析");
-  setTextIfPresent("#topEyebrow", "QLanalyser Online · EEG 数据到报告");
-  setTextIfPresent("#logoutBtn span", "退出");
-  setTextIfPresent("#roleLabel", state.role === "admin" ? "后台管理" : "个人中心");
-  setTextIfPresent("#balanceSide", "账号与服务");
-  setTextIfPresent("#accountHint", "余额、充值、发票、权限和设置");
-  setTextIfPresent('[data-testid="project-crud-panel"] h2', "项目管理");
-  setTextIfPresent('[data-testid="project-crud-panel"] .panel-head p', "先创建或打开一个研究项目，再上传或选择项目内的 EEG 数据。");
-  setTextIfPresent('[data-testid="project-data-crud-panel"] h2', "项目内数据");
-  setTextIfPresent('[data-testid="project-data-crud-panel"] .panel-head p', "这里只显示当前项目的数据概况和下一步入口；文件上传与整理请进入“数据管理”。");
-  setTextIfPresent('label:has(#workspaceProjectSearch) span', "搜索项目");
-  const search = qs("#workspaceProjectSearch");
-  if (search) search.placeholder = "按项目名、研究类型或项目编号搜索";
-  setTextIfPresent('label[for="workspaceShowReviewProjects"] span', "显示内部/归档项目");
-  const summary = qs("#workspaceProjectFilterSummary");
-  if (summary && isCustomerTrialP0Mode() && !state.teaching.active) {
-    summary.textContent = "普通模式只显示当前客户项目；没有上传或创建过项目时，列表保持为空。";
-  }
-  setTextIfPresent('[data-real-action="create-project"] span', "创建项目");
-  setTextIfPresent('[data-real-action="upload-eeg"] span', "上传到当前项目");
-  setTextIfPresent('[data-file-trigger="real-eeg-file"] span', "选择 EEG 数据");
-  setTextIfPresent('[data-ia-action="edit-project"] span', "重命名");
-  setTextIfPresent('[data-ia-action="archive-project"] span', "归档");
-  setTextIfPresent('[data-ia-action="delete-project"] span', "删除");
-  setTextIfPresent('[data-testid="result-review-workbench"] h2', "结果查看");
-  setTextIfPresent('[data-testid="result-review-workbench"] .panel-head p', "查看已完成任务的图、表、参数记录和可复核产物。结果仅用于科研分析支持，不作为诊断结论。");
-  setTextIfPresent('[data-testid="report-delivery-workbench"] h2', "报告交付");
-  setTextIfPresent('[data-testid="report-delivery-workbench"] .panel-head p', "管理已生成的交付报告、在线预览、完整下载和交付清单。");
+  applyFinalVisibleCopyGate();
   const selectedProject = currentWorkspaceProject();
   qsa('[data-ia-action="delete-project"]').forEach((button) => {
     const protectedProject = Boolean(selectedProject?.id && isTeachingDemoProject(selectedProject));
@@ -2037,12 +2050,8 @@ function applyCustomerTrialP0Fixes() {
         ? "教学示例用于练习，不能删除。"
         : "删除当前普通项目记录。";
   });
-  const confirmButtons = qsa('[data-real-action="confirm-plan-inline"]');
-  confirmButtons.forEach((button) => {
-    if (confirmButtons.length > 1 && button.closest('[data-testid="preprocessing-inline-panel"]')) {
-      button.hidden = true;
-      button.setAttribute("aria-hidden", "true");
-    }
+  qsa('[data-real-action="confirm-plan-inline"]').forEach((button) => {
+    setNodeHidden(button, Boolean(button.closest('[data-testid="preprocessing-inline-panel"]')));
   });
 }
 
@@ -2181,6 +2190,58 @@ function setRealActionEnabled(action, enabled, title) {
   });
 }
 
+function currentFileChannelCount(file = currentWorkspaceFile()) {
+  return Number(file?.channel_count ?? file?.ch_count ?? file?.n_channels ?? 0);
+}
+
+function currentFileHasChannelLocations(file = currentWorkspaceFile()) {
+  if (!file) return false;
+  if (file.has_montage || file.has_channel_locations || file.montage) return true;
+  if (Array.isArray(file.channel_locations) && file.channel_locations.length) return true;
+  if (Array.isArray(file.dig) && file.dig.length) return true;
+  return Boolean(state.teaching.active && isTeachingDemoFile(file));
+}
+
+function hasSavedEpochSetForCurrentFile() {
+  const file = currentWorkspaceFile();
+  if (!file?.id || !state.real.epochSet?.id) return false;
+  return !state.real.epochSet.input_file_id || state.real.epochSet.input_file_id === file.id;
+}
+
+function moduleAvailability(moduleName) {
+  const customerVisibleModules = new Set(["psd", "erp"]);
+  if (state.role !== "admin" && !customerVisibleModules.has(moduleName)) {
+    return { enabled: false, reason: "该方法属于进阶/内部流程，客户工作区暂不开放。" };
+  }
+  const planReady = isAnalysisReady();
+  const hasEpochSet = hasSavedEpochSetForCurrentFile();
+  const channelCount = currentFileChannelCount();
+  const hasChannelLocations = currentFileHasChannelLocations();
+  const locked = (reason) => ({ enabled: false, reason });
+  if (!planReady) return locked("请先完成数据准备并确认方案");
+  if (["erp", "tfr", "multitaper_tfr", "pac"].includes(moduleName) && !hasEpochSet) {
+    return locked("请先保存事件与片段，再运行事件相关或耦合分析");
+  }
+  if (moduleName === "reference_csd" && !hasChannelLocations) {
+    return locked("CSD 需要通道位置信息；当前数据还不能运行");
+  }
+  if (moduleName === "connectivity" && channelCount < 4) {
+    return locked("Connectivity 至少需要 4 个可用 EEG 通道");
+  }
+  const copy = {
+    psd: "数据准备已确认，可以运行 PSD",
+    multitaper_psd: "数据准备已确认，可以运行 Multitaper PSD",
+    erp: "事件与片段已保存，可以运行 ERP",
+    tfr: "事件与片段已保存，可以运行 TFR",
+    multitaper_tfr: "事件与片段已保存，可以运行 Multitaper TFR",
+    pac: "事件与片段已保存，可以运行 PAC",
+    reference_csd: "通道位置信息已确认，可以运行 CSD",
+    connectivity: "数据准备已确认，可以运行传感器空间 Connectivity",
+    epilepsy_ml: "数据准备已确认，可以进入候选事件复核台",
+  };
+  return { enabled: true, reason: copy[moduleName] || "当前方法可以运行" };
+}
+
 function renderDisabledReason(action, selector) {
   const target = qs(selector);
   const button = qs(`[data-real-action="${action}"]`);
@@ -2205,15 +2266,15 @@ function updateRealActionGate() {
   const hasFile = Boolean(state.real.eegFile?.id);
   const hasPendingUpload = Boolean(qs("#real-eeg-file")?.files?.[0]);
   const protectedTeaching = Boolean(state.teaching.active && (isTeachingDemoProject(state.real.project) || isTeachingDemoFile(state.real.eegFile)));
-  const planReady = hasConfirmedPlan();
+  const planReady = isAnalysisReady();
   const teachingEpilepsyWorkbenchReady = Boolean(state.teaching.active && (hasFile || protectedTeaching));
   const planTitle = planReady
     ? "数据准备已确认，可以继续分析"
     : "请先完成数据准备并确认方案";
   const epilepsyWorkbenchTitle = planReady
-    ? "进入癫痫样事件分析台，先初筛再人工矫正"
+    ? "进入癫痫样候选事件复核台，先初筛再人工矫正"
     : teachingEpilepsyWorkbenchReady
-      ? "示例模式可直接进入癫痫样事件分析台；系统会自动载入癫痫示例数据和准备方案"
+      ? "示例模式可直接进入癫痫样候选事件复核台；系统会自动载入癫痫示例数据和准备方案"
       : planTitle;
   setRealActionEnabled("create-project", !hasProject, hasProject ? "当前已有项目，可继续选择或编辑" : "创建当前项目");
   setRealActionEnabled("upload-eeg", hasProject && hasPendingUpload, hasProject ? (hasPendingUpload ? "上传所选 EEG 文件到当前项目" : "请先选择 EEG 文件") : "请先选择或创建项目");
@@ -2225,18 +2286,18 @@ function updateRealActionGate() {
   setRealActionEnabled("download-epoch-record", hasFile, hasFile ? "下载当前 数据准备记录" : "请先上传 EEG 文件");
   setRealActionEnabled("confirm-plan-inline", hasFile, hasFile ? "确认当前数据准备方案" : "请先上传 EEG 文件");
   setRealActionEnabled("download-plan-json", Boolean(plan), plan ? "下载当前数据准备记录" : "请先确认或载入准备方案");
-  setRealActionEnabled("run-psd", planReady, planTitle);
-  setRealActionEnabled("open-epilepsy-workbench", planReady || teachingEpilepsyWorkbenchReady, epilepsyWorkbenchTitle);
-  setRealActionEnabled("run-epilepsy-ml", planReady, planReady ? "\u5f00\u59cb\u766b\u75eb\u6837\u4e8b\u4ef6\u521d\u7b5b" : planTitle);
-  setRealActionEnabled("run-erp", planReady, planReady ? "可运行 ERP；若事件标记缺失，系统会给出具体提示" : planTitle);
-  setRealActionEnabled("run-tfr", planReady, planReady ? "可运行时频分析；若事件或分段条件不足，系统会给出具体提示" : planTitle);
-  setRealActionEnabled("run-multitaper-psd", planReady, planReady ? "数据准备已确认，可以运行 Multitaper PSD" : "请先完成数据准备并确认方案");
-  setRealActionEnabled("run-multitaper-tfr", planReady, planReady ? "可运行 Multitaper TFR；若事件或分段条件不足，系统会给出具体提示" : "请先完成数据准备并确认方案");
-  setRealActionEnabled("run-reference-csd", planReady, planReady ? "数据准备已确认，可以运行 CSD 电流源密度计算" : "请先完成数据准备并确认方案");
-  setRealActionEnabled("run-pac", planReady, planReady ? "可运行耦合分析；若事件或时间窗条件不足，系统会给出具体提示" : "请先完成数据准备并确认方案");
-  setRealActionEnabled("run-connectivity", planReady, planReady ? "数据准备已确认，可以运行连接性分析" : "请先完成数据准备并确认方案");
+  const psdAvailability = moduleAvailability("psd");
+  const erpAvailability = moduleAvailability("erp");
+  setRealActionEnabled("run-psd", psdAvailability.enabled, psdAvailability.reason || planTitle);
+  setRealActionEnabled("open-epilepsy-workbench", false, "癫痫样候选事件复核属于内部/专项流程，客户工作区暂不开放。");
+  setRealActionEnabled("run-epilepsy-ml", false, "癫痫样候选事件复核属于内部/专项流程，客户工作区暂不开放。");
+  setRealActionEnabled("run-erp", erpAvailability.enabled, erpAvailability.reason);
+  ["run-tfr", "run-multitaper-psd", "run-multitaper-tfr", "run-reference-csd", "run-pac", "run-connectivity"].forEach((action) => {
+    setRealActionEnabled(action, false, "该方法属于进阶/内部流程，客户工作区暂不开放。");
+  });
   const task = latestAnalysisTask();
-  setRealActionEnabled("create-report", Boolean(task), task ? "基于最近一次完成的分析生成报告" : "请先完成一个分析任务");
+  const canCreateReport = Boolean(task && state.real.resultsViewed);
+  setRealActionEnabled("create-report", canCreateReport, canCreateReport ? "基于已查看的分析结果生成报告" : task ? "请先查看分析结果，再生成报告" : "请先完成一个分析任务");
   const gate = qs('[data-testid="analysis-preparation-gate"]');
   if (gate) {
     gate.hidden = planReady;
@@ -2254,15 +2315,16 @@ function updateRealActionGate() {
   if (hasProject && (!hasFile || hasPendingUpload)) nextActions = ["upload-eeg"];
   if (hasFile && !planReady) nextActions = ["run-qc-preview-inline", "run-metadata-qc-inline", "confirm-plan-inline"];
   if (planReady && !state.real.epochSet) nextActions = ["save-epoch-set"];
-  if (planReady && !state.real.epochSet && !task) nextActions = ["run-psd", "run-multitaper-psd", "run-reference-csd", "run-connectivity"];
-  if (planReady && state.real.epochSet && !task) nextActions = ["run-psd", "run-erp", "run-tfr", "run-multitaper-psd", "run-multitaper-tfr", "run-reference-csd", "run-pac", "run-connectivity"];
-  if (task && !state.real.report) nextActions = ["create-report"];
+  if (planReady && !task) nextActions = ["run-psd"];
+  if (task && !state.real.resultsViewed) nextActions = [];
+  if (task && state.real.resultsViewed && !state.real.report) nextActions = ["create-report"];
   if (state.real.report) nextActions = [];
   markRealNextActions(nextActions);
   renderDisabledReason("confirm-plan-inline", "#prepPrimaryReason");
   renderDisabledReason("run-psd", "#analysisPrimaryReason");
   renderDisabledReason("create-report", "#reportPrimaryReason");
   applyCustomerTrialAnalysisSurfaceCleanup();
+  if ((qs(".view.active")?.id || "") === "analysis") applyAnalysisPageStateGate();
 }
 function getAuthSession() {
   try {
@@ -2386,7 +2448,7 @@ function renderEegPreviewEmptyState() {
       empty.innerHTML = `<strong>已选择当前数据：${fileName}</strong><span>系统会自动生成波形和基础质量预览；无需额外点击预览按钮。</span>`;
     }
   } else {
-    empty.innerHTML = `<strong>等待选择 EEG 数据</strong><span>请到数据管理上传或选择当前项目的 EEG 数据。</span>`;
+      empty.innerHTML = `<strong>第 2 步还没完成：上传或选择 EEG 数据</strong><span>请到数据页上传或选择当前项目的 EEG 数据。</span><button class="primary-btn mini" type="button" data-view-jump="storage">上传或选择数据</button>`;
   }
 }
 
@@ -2564,6 +2626,171 @@ function currentWaveformPayload() {
 }
 
 
+/* ── EEG Overview Bar (minimap) ─────────────────────────────────── */
+async function loadEegOverview(file = currentWorkspaceFile()) {
+  if (!file?.id || eegState.overviewLoading) return;
+  const fileId = file.id;
+  const fileDuration = Number(file.duration_sec || 0);
+  if (fileDuration <= 0) return;
+  // 只在文件变化时重新请求
+  if (eegState.overviewPayload?._fileId === fileId) return;
+  eegState.overviewLoading = true;
+  eegState.overviewPayload = null;
+  try {
+    const maxOverviewDur = Math.min(fileDuration, 3600);
+    const params = new URLSearchParams({
+      start_sec: "0",
+      duration_sec: String(maxOverviewDur),
+      max_points: "400",
+      mode: "minmax",
+    });
+    const data = await apiJson(`/eeg/files/${encodeURIComponent(fileId)}/waveform-window?${params}`);
+    eegState.overviewPayload = { ...data, _fileId: fileId, _fileDuration: fileDuration };
+    drawEegOverviewBar();
+  } catch (e) {
+    console.warn("[overview] load failed:", e?.message || e);
+  } finally {
+    eegState.overviewLoading = false;
+  }
+}
+
+function overviewWaveformRows(payload) {
+  const direct = payload?.data_uv || payload?.data;
+  if (Array.isArray(direct) && direct.length) return direct;
+  const channelPayloads = Array.isArray(payload?.channels) ? payload.channels : [];
+  return channelPayloads.map((channel) => {
+    if (Array.isArray(channel?.values) && channel.values.length) return channel.values.map(Number);
+    const mins = Array.isArray(channel?.min_values) ? channel.min_values : [];
+    const maxs = Array.isArray(channel?.max_values) ? channel.max_values : [];
+    const row = [];
+    for (let index = 0; index < Math.min(mins.length, maxs.length); index += 1) {
+      row.push(Number(mins[index] || 0), Number(maxs[index] || 0));
+    }
+    return row;
+  }).filter((row) => row.length);
+}
+
+function overviewChannelNames(payload) {
+  const channels = payload?.channels || payload?.channel_names || [];
+  if (!Array.isArray(channels)) return [];
+  return channels.map((channel, index) => typeof channel === "string" ? channel : (channel?.name || `Ch${index + 1}`));
+}
+
+function drawEegOverviewBar() {
+  const canvas = qs("#eegOverviewBar");
+  const wrap = qs(".eeg-overview-bar-wrap");
+  if (!canvas || !wrap) return;
+  const payload = eegState.overviewPayload;
+  const file = currentWorkspaceFile();
+  const fileDuration = Number(file?.duration_sec || payload?._fileDuration || 0);
+  if (!payload || fileDuration <= 0) {
+    wrap.hidden = true;
+    return;
+  }
+  wrap.hidden = false;
+
+  const dpr = window.devicePixelRatio || 1;
+  const cssW = canvas.clientWidth || canvas.width;
+  const cssH = canvas.clientHeight || canvas.height;
+  canvas.width = cssW * dpr;
+  canvas.height = cssH * dpr;
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, cssW, cssH);
+
+  const epochRows = (state.epilepsyInline && state.epilepsyInline.epochRows) || [];
+  const hasStageCode = Array.isArray(epochRows) && epochRows.length > 0;
+  const left = 8, right = 8, top = 4, bottom = 8 + (hasStageCode ? 9 : 0);
+  const plotW = cssW - left - right;
+  const plotH = cssH - top - bottom;
+  const channels = overviewChannelNames(payload);
+  const data = overviewWaveformRows(payload);
+  if (!data.length) { ctx.fillStyle = "#999"; ctx.font = "11px sans-serif"; ctx.fillText("加载中...", left, cssH/2); return; }
+
+  // 计算全局幅度范围（所有通道）
+  let globalMax = 0;
+  for (let ch = 0; ch < data.length; ch++) {
+    const row = data[ch];
+    if (!Array.isArray(row)) continue;
+    for (let i = 0; i < row.length; i++) {
+      const v = Math.abs(row[i]);
+      if (v > globalMax) globalMax = v;
+    }
+  }
+  if (globalMax <= 0) globalMax = 1;
+  const midY = top + plotH / 2;
+  const yScale = (plotH / 2) * 0.7 / globalMax;
+
+  // 画多通道波形（中心叠加）
+  const nCh = Math.min(data.length, 4); // 概览条只画前 4 通道避免太密
+  for (let ch = 0; ch < nCh; ch++) {
+    const row = data[ch];
+    if (!Array.isArray(row) || !row.length) continue;
+    ctx.beginPath();
+    ctx.strokeStyle = "rgba(30, 110, 200, 0.55)";
+    ctx.lineWidth = 0.6;
+    for (let i = 0; i < row.length; i++) {
+      const x = left + (i / (row.length - 1)) * plotW;
+      const y = midY - row[i] * yScale;
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }
+
+  // 当前窗口高亮框
+  const startSec = Number(eegState.start || 0);
+  const windowSec = Number(eegState.windowSec || 10);
+  const x1 = left + (startSec / fileDuration) * plotW;
+  const x2 = left + (Math.min(startSec + windowSec, fileDuration) / fileDuration) * plotW;
+  ctx.fillStyle = "rgba(30, 120, 230, 0.18)";
+  ctx.fillRect(x1, top, Math.max(2, x2 - x1), plotH);
+  ctx.strokeStyle = "rgba(30, 120, 230, 0.9)";
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(x1, top, Math.max(2, x2 - x1), plotH);
+
+  // Stage_Code 色带（百痫初筛结果）
+  if (hasStageCode) {
+    var bandBottom = cssH - bottom + 6;
+    var bandY = bandBottom - 6;
+    var epochDurationSec = Number(epochRows[0] && (epochRows[0].duration_sec || epochRows[0].duration) || 4);
+    epochRows.forEach(function(row, idx) {
+      var code = Number(row.Stage_Code || row.stage_code || row.prediction || 0);
+      var epochStart = idx * epochDurationSec;
+      var epochEnd = (idx + 1) * epochDurationSec;
+      var bx = left + (epochStart / fileDuration) * plotW;
+      var bw = Math.max(1, (epochEnd - epochStart) / fileDuration * plotW);
+      ctx.fillStyle = code === 1 ? "rgba(220, 38, 38, 0.55)" : "rgba(148, 163, 184, 0.22)";
+      ctx.fillRect(bx, bandY, bw + 0.5, 6);
+    });
+    ctx.strokeStyle = "rgba(148,163,184,0.35)";
+    ctx.lineWidth = 0.5;
+    ctx.strokeRect(left, bandY, plotW, 6);
+  }
+  // 时长标签
+  var labelY = hasStageCode ? (cssH - bottom + 7) : (cssH - 1);
+  ctx.fillStyle = "#666"; ctx.font = "10px sans-serif";
+  ctx.fillText("0s", left, labelY);
+  var durLabel = fileDuration >= 60 ? ((fileDuration / 60).toFixed(1) + "min") : (fileDuration.toFixed(0) + "s");
+  ctx.textAlign = "right";
+  ctx.fillText(durLabel, cssW - right, labelY);
+  ctx.textAlign = "left";
+}function handleEegOverviewClick(event) {
+  const canvas = qs("#eegOverviewBar");
+  const file = currentWorkspaceFile();
+  const fileDuration = Number(file?.duration_sec || eegState.overviewPayload?._fileDuration || 0);
+  if (!canvas || fileDuration <= 0) return;
+  const rect = canvas.getBoundingClientRect();
+  const left = 8, right = 8;
+  const plotW = rect.width - left - right;
+  const ratio = Math.max(0, Math.min(1, (event.clientX - rect.left - left) / plotW));
+  const targetStart = Math.max(0, Math.min(fileDuration - Number(eegState.windowSec || 10), ratio * fileDuration));
+  eegState.start = Math.round(targetStart * 10) / 10;
+  syncEegControlsFromState();
+  reloadWaveformPreview().catch((e) => showToast(e.message || "波形预览更新失败。"));
+}
+window.handleEegOverviewClick = handleEegOverviewClick;
+
+
 function normalizeSegmentRange(start, end) {
   const a = Number(start);
   const b = Number(end);
@@ -2683,6 +2910,17 @@ function syncEegControlsFromState() {
   setTextIfPresent("#eegWindowLabel", `${eegState.windowSec} s`);
   setTextIfPresent("#eegGainLabel", `${Number(waveformSensitivityUvPerRow().toFixed(1))} uV/row`);
   setTextIfPresent("#eegChannelLabel", String(eegState.visibleChannels));
+  // 显示文件总时长提示，帮助用户知道数据范围
+  const durationHint = qs("#eegDurationHint");
+  if (durationHint) {
+    const totalSec = Number(file?.duration_sec || 0);
+    if (totalSec > 0) {
+      durationHint.textContent = `/ ${totalSec >= 60 ? `${(totalSec / 60).toFixed(1)} min` : `${totalSec.toFixed(0)} s`}`;
+      durationHint.hidden = false;
+    } else {
+      durationHint.hidden = true;
+    }
+  }
   syncWaveformModeUi();
   renderWaveformWorkbenchStatus();
 }
@@ -2987,6 +3225,8 @@ function drawEegWaveformPreview(payload = currentWaveformPayload()) {
   const downsampleText = payload.downsampled ? ` · 已按 ${payload.downsample_method || "min/max"} 降采样显示` : "";
   ctx.fillText(`${visibleCount} 通道 · ${payload.unit || "uV"} · ${sampleText}${downsampleText} · ${isFiltered ? "滤波仅预览，不改写原始 EEG" : "原始波形，科研数据准备检查"}`, left + 120, 24);
   renderWaveformWorkbenchStatus();
+  // 同步更新概览条上的当前窗口高亮框
+  drawEegOverviewBar();
   return true;
 }
 
@@ -3139,6 +3379,8 @@ async function loadWaveformPreviewFromTask(task, file = currentWorkspaceFile(), 
   drawEegWaveformPreview(currentPayload);
   renderEegPreviewMetadata(currentPayload, artifacts);
   renderEegPreviewEmptyState();
+  // 加载全时程概览条数据（异步，不阻塞波形渲染）
+  loadEegOverview(file).catch(() => null);
   return currentPayload;
 }
 
@@ -3344,6 +3586,9 @@ async function saveEpochSetFromUi() {
     throw new Error("请先确认数据准备方案，再保存事件与片段。");
   }
   const draft = refreshEpochSetPreview();
+  if (!Number.isFinite(Number(draft.event_count)) || Number(draft.event_count) <= 0) {
+    throw new Error("当前数据没有可用事件，ERP 暂不能运行。请先确认事件标记。");
+  }
   const payload = {
     organization_id: eegFile.organization_id || "local-org",
     project_id: state.real.project.id,
@@ -3586,10 +3831,6 @@ async function ensureRealProject() {
 async function uploadRealEeg() {
   const file = qs("#real-eeg-file")?.files?.[0];
   if (!file) throw new Error("\u8bf7\u5148\u9009\u62e9 EEG \u6570\u636e\u6587\u4ef6\uff0c\u518d\u4e0a\u4f20\u5230\u5f53\u524d\u9879\u76ee\u3002");
-  const authorizationConfirmed = qsa("[data-upload-authorization='eeg']").some((item) => item.checked);
-  if (!authorizationConfirmed) {
-    throw new Error("请先确认你有权上传该 EEG 数据，并同意本次云端试用仅用于科研分析。");
-  }
   const project = await ensureRealProject();
   const form = new FormData();
   form.append("file", file);
@@ -3646,7 +3887,7 @@ async function confirmRealDataPreparationPlan(options = {}) {
       input_file_id: eegFile.id,
       base_revision: baseRevision,
       status: "confirmed",
-      module_scope: ["qc", "psd", "erp", "epilepsy", "epilepsy_ml", "tfr", "pac", "reference_csd", "multitaper_psd_tfr", "connectivity"],
+      module_scope: ["qc", "psd", "erp"],
       source_file: {
         file_id: eegFile.id,
         original_filename: eegFile.original_filename,
@@ -3690,10 +3931,7 @@ async function confirmRealDataPreparationPlan(options = {}) {
       },
       next_step_recommendation: {
         psd: { status: "allowed", reasons: [] },
-        epilepsy_ml: { status: "allowed_after_screening_review", reasons: [] },
         erp: { status: "allowed_after_event_review", reasons: [] },
-        tfr: { status: "allowed_after_epoch_review", reasons: [] },
-        pac: { status: "allowed_after_epoch_review", reasons: [] },
       },
     }),
   });
@@ -3715,14 +3953,14 @@ async function bootstrapEpilepsyDeepLinkWorkbench(reason = "deeplink") {
   applyTeachingModeChrome();
   setView("epilepsyWorkbenchInline");
   renderInlineEpilepsyWorkbench();
-  setRealStatus("正在进入癫痫样事件分析台：自动准备示例 EDF 数据。", "info");
+  setRealStatus("正在进入癫痫样候选事件复核台：自动准备示例 EDF 数据。", "info");
   try {
     await loadTeachingDatasetForModule("epilepsy_ml");
     await ensureTeachingSandboxReady({ preview: false, moduleName: "epilepsy_ml" });
     setView("epilepsyWorkbenchInline");
     renderInlineEpilepsyWorkbench();
     state.deepLink.epilepsyBootstrapStatus = "ready";
-    recordUiAction("epilepsy:deeplink-bootstrap", "pass", "已进入癫痫样事件分析台，并加载示例 EDF 数据。", {
+    recordUiAction("epilepsy:deeplink-bootstrap", "pass", "已进入癫痫样候选事件复核台，并加载示例 EDF 数据。", {
       reason,
       project_id: state.real.project?.id || "",
       file_id: state.real.eegFile?.id || "",
@@ -3735,7 +3973,7 @@ async function bootstrapEpilepsyDeepLinkWorkbench(reason = "deeplink") {
     setView("epilepsyWorkbenchInline");
     renderInlineEpilepsyWorkbench();
     recordUiAction("epilepsy:deeplink-bootstrap", "blocked", state.deepLink.epilepsyBootstrapError);
-    showToast(`进入癫痫样事件分析台未完成：${state.deepLink.epilepsyBootstrapError}`);
+    showToast(`进入癫痫样候选事件复核台未完成：${state.deepLink.epilepsyBootstrapError}`);
     return false;
   } finally {
     state.deepLink.epilepsyBootstrapInFlight = false;
@@ -3918,6 +4156,19 @@ function buildTaskParameters(moduleName, plan) {
     parameters.data_preparation_revision = Number(plan.revision);
     parameters.data_preparation_contract_version = dataPreparationContractVersion(plan);
   }
+  // TFR 跟随波形窗口：注入当前阅片窗的起点和时间窗给后端裁剪
+  if (moduleName === "tfr") {
+    const file = currentWorkspaceFile();
+    const fileDur = Number(file?.duration_sec || 0);
+    if (fileDur > 0) {
+      const startSec = Number(eegState.start || 0);
+      const windowSec = Number(eegState.windowSec || 10);
+      parameters.analysis_window = {
+        start_sec: Math.max(0, Math.min(startSec, fileDur - windowSec)),
+        duration_sec: Math.min(windowSec, fileDur),
+      };
+    }
+  }
   return parameters;
 }
 
@@ -4025,7 +4276,9 @@ async function runRealTask(moduleName, workflowId) {
   }
   state.real.tasks[moduleName] = task;
   state.real.latestTaskModule = moduleName;
-  if (isInlineEpilepsy) setInlineEpilepsyScreeningProgress("loading_results", 72, "\u521d\u7b5b\u4efb\u52a1\u5df2\u8fd4\u56de\uff0c\u6b63\u5728\u8bfb\u53d6 Stage_Code \u4e0e\u5019\u9009\u4e8b\u4ef6\u7ed3\u679c\u3002");
+  state.real.resultsViewed = false;
+  state.real.report = null;
+  if (isInlineEpilepsy) setInlineEpilepsyScreeningProgress("loading_results", 72, "初筛任务已返回，正在读取模型候选标记与候选事件结果。");
   if (moduleName === "epilepsy_ml" && isE2EAutomationContext()) {
     window.__QLANALYSER_LAST_EPILEPSY_TASK__ = task;
     window.__QLANALYSER_EPILEPSY_E2E_TASK__ = task;
@@ -4048,7 +4301,8 @@ async function runRealTask(moduleName, workflowId) {
 }
 async function createRealReport() {
   const task = latestAnalysisTask();
-  if (!task) throw new Error("请先完成至少一个分析任务，再生成交付报告。");
+  if (!task) throw new Error("请先完成至少一个分析任务，再生成报告。");
+  if (!state.real.resultsViewed) throw new Error("请先查看分析结果，再生成报告。");
   const project = await ensureRealProject();
   const title = qs("#realReportTitle")?.value.trim() || "Single-record EEG analysis report";
   const report = await apiJson("/reports", {
@@ -4060,7 +4314,7 @@ async function createRealReport() {
   addReportDownload(report);
   renderRealDelivery();
   setView("publication");
-  setRealStatus("交付报告已生成，可在报告交付页下载。", "ok");
+  setRealStatus("报告已生成，可在报告页下载。", "ok");
   return report;
 }
 
@@ -4114,22 +4368,67 @@ function applyResultSurfaceCopy() {
 
   const review = qs("#realResultReview");
   if (review && !review.querySelector("[data-result-module]") && !state.real.tasks?.psd && !state.real.tasks?.erp && !state.real.tasks?.tfr && !state.real.tasks?.pac) {
+    const action = getRecoveryActionForAnalysisFlow();
     review.innerHTML = `
-      <article class="result-item result-empty-state">
-        <strong>还没有分析结果</strong>
-        <span>先完成数据准备，再从 8 项分析方法中选择一种开始。结果会在这里按模块显示。</span>
+      <article class="result-item result-empty-state" data-result-state="empty" data-testid="customer-empty-results">
+        <strong>第 4 步还没完成：先运行 PSD 分析</strong>
+        <span>完成一次分析任务后，这里会显示图表、表格、参数和可复核记录。</span>
+        <div class="real-actions compact-actions">
+          <button class="primary-btn" type="button" data-view-jump="${escapeHtml(action.view)}"><i data-lucide="${escapeHtml(action.icon)}"></i><span>${escapeHtml(action.label)}</span></button>
+        </div>
       </article>
     `;
   }
 
   const delivery = qs("#realDeliveryLinks");
   if (delivery && !delivery.querySelector("[data-report-id]")) {
+    const task = latestAnalysisTask();
+    const viewedResults = Boolean(task?.id && state.real.resultsViewed);
+    const action = task?.id ? null : getRecoveryActionForAnalysisFlow();
     delivery.innerHTML = `
-      <article class="result-item result-empty-state" data-report-state="empty">
-        <strong>还没有可下载的报告</strong>
-        <span>先完成分析并生成交付报告，下载入口才会出现在这里。</span>
+      <article class="result-item result-empty-state" data-report-state="empty" data-testid="customer-empty-reports">
+        <strong>${viewedResults ? "生成报告" : task?.id ? "请先查看结果，再生成报告" : "请先完成分析并查看结果"}</strong>
+        <span>${viewedResults ? "已查看分析结果，可以整理图表、表格、方法记录和复现信息。" : task?.id ? "先到结果页确认图表、表格和质量提示。" : "完成一次分析任务后，先到结果页查看结果。"}</span>
+        <div class="real-actions compact-actions">
+          ${viewedResults
+            ? `<button class="primary-btn" type="button" data-real-action="create-report"><i data-lucide="file-output"></i><span>生成报告</span></button>`
+            : task?.id
+              ? `<button class="primary-btn" type="button" data-view-jump="statistics"><i data-lucide="chart-line"></i><span>查看分析结果</span></button>`
+            : `<button class="primary-btn" type="button" data-view-jump="${escapeHtml(action.view)}"><i data-lucide="${escapeHtml(action.icon)}"></i><span>${escapeHtml(action.label)}</span></button>`}
+        </div>
       </article>
     `;
+  }
+  if (window.lucide) window.lucide.createIcons();
+}
+
+async function markLatestResultsReviewed() {
+  const task = latestAnalysisTask();
+  if (!task?.id || task.status !== "completed") return null;
+  if (task.result_reviewed_at || task.resultReviewRecorded) {
+    state.real.resultsViewed = true;
+    return task;
+  }
+  try {
+    const audit = await apiJson(`/tasks/${encodeURIComponent(task.id)}/result-review`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    task.result_reviewed_at = audit.created_at || new Date().toISOString();
+    task.resultReviewRecorded = true;
+    state.real.resultsViewed = true;
+    recordUiAction("result:reviewed", "pass", "分析结果已查看，报告生成门控已记录。", {
+      task_id: task.id,
+      audit_id: audit.id || "",
+    });
+    updateRealActionGate();
+    renderRealDelivery();
+    return task;
+  } catch (error) {
+    recordUiAction("result:reviewed", "blocked", `结果查看记录未保存：${error.message || error}`, { task_id: task.id });
+    updateRealActionGate();
+    return null;
   }
 }
 
@@ -4192,31 +4491,56 @@ function artifactGroupSummary(artifacts = []) {
 }
 
 function artifactDetailItems(artifacts = []) {
-  const grouped = new Map();
-  artifacts.forEach((artifact) => {
-    const href = artifactDownloadUrl(artifact);
-    if (!href) return;
-    const label = readableArtifactLabel(artifact);
-    const item = grouped.get(label) || { label, href, count: 0 };
-    item.count += 1;
-    grouped.set(label, item);
-  });
-  return Array.from(grouped.values());
+  return (artifacts || [])
+    .map((artifact) => ({
+      label: readableArtifactLabel(artifact),
+      href: artifactDownloadUrl(artifact),
+      id: artifact.id || "",
+      count: 1,
+    }))
+    .filter((item) => item.href && item.id);
 }
 
 function artifactImageItems(artifacts = []) {
   return (artifacts || [])
-    .filter((artifact) => {
-      const mime = String(artifact.mime_type || artifact.mimeType || "").toLowerCase();
-      const path = String(artifact.path || artifact.object_key || artifact.filename || artifact.label || "").toLowerCase();
-      return mime.startsWith("image/") || /\.(svg|png|jpg|jpeg|webp)$/.test(path);
-    })
+    .filter((artifact) => safeArtifactPreviewMime(artifact))
     .map((artifact) => ({
+      artifact,
+      id: artifact.id || "",
       label: readableArtifactLabel(artifact),
       href: artifactDownloadUrl(artifact),
       mime: artifact.mime_type || artifact.mimeType || "image",
     }))
-    .filter((item) => item.href);
+    .filter((item) => item.href && item.id);
+}
+
+function safeArtifactPreviewMime(artifact) {
+  const mime = String(artifact?.mime_type || artifact?.mimeType || "").toLowerCase();
+  const path = String(artifact?.path || artifact?.object_key || artifact?.filename || artifact?.label || "").toLowerCase();
+  if (mime === "image/png" || mime === "image/jpeg" || mime === "image/webp") return true;
+  return /\.(png|jpg|jpeg|webp)$/.test(path);
+}
+
+function safeBlobPreviewMime(blob) {
+  const mime = String(blob?.type || "").toLowerCase();
+  return mime === "image/png" || mime === "image/jpeg" || mime === "image/webp";
+}
+
+function artifactDownloadTitle(artifact) {
+  const mime = String(artifact?.mime_type || artifact?.mimeType || "").toLowerCase();
+  const path = String(artifact?.path || artifact?.object_key || artifact?.filename || artifact?.label || "").toLowerCase();
+  if (mime.startsWith("image/") || /\.(svg|png|jpg|jpeg|webp)$/.test(path)) return "下载图片";
+  if (mime.includes("csv") || path.endsWith(".csv")) return "下载 CSV";
+  if (mime.includes("json") || path.endsWith(".json")) return "下载 JSON";
+  if (mime.includes("zip") || path.endsWith(".zip")) return "下载 ZIP";
+  if (mime.startsWith("text/") || /\.(txt|md|log)$/.test(path)) return "下载文本";
+  return "下载文件";
+}
+
+function renderAuthenticatedArtifactImage(artifact, label) {
+  const id = artifact?.id || "";
+  if (!id) return `<div class="artifact-card-icon"><i data-lucide="image-off"></i></div>`;
+  return `<img data-auth-artifact-image="${escapeHtml(id)}" alt="${escapeHtml(label)}" loading="lazy" />`;
 }
 
 function renderResultImagePreview(artifacts = []) {
@@ -4226,9 +4550,9 @@ function renderResultImagePreview(artifacts = []) {
     <div class="result-image-preview-grid" data-testid="result-image-preview-grid">
       ${images.map((item) => `
         <figure class="result-image-preview-card">
-          <a href="${escapeHtml(item.href)}" target="_blank" rel="noreferrer">
-            <img src="${escapeHtml(item.href)}" alt="${escapeHtml(item.label)}" loading="lazy" />
-          </a>
+          ${safeArtifactPreviewMime(item.artifact)
+            ? `<button type="button" data-artifact-open="${escapeHtml(item.id)}" title="新窗口打开 ${escapeHtml(item.label)}">${renderAuthenticatedArtifactImage(item.artifact, item.label)}</button>`
+            : `<div class="result-image-static-preview">${renderAuthenticatedArtifactImage(item.artifact, item.label)}</div>`}
           <figcaption><strong>${escapeHtml(item.label)}</strong><span>${escapeHtml(item.mime)}</span></figcaption>
         </figure>
       `).join("")}
@@ -4240,10 +4564,10 @@ function renderArtifactDetailLinks(artifacts = []) {
   const items = artifactDetailItems(artifacts);
   if (!items.length) return "<span>结果文件生成中或暂无可下载文件。</span>";
   return items.map((item) => `
-    <a class="artifact-link-chip" href="${escapeHtml(item.href)}" target="_blank" rel="noreferrer">
+    <button class="artifact-link-chip" type="button" data-artifact-download="${escapeHtml(item.id)}">
       <span>${escapeHtml(item.label)}</span>
       <small>${item.count > 1 ? `含 ${item.count} 个文件` : "1 个文件"}</small>
-    </a>
+    </button>
   `).join("");
 }
 
@@ -4318,7 +4642,7 @@ function renderArtifactCard(artifact) {
     <div class="artifact-card" data-artifact-id="${escapeHtml(artifact.id || '')}" data-artifact-type="${isImage ? "image" : "file"}">
       <div class="artifact-card-preview">
         ${isImage 
-          ? `<img src="${escapeHtml(downloadUrl)}" alt="${escapeHtml(label)}" loading="lazy" />`
+          ? renderAuthenticatedArtifactImage(artifact, label)
           : `<div class="artifact-card-icon"><i data-lucide="file-text"></i></div>`}
       </div>
       <div class="artifact-card-content">
@@ -4326,18 +4650,18 @@ function renderArtifactCard(artifact) {
         <p class="artifact-card-meta">${escapeHtml(artifact.mime_type || "file")}</p>
       </div>
       <div class="artifact-card-actions">
-        <a class="artifact-action-btn" href="${escapeHtml(downloadUrl)}" download title="下载原图">
+        <button class="artifact-action-btn" type="button" data-artifact-download="${escapeHtml(artifact.id || '')}" title="${escapeHtml(artifactDownloadTitle(artifact))}">
           <i data-lucide="download"></i>
-        </a>
+        </button>
         ${isSvg ? `<button type="button" class="artifact-action-btn" data-artifact-svg-download="${escapeHtml(artifact.id || '')}" title="下载 SVG">
           <i data-lucide="file-code"></i>
         </button>` : ""}
         ${isPng ? `<button type="button" class="artifact-action-btn" data-artifact-png-download="${escapeHtml(artifact.id || '')}" title="下载 PNG">
           <i data-lucide="image"></i>
         </button>` : ""}
-        <a class="artifact-action-btn" href="${escapeHtml(downloadUrl)}" target="_blank" rel="noreferrer" title="新窗口打开">
+        ${safeArtifactPreviewMime(artifact) ? `<button class="artifact-action-btn" type="button" data-artifact-open="${escapeHtml(artifact.id || '')}" title="新窗口打开">
           <i data-lucide="external-link"></i>
-        </a>
+        </button>` : ""}
       </div>
     </div>
   `;
@@ -4369,9 +4693,9 @@ function renderArtifactsList(artifacts = []) {
               <span>${escapeHtml(mime)}</span>
             </div>
             <div class="artifact-list-actions">
-              <a class="ghost-btn compact-btn" href="${escapeHtml(downloadUrl)}" download>
-                <i data-lucide="download"></i><span>下载</span>
-              </a>
+              <button class="ghost-btn compact-btn" type="button" data-artifact-download="${escapeHtml(artifact.id || '')}">
+                <i data-lucide="download"></i><span>${escapeHtml(artifactDownloadTitle(artifact))}</span>
+              </button>
             </div>
           </div>
         `;
@@ -4400,8 +4724,18 @@ function renderRealResultReview() {
   if (!target) return;
   const modules = Object.entries(state.real.tasks || {}).filter(([, task]) => task?.id);
   if (!modules.length) {
-    target.innerHTML = "<p>尚未生成分析结果。请先完成数据准备，再开始 PSD 或 ERP 分析。</p>";
+    const action = getRecoveryActionForAnalysisFlow();
+    target.innerHTML = `
+      <article class="result-item result-empty-state" data-result-state="empty" data-testid="customer-empty-results">
+        <strong>还没有分析结果</strong>
+        <span>完成一次分析任务后，这里会显示图表、表格、参数和可复核记录。</span>
+        <div class="real-actions compact-actions">
+          <button class="primary-btn" type="button" data-view-jump="${escapeHtml(action.view)}"><i data-lucide="${escapeHtml(action.icon)}"></i><span>${escapeHtml(action.label)}</span></button>
+        </div>
+      </article>
+    `;
     renderEpilepsyResultReviewV3Panel();
+    if (window.lucide) window.lucide.createIcons();
     return;
   }
   
@@ -4451,10 +4785,10 @@ function renderRealResultReview() {
   const reportAction = task && !state.real.report
     ? `
       <article class="result-item" data-result-action="report">
-        <strong>下一步：生成交付报告</strong>
-        <span>基于当前完成的分析任务，整理图表、表格、方法记录和复现信息。</span>
+        <strong>下一步：生成报告</strong>
+        <span>确认结果图表、表格和参数记录后，再生成报告包。</span>
         <div class="real-actions compact-actions">
-          <button class="primary-btn" type="button" data-real-action="create-report"><i data-lucide="file-output"></i><span>生成交付报告</span></button>
+          <button class="primary-btn" type="button" data-real-action="create-report"><i data-lucide="file-output"></i><span>生成报告</span></button>
         </div>
       </article>
     `
@@ -4462,8 +4796,115 @@ function renderRealResultReview() {
   
   target.innerHTML = `${toolbar}${resultItems}${reportAction}`;
   attachResultViewEventListeners();
+  loadAuthenticatedArtifactImages();
   if (window.lucide) window.lucide.createIcons();
   renderEpilepsyResultReviewV3Panel();
+}
+
+function artifactById(artifactId) {
+  return Object.values(state.real.artifacts || {}).flat().find((artifact) => artifact?.id === artifactId) || null;
+}
+
+function artifactFilename(artifact, fallbackExt = "") {
+  const rawPath = String(artifact?.filename || artifact?.path || artifact?.object_key || "");
+  const pathName = rawPath.split(/[\\/]/).filter(Boolean).pop() || "";
+  const label = String(artifact?.label || artifact?.id || "artifact").replace(/[^\w\-.\u4e00-\u9fa5]+/g, "_");
+  const base = pathName || label || "artifact";
+  if (!fallbackExt || base.toLowerCase().endsWith(`.${fallbackExt.toLowerCase()}`)) return base;
+  return `${base}.${fallbackExt}`;
+}
+
+async function fetchAuthorizedBlobUrl(url, accept = "application/octet-stream") {
+  if (!url) throw new Error("文件下载链接无效");
+  const response = await fetch(url, {
+    method: "GET",
+    headers: withAuthHeaders({ Accept: accept || "application/octet-stream" }),
+    cache: "no-store",
+  });
+  if (!response.ok) throw new Error(`下载失败: ${response.status}`);
+  return response.blob();
+}
+
+async function fetchArtifactBlob(artifact, accept = "application/octet-stream") {
+  return fetchAuthorizedBlobUrl(artifactDownloadUrl(artifact), accept);
+}
+
+function isAllowedAuthenticatedDownloadUrl(url) {
+  try {
+    const parsed = new URL(url, window.location.href);
+    const apiBase = new URL(state.apiBase, window.location.href);
+    const basePath = apiBase.pathname.replace(/\/$/, "");
+    return parsed.origin === apiBase.origin && (parsed.pathname === basePath || parsed.pathname.startsWith(`${basePath}/`));
+  } catch {
+    return false;
+  }
+}
+
+async function downloadAuthorizedUrl(url, filename, accept = "application/octet-stream") {
+  if (!isAllowedAuthenticatedDownloadUrl(url)) throw new Error("下载地址不在当前 API 范围内");
+  const blob = await fetchAuthorizedBlobUrl(url, accept);
+  const objectUrl = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = objectUrl;
+  link.download = filename || "download";
+  document.body.append(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+}
+
+async function loadAuthenticatedUrlImages() {
+  const images = Array.from(document.querySelectorAll("img[data-auth-image-url]"));
+  await Promise.all(images.map(async (img) => {
+    const url = img.dataset.authImageUrl || "";
+    if (!url || img.dataset.authImageStatus === "ready") return;
+    if (!isAllowedAuthenticatedDownloadUrl(url)) {
+      img.dataset.authImageStatus = "failed";
+      img.alt = `${img.alt || "图片"}（加载失败：下载地址不在当前 API 范围内）`;
+      return;
+    }
+    img.dataset.authImageStatus = "loading";
+    try {
+      const blob = await fetchAuthorizedBlobUrl(url, "image/png,image/jpeg,image/webp");
+      if (!safeBlobPreviewMime(blob)) throw new Error("证据图类型不允许预览");
+      const objectUrl = URL.createObjectURL(blob);
+      img.src = objectUrl;
+      img.dataset.authImageStatus = "ready";
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+    } catch (error) {
+      img.dataset.authImageStatus = "failed";
+      img.alt = `${img.alt || "图片"}（加载失败：${error.message || error}）`;
+    }
+  }));
+}
+
+async function loadAuthenticatedArtifactImages() {
+  const images = Array.from(document.querySelectorAll("img[data-auth-artifact-image]"));
+  await Promise.all(images.map(async (img) => {
+    const artifactId = img.dataset.authArtifactImage || "";
+    if (!artifactId || img.dataset.authImageStatus === "ready") return;
+    const cachedUrl = authenticatedArtifactImageUrls.get(artifactId);
+    if (cachedUrl) {
+      img.src = cachedUrl;
+      img.dataset.authImageStatus = "ready";
+      return;
+    }
+    const artifact = artifactById(artifactId);
+    if (!artifact) return;
+    img.dataset.authImageStatus = "loading";
+    try {
+      if (!safeArtifactPreviewMime(artifact)) throw new Error("该文件类型不允许图片预览");
+      const blob = await fetchArtifactBlob(artifact, "image/png,image/jpeg,image/webp");
+      if (!safeBlobPreviewMime(blob)) throw new Error("该文件类型不允许图片预览");
+      const objectUrl = URL.createObjectURL(blob);
+      authenticatedArtifactImageUrls.set(artifactId, objectUrl);
+      img.src = objectUrl;
+      img.dataset.authImageStatus = "ready";
+    } catch (error) {
+      img.dataset.authImageStatus = "failed";
+      img.alt = `${img.alt || "图片"}（加载失败：${error.message || error}）`;
+    }
+  }));
 }
 
 function attachResultViewEventListeners() {
@@ -4474,6 +4915,20 @@ function attachResultViewEventListeners() {
     });
   });
   
+  document.querySelectorAll("[data-artifact-download]").forEach(btn => {
+    btn.addEventListener("click", async (e) => {
+      const artifactId = e.currentTarget.dataset.artifactDownload;
+      await downloadArtifactAs(artifactId, "");
+    });
+  });
+
+  document.querySelectorAll("[data-artifact-open]").forEach(btn => {
+    btn.addEventListener("click", async (e) => {
+      const artifactId = e.currentTarget.dataset.artifactOpen;
+      await openArtifactInNewWindow(artifactId);
+    });
+  });
+
   document.querySelectorAll("[data-artifact-svg-download]").forEach(btn => {
     btn.addEventListener("click", async (e) => {
       const artifactId = e.currentTarget.dataset.artifactSvgDownload;
@@ -4496,29 +4951,57 @@ function attachResultViewEventListeners() {
   });
 }
 
-async function downloadArtifactAs(artifactId, format) {
+async function downloadArtifactAs(artifactId, format = "") {
   try {
-    const allArtifacts = Object.values(state.real.artifacts || {}).flat();
-    const artifact = allArtifacts.find(a => a.id === artifactId);
+    const artifact = artifactById(artifactId);
     if (!artifact) throw new Error("找不到指定的文件");
-    
-    const url = artifactDownloadUrl(artifact);
-    if (!url) throw new Error("文件下载链接无效");
-    
-    const response = await fetch(url);
-    if (!response.ok) throw new Error(`下载失败: ${response.statusText}`);
-    
-    const blob = await response.blob();
-    const filename = `${artifact.label || artifactId}.${format}`;
+    const blob = await fetchArtifactBlob(artifact, "application/octet-stream,*/*");
+    const filename = artifactFilename(artifact, format || "");
     const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
+    const objectUrl = URL.createObjectURL(blob);
+    link.href = objectUrl;
     link.download = filename;
+    document.body.append(link);
     link.click();
-    URL.revokeObjectURL(link.href);
-    
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
     showToast(`已下载 ${filename}`);
   } catch (error) {
     showToast(`下载失败: ${error.message}`);
+  }
+}
+
+async function openArtifactInNewWindow(artifactId) {
+  const targetWindow = window.open("about:blank", "_blank");
+  if (targetWindow) targetWindow.opener = null;
+  try {
+    const artifact = artifactById(artifactId);
+    if (!artifact) throw new Error("找不到指定的文件");
+    if (!safeArtifactPreviewMime(artifact)) {
+      if (targetWindow && !targetWindow.closed) targetWindow.close();
+      await downloadArtifactAs(artifactId, "");
+      return;
+    }
+    const blob = await fetchArtifactBlob(artifact, "image/png,image/jpeg,image/webp");
+    if (!safeBlobPreviewMime(blob)) {
+      if (targetWindow && !targetWindow.closed) targetWindow.close();
+      await downloadArtifactAs(artifactId, "");
+      return;
+    }
+    const objectUrl = URL.createObjectURL(blob);
+    if (targetWindow) {
+      targetWindow.location.href = objectUrl;
+    } else {
+      const link = document.createElement("a");
+      link.href = objectUrl;
+      link.target = "_blank";
+      link.rel = "noreferrer";
+      link.click();
+    }
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+  } catch (error) {
+    if (targetWindow && !targetWindow.closed) targetWindow.close();
+    showToast(`打开失败: ${error.message}`);
   }
 }
 
@@ -4535,7 +5018,7 @@ async function batchDownloadModuleArtifacts(moduleName) {
     const url = `${state.apiBase}/projects/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(task.id)}/artifacts/batch`;
     const response = await fetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json" }
+      headers: withAuthHeaders({ "Content-Type": "application/json" })
     });
     
     if (!response.ok) {
@@ -4545,11 +5028,14 @@ async function batchDownloadModuleArtifacts(moduleName) {
     
     const blob = await response.blob();
     const filename = `${moduleName}_artifacts_${task.id.substring(0, 8)}.zip`;
+    const objectUrl = URL.createObjectURL(blob);
     const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
+    link.href = objectUrl;
     link.download = filename;
+    document.body.append(link);
     link.click();
-    URL.revokeObjectURL(link.href);
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
     
     showToast(`已下载 ${filename}`);
   } catch (error) {
@@ -4560,6 +5046,8 @@ async function batchDownloadModuleArtifacts(moduleName) {
 function addReportDownload(report) {
   const target = qs("#realDeliveryLinks") || qs("#realDelivery");
   if (!target || !report?.id) return;
+  qsa('[data-testid="report-package-contract"]').forEach((node) => { node.hidden = false; });
+  qsa('[data-testid="report-delivery-workbench"] [data-real-action="create-report"]').forEach((node) => { node.hidden = true; });
   const packageUrl = `${state.apiBase}/reports/${encodeURIComponent(report.id)}/package`;
   const htmlUrl = `${state.apiBase}/reports/${encodeURIComponent(report.id)}/html`;
   target.innerHTML = `
@@ -4567,7 +5055,7 @@ function addReportDownload(report) {
       <strong>报告已生成</strong>
       <span>下载完整交付材料，包含图表、表格、方法记录和复现信息。</span>
       <div class="real-actions compact-actions">
-        <a class="primary-btn" data-report-download="package" data-report-id="${escapeHtml(report.id)}" href="${escapeHtml(packageUrl)}">下载完整报告</a>
+        <a class="primary-btn" data-report-download="package" data-report-id="${escapeHtml(report.id)}" href="${escapeHtml(packageUrl)}">下载报告包</a>
         <a class="ghost-btn" data-report-download="html" data-report-id="${escapeHtml(report.id)}" href="${escapeHtml(htmlUrl)}">在线预览</a>
       </div>
     </article>
@@ -4582,19 +5070,26 @@ function renderRealDelivery() {
     return;
   }
   const task = latestAnalysisTask();
+  qsa('[data-testid="report-delivery-workbench"] [data-real-action="create-report"]').forEach((node) => { node.hidden = true; });
+  qsa('[data-testid="report-package-contract"]').forEach((node) => { node.hidden = !task?.id; });
   if (isCustomerTrialP0Mode()) {
+    const viewedResults = Boolean(task?.id && state.real.resultsViewed);
+    const action = task?.id ? null : getRecoveryActionForAnalysisFlow();
     target.innerHTML = `
       <article class="result-item result-empty-state" data-report-state="empty" data-testid="customer-empty-reports">
-        <strong>还没有可下载报告</strong>
-        <span>${task?.id
-          ? "已有完成的分析任务，可以直接生成交付报告。"
-          : "请先完成数据准备，并在分析任务中运行至少一种方法。报告会在分析结果发布后生成。"}
+        <strong>${viewedResults ? "生成报告" : task?.id ? "请先查看结果，再生成报告" : "请先完成分析并查看结果"}</strong>
+        <span>${viewedResults
+          ? "已查看分析结果，可以整理图表、表格、方法记录和复现信息。"
+          : task?.id
+            ? "先到结果页确认图表、表格和质量提示。"
+            : "完成一次分析任务后，先到结果页查看结果。"}
         </span>
         <div class="real-actions compact-actions">
-          ${task?.id
-            ? `<button class="primary-btn" type="button" data-real-action="create-report"><i data-lucide="file-output"></i><span>生成交付报告</span></button>
-               <button class="ghost-btn" type="button" data-view-jump="statistics"><i data-lucide="chart-no-axes-combined"></i><span>查看结果</span></button>`
-            : `<button class="primary-btn" type="button" data-view-jump="analysis"><i data-lucide="sliders-horizontal"></i><span>去数据准备</span></button>`}
+          ${viewedResults
+            ? `<button class="primary-btn" type="button" data-real-action="create-report"><i data-lucide="file-output"></i><span>生成报告</span></button>`
+            : task?.id
+              ? `<button class="primary-btn" type="button" data-view-jump="statistics"><i data-lucide="chart-line"></i><span>查看分析结果</span></button>`
+            : `<button class="primary-btn" type="button" data-view-jump="${escapeHtml(action.view)}"><i data-lucide="${escapeHtml(action.icon)}"></i><span>${escapeHtml(action.label)}</span></button>`}
         </div>
       </article>
     `;
@@ -4605,12 +5100,12 @@ function renderRealDelivery() {
     <article class="result-item" data-report-state="empty">
       <strong>\u6682\u65e0\u53ef\u4e0b\u8f7d\u62a5\u544a</strong>
       <span>${task?.id
-        ? "已有完成的分析任务，请先在分析任务页点击“生成交付报告”。"
-        : "请先完成数据准备并开始至少一个分析任务，然后生成交付报告。"}</span>
+        ? "请先查看分析结果，再生成报告。"
+        : "请先确认数据准备并运行推荐分析，然后查看结果。"}</span>
       <div class="real-actions compact-actions">
-        <button class="ghost-btn" type="button" data-view-jump="${task?.id ? "workflow" : "analysis"}">
-          <i data-lucide="${task?.id ? "file-output" : "sliders-horizontal"}"></i>
-          <span>${task?.id ? "\u53bb\u751f\u6210\u62a5\u544a" : "\u53bb\u6570\u636e\u51c6\u5907"}</span>
+        <button class="${task?.id ? "primary-btn" : "ghost-btn"}" type="button" ${task?.id ? 'data-view-jump="statistics"' : 'data-view-jump="analysis"'}>
+          <i data-lucide="${task?.id ? "chart-line" : "sliders-horizontal"}"></i>
+          <span>${task?.id ? "查看分析结果" : "\u53bb\u6570\u636e\u51c6\u5907"}</span>
         </button>
       </div>
     </article>
@@ -4621,10 +5116,15 @@ function renderRealDelivery() {
 function applyCustomerDemoMode() {
   const mode = new URLSearchParams(window.location.search).get("customer_demo");
   if (!mode) return;
+  const hashView = window.location.hash.slice(1);
+  const existingSession = getAuthSession();
+  if (state.role === "admin" || existingSession.role === "admin" || /^admin[A-Z]/.test(hashView) || hashView === "journey") {
+    return;
+  }
   const normalizedMode = String(mode).toLowerCase();
   if (["login", "auto", "demo"].includes(normalizedMode)) {
     fillDemoCustomerCredentials();
-    setLoginMessage("已填入本地审核测试账号，可直接点击登录进入工作台。", "info");
+    setLoginMessage("已填入本地测试账号，可直接登录。", "info");
   }
   if (normalizedMode === "auto") {
     loginCustomer(demoCustomer.email, demoCustomer.password, true).catch((error) => {
@@ -4646,7 +5146,7 @@ async function handleRealAction(action) {
     "download-epoch-record": "\u4e0b\u8f7d 数据准备记录",
     "confirm-plan-inline": "\u786e\u8ba4\u6570\u636e\u51c6\u5907",
     "download-plan-json": "下载处理记录",
-    "create-report": "生成交付报告",
+    "create-report": "生成报告",
     "run-psd": "PSD 分析",
     "run-erp": "ERP 分析",
     "run-tfr": "TFR 时频分析",
@@ -4707,7 +5207,7 @@ async function handleRealAction(action) {
 }
 
 function handleSubmitAnalysisClick() {
-  const planReady = hasConfirmedPlan();
+  const planReady = isAnalysisReady();
   if (!planReady) {
     const message = "请先完成数据准备确认和事件分段，再提交分析任务。";
     recordUiAction("real:submit-analysis", "blocked", message);
@@ -4715,7 +5215,7 @@ function handleSubmitAnalysisClick() {
     setView("analysis");
     return;
   }
-  recordUiAction("real:submit-analysis", "pass", "分析入口已就绪，请在当前可用方法中选择要运行的分析。");
+  recordUiAction("real:submit-analysis", "pass", "分析入口已就绪，请优先运行推荐分析。");
   setView("workflow");
 }
 
@@ -5085,7 +5585,7 @@ function artifactSearchText(artifact = {}) {
 function artifactBelongsToTask(artifact, taskId) {
   const text = artifactSearchText(artifact);
   const normalizedTaskId = String(taskId || "").toLowerCase();
-  return Boolean(normalizedTaskId && text.includes(`/${normalizedTaskId}/`)) || Boolean(normalizedTaskId && text.includes(`\\${normalizedTaskId}\\`));
+  return Boolean(normalizedTaskId && text.includes(`/${normalizedTaskId}/`)) || Boolean(normalizedTaskId && text.includes(`\${normalizedTaskId}\\`));
 }
 
 function findInlineEpilepsyTaskArtifact(artifacts, taskId, candidates = []) {
@@ -5138,7 +5638,7 @@ async function loadInlineEpilepsyResultData(task, artifacts) {
     { label: "epilepsy_ml_spectrogram" },
     { path: "data/epilepsy_ml_spectrogram.json" },
   ]);
-  if (!task?.id || !epochArtifact || !eventArtifact) {
+  if (!task?.id || !epochArtifact) {
     state.epilepsyInline.resultTaskId = task?.id || "";
     state.epilepsyInline.epochRows = [];
     state.epilepsyInline.eventRows = [];
@@ -5156,7 +5656,7 @@ async function loadInlineEpilepsyResultData(task, artifacts) {
   try {
     const [epochText, eventText, spectrogramText] = await Promise.all([
       fetchArtifactText(epochArtifact),
-      fetchArtifactText(eventArtifact),
+      eventArtifact ? fetchArtifactText(eventArtifact) : Promise.resolve(""),
       spectrogramArtifact ? fetchArtifactText(spectrogramArtifact) : Promise.resolve(""),
     ]);
     state.epilepsyInline.resultTaskId = task.id;
@@ -5191,7 +5691,33 @@ function inlineEpilepsyArtifacts() {
 }
 
 function inlineEpilepsyCandidateEvents() {
-  return (state.epilepsyInline.eventRows || []).map((row, index) => {
+  var eventRows = state.epilepsyInline.eventRows || [];
+  if (eventRows.length === 0) {
+    // Fallback: synthesize candidate events from epochRows with Stage_Code=1
+    // when the backend screening pipeline did not register an events CSV artifact.
+    var epochRows = state.epilepsyInline.epochRows || [];
+    var epochDur = Number((epochRows[0] && (epochRows[0].duration_sec || epochRows[0].duration)) || 5);
+    var idx = 0;
+    return epochRows
+      .map(function (row, index) {
+        var code = Number(row.Stage_Code ?? row.stage_code ?? row.prediction ?? 0);
+        if (code !== 1) return null;
+        idx += 1;
+        var startSec = Number(row.start_sec ?? row.start ?? index * epochDur);
+        var endSec = Number(row.end_sec ?? row.end ?? (startSec + epochDur));
+        return {
+          id: "E-" + String(idx).padStart(3, "0"),
+          label: "候选事件 " + idx + "（来自 Stage_Code）",
+          start: Number.isFinite(startSec) ? startSec : index * epochDur,
+          end: Number.isFinite(endSec) && endSec > startSec ? endSec : startSec + epochDur,
+          startEpoch: row.epoch_index ?? index,
+          endEpoch: row.epoch_index ?? index,
+          source: row,
+        };
+      })
+      .filter(Boolean);
+  }
+  return eventRows.map((row, index) => {
     const start = Number(row.start_sec ?? row.start ?? row.onset_sec ?? 0);
     const end = Number(row.end_sec ?? row.end ?? (start + Number(row.duration_sec || 0)));
     const label = row.event_id || row.id || `evt-${index + 1}`;
@@ -5435,7 +5961,7 @@ async function saveInlineEpilepsyReviewDraft() {
     state.epilepsyInline.reviewSaveError = "";
     state.epilepsyInline.draftSaved = true;
     state.epilepsyInline.published = false;
-    showToast("人工矫正草稿已保存到后端复核会话。");
+    showToast("人工矫正草稿已保存到复核记录。");
   } catch (error) {
     state.epilepsyInline.reviewSaveStatus = "failed";
     state.epilepsyInline.reviewSaveError = error.message || String(error);
@@ -5462,7 +5988,7 @@ async function exportInlineEpilepsyReviewResults() {
     renderRealResultReview();
     renderRealDelivery();
     publishE2EState();
-    showToast("人工矫正结果已注册为复核产物，可进入结果查看。");
+    showToast("人工矫正结果已生成，可进入结果页查看。");
   } catch (error) {
     state.epilepsyInline.exportStatus = "failed";
     state.epilepsyInline.exportError = error.message || String(error);
@@ -5745,7 +6271,7 @@ function drawInlineEpilepsyWaveform() {
     });
     ctx.fillStyle = "#475569";
     ctx.font = "10px Segoe UI";
-    ctx.fillText("Stage_Code", left + 4, bandY + bandH + 12);
+    ctx.fillText("候选标记", left + 4, bandY + bandH + 12);
   }
   const selectedEvent = inlineEpilepsySelectedEvent();
   if (reader.overlayVisibility.candidates && selectedEvent) {
@@ -5760,6 +6286,14 @@ function drawInlineEpilepsyWaveform() {
     ctx.fillStyle = "#92400e";
     ctx.font = "700 12px Segoe UI";
     ctx.fillText("候选事件", x + 6, top + 16);
+    // onset 竖线（金色虚线穿透波形面板，与频谱图同步）
+    if (x1 >= left && x1 <= left + plotW) {
+      ctx.strokeStyle = "rgba(251, 191, 36, .70)";
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([5, 4]);
+      ctx.beginPath(); ctx.moveTo(x1, top); ctx.lineTo(x1, top + plotH); ctx.stroke();
+      ctx.setLineDash([]);
+    }
   }
   ctx.fillStyle = "#64748b";
   ctx.font = "11px Segoe UI";
@@ -5873,8 +6407,32 @@ function drawInlineEpilepsySpectrogram() {
   }
   const left = 58;
   const right = 16;
-  const top = 20;
+  var top = 20;
   const bottom = 34;
+  // Stage_Code band for epoch rows
+  var scEpochRows = (state.epilepsyInline && state.epilepsyInline.epochRows) || [];
+  var hasScBand = scEpochRows.length > 0;
+  var scBandH = hasScBand ? 10 : 0;
+  if (hasScBand) {
+    var scEpochDur = Number(scEpochRows[0]?.duration_sec || scEpochRows[0]?.duration || 4);
+    scEpochRows.forEach(function(scRow, scIdx) {
+      var scCode = Number(scRow.Stage_Code ?? scRow.stage_code ?? scRow.prediction ?? 0);
+      var scStart = scIdx * scEpochDur;
+      var scEnd = (scIdx + 1) * scEpochDur;
+      if (scEnd <= windowStart || scStart >= windowEnd) return;
+      var scX1 = left + ((Math.max(windowStart, scStart) - windowStart) / Math.max(0.001, windowEnd - windowStart)) * (width - left - right);
+      var scX2 = left + ((Math.min(windowEnd, scEnd) - windowStart) / Math.max(0.001, windowEnd - windowStart)) * (width - left - right);
+      ctx.fillStyle = scCode === 1 ? "rgba(220, 38, 38, 0.45)" : "rgba(148, 163, 184, 0.18)";
+      ctx.fillRect(scX1, top, Math.max(1, scX2 - scX1), scBandH);
+    });
+    ctx.strokeStyle = "rgba(148,163,184,0.25)";
+    ctx.lineWidth = 0.5;
+    ctx.strokeRect(left, top, width - left - right, scBandH);
+    ctx.fillStyle = "#64748b";
+    ctx.font = "9px Segoe UI";
+    ctx.fillText("候选标记", left + 3, top + scBandH - 2);
+    top = top + scBandH + 3;
+  }
   const plotW = width - left - right;
   const plotH = height - top - bottom;
   const cols = spec.times.length;
@@ -5940,16 +6498,27 @@ function renderInlineEpilepsyWorkbench() {
       const file = currentWorkspaceFile() || state.real.eegFile || {};
       const plan = state.real.plan || {};
       const hasFile = Boolean(file.id);
-      const planReady = hasConfirmedPlan();
+      const planReady = isAnalysisReady();
       if (!hasFile) {
+        const context = qs('[data-testid="inline-epilepsy-context-header"]');
+        if (context) {
+          context.innerHTML = `
+            <div class="inline-staging-title">
+              <div>
+                <p class="eyebrow">分析任务 / 癫痫样候选事件复核</p>
+                <h2>癫痫样候选事件复核台</h2>
+                <p>用于候选事件初筛和人工复核。请先选择 EDF/EEG 数据，本页不提供诊断、确诊、治疗或临床分诊结论。</p>
+              </div>
+            </div>
+          `;
+        }
         statusContainer.hidden = false;
+        statusContainer.classList.add("single-empty-action");
         statusContainer.innerHTML = `
-          <div class="status-icon"><svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div>
-          <div class="status-title">请先选择 EEG 数据</div>
-          <div class="status-message">癫痫样事件分析台需要先选择 EEG 数据文件。<br/>请先到数据管理上传或选择一个 EDF 文件，完成数据准备后再进入癫痫分析。</div>
+          <div class="status-title">请先完成数据选择和准备确认</div>
+          <div class="status-message">上传或选择已准备的 EEG 数据后，这里会显示波形、模型候选标记和人工复核工具。</div>
           <div class="status-actions">
-            <button class="primary-btn" type="button" data-workbench-goto="storage"><span>去数据管理</span></button>
-            <button class="ghost-btn" type="button" data-workbench-goto="workflow"><span>返回分析任务</span></button>
+            <button class="primary-btn" type="button" data-workbench-goto="storage"><span>上传或选择 EEG 数据</span></button>
           </div>`;
         statusContainer.querySelectorAll('[data-workbench-goto]').forEach(function(btn) {
           btn.addEventListener('click', function() {
@@ -5959,6 +6528,7 @@ function renderInlineEpilepsyWorkbench() {
         return; // 有状态占位时不渲染详细面板
       }
       statusContainer.hidden = true;
+      statusContainer.classList.remove("single-empty-action");
     }
   } catch (e) { console.warn('epilepsyWorkbenchStatus render error:', e); }
 
@@ -5969,7 +6539,7 @@ function renderInlineEpilepsyWorkbench() {
   const status = String(task?.status || "not_started").toLowerCase();
   const running = status === "running" || status === "queued" || String(task?.id || "").startsWith("pending_");
   const completed = status === "completed";
-  const planReady = hasConfirmedPlan();
+  const planReady = isAnalysisReady();
   const resultReady = completed && state.epilepsyInline.resultLoadStatus === "ready";
   const events = resultReady ? inlineEpilepsyCandidateEvents() : [];
   const selectedEvent = inlineEpilepsySelectedEvent(events);
@@ -5998,33 +6568,33 @@ function renderInlineEpilepsyWorkbench() {
   const canPublish = state.epilepsyInline.draftSaved && Boolean(state.epilepsyInline.reviewSession?.id) && !exportingReview && state.epilepsyInline.exportStatus !== "exported";
   const correctionDisabledReason = resultReady ? "请选择一个候选事件后再进行人工矫正。" : "请先完成癫痫样事件初筛并载入候选事件。";
   const saveDisabledReason = savingReview ? "正在保存复核草稿。" : draftCount ? "当前草稿已保存或正在等待后端返回。" : "请先选择候选事件并添加人工矫正草稿。";
-  const publishDisabledReason = state.epilepsyInline.exportStatus === "exported" ? "复核结果已发布到结果查看。" : "请先保存后端复核会话，再发布到结果查看。";
-  const reviewSessionLabel = state.epilepsyInline.reviewSession?.id || "尚未保存到后端";
-  const exportLabel = state.epilepsyInline.exportStatus === "exported" ? "已注册复核产物" : state.epilepsyInline.exportStatus === "exporting" ? "正在注册产物" : "等待保存草稿";
+  const publishDisabledReason = state.epilepsyInline.exportStatus === "exported" ? "复核结果已发布到结果页。" : "请先保存复核记录，再发布到结果页。";
+  const reviewSessionLabel = state.epilepsyInline.reviewSession?.id || "尚未保存";
+  const exportLabel = state.epilepsyInline.exportStatus === "exported" ? "已生成复核结果" : state.epilepsyInline.exportStatus === "exporting" ? "正在生成复核结果" : "等待保存草稿";
   const counts = inlineEpilepsySummaryCounts(events);
   const teachingInline = Boolean(state.teaching.active && (isTeachingDemoProject(state.real.project) || isTeachingDemoFile(file)));
   const deepLinkPreparing = state.deepLink.epilepsyBootstrapStatus === "running" || state.deepLink.epilepsyBootstrapInFlight;
   const deepLinkFailed = state.deepLink.epilepsyBootstrapStatus === "failed";
-  const teachingBoundaryText = "\u6559\u5b66\u6a21\u5f0f\uff1a\u6b63\u5728\u4f7f\u7528\u5185\u7f6e\u5408\u6210\u766b\u75eb\u6837 EEG \u6570\u636e\uff0c\u53ef\u5b8c\u6574\u8bd5\u8dd1\u521d\u7b5b\u3001\u4eba\u5de5\u77eb\u6b63\u548c\u590d\u6838\u4ea7\u7269\u6ce8\u518c\uff1b\u4e0d\u4e0a\u4f20\u3001\u4e0d\u5220\u9664\u3001\u4e0d\u8986\u76d6\u4f60\u7684\u6b63\u5f0f\u6570\u636e\uff0c\u4e0d\u4f5c\u4e3a\u8bca\u65ad\u6216\u79d1\u5b66\u7ed3\u8bba\u3002";
+  const teachingBoundaryText = "\u6559\u5b66\u6a21\u5f0f\uff1a\u6b63\u5728\u4f7f\u7528\u5185\u7f6e\u5408\u6210\u766b\u75eb\u6837 EEG \u6570\u636e\uff0c\u53ef\u5b8c\u6574\u8bd5\u8dd1\u521d\u7b5b\u3001\u4eba\u5de5\u77eb\u6b63\u548c\u590d\u6838\u7ed3\u679c\u751f\u6210\uff1b\u4e0d\u4e0a\u4f20\u3001\u4e0d\u5220\u9664\u3001\u4e0d\u8986\u76d6\u4f60\u7684\u6b63\u5f0f\u6570\u636e\uff0c\u4e0d\u4f5c\u4e3a\u8bca\u65ad\u6216\u79d1\u5b66\u7ed3\u8bba\u3002";
   const context = qs('[data-testid="inline-epilepsy-context-header"]');
   if (context) {
     context.innerHTML = `
       <div class="inline-staging-title">
         <div>
           <p class="eyebrow">分析任务 / 主系统子页面</p>
-          <h2>癫痫样事件分析台</h2>
-          <p>继承已确认的数据准备方案，进入后先查看已加载波形；再运行候选事件初筛，结合 Stage_Code、事件表、时频证据与人工矫正形成草稿；标准结果发布需等待后端产物注册。科研支持用途，不用于诊断、确诊、治疗或临床分诊。</p>
+          <h2>癫痫样候选事件复核台</h2>
+          <p>继承已确认的数据准备方案，进入后先查看波形；再运行候选事件初筛，结合模型候选标记、事件表、时频证据与人工矫正形成复核草稿。科研支持用途，不用于诊断、确诊、治疗或临床分诊。</p>
         </div>
         <div class="real-actions compact-actions">
           <button class="ghost-btn" type="button" data-view-jump="workflow"><span>分析任务</span></button>
-          <button class="ghost-btn" type="button" data-view-jump="statistics"><span>结果查看</span></button>
+          <button class="ghost-btn" type="button" data-view-jump="statistics"><span>查看结果</span></button>
         </div>
       </div>
       <div class="inline-staging-context-grid">
         <span><b>数据</b>${escapeHtml(file.original_filename || file.filename || file.id || "未选择")}</span>
         <span><b>准备方案</b>${escapeHtml(plan.id ? `${plan.id} / r${plan.revision || "-"}` : "未确认")}</span>
         <span><b>分析状态</b>${escapeHtml(completed ? "已完成初筛" : running ? "正在运行" : "等待开始")}</span>
-        <span><b>合同版本</b>${escapeHtml(dataPreparationContractVersion(plan))}</span>
+        <span><b>准备记录</b>${escapeHtml(dataPreparationContractVersion(plan))}</span>
       </div>
       ${teachingInline ? `<div class="segment-summary teaching-protected-note" data-testid="inline-epilepsy-teaching-boundary">${escapeHtml(teachingBoundaryText)}</div>` : ""}
       ${deepLinkPreparing ? `<div class="segment-summary teaching-protected-note" data-testid="inline-epilepsy-deeplink-status">正在准备癫痫示例 EDF 数据...</div>` : ""}
@@ -6036,13 +6606,13 @@ function renderInlineEpilepsyWorkbench() {
     const gateReason = planReady ? "准备方案已确认，可以运行后端初筛。" : "尚未确认数据准备方案：可以先查看波形，但不能运行初筛。";
     const screeningStatus = state.epilepsyInline.screeningStatus || (running ? "running" : completed ? "completed" : "idle");
     const screeningProgress = Math.max(0, Math.min(100, Number(state.epilepsyInline.screeningProgress || (running ? 35 : completed ? 100 : 0))));
-    const screeningMessage = state.epilepsyInline.screeningMessage || (running ? "\u540e\u7aef\u6b63\u5728\u8fdb\u884c\u766b\u75eb\u6837\u4e8b\u4ef6\u521d\u7b5b\u3002" : completed ? "\u766b\u75eb\u6837\u4e8b\u4ef6\u521d\u7b5b\u5b8c\u6210\uff0c\u53ef\u7ee7\u7eed\u4eba\u5de5\u77eb\u6b63\u3002" : "\u70b9\u51fb\u5f00\u59cb\u521d\u7b5b\u540e\uff0c\u4f1a\u5148\u63d0\u4ea4\u4efb\u52a1\uff0c\u518d\u8bfb\u53d6\u5019\u9009\u4e8b\u4ef6\u4e0e Stage_Code \u7ed3\u679c\u3002");
+    const screeningMessage = state.epilepsyInline.screeningMessage || (running ? "\u7cfb\u7edf\u6b63\u5728\u8fdb\u884c\u766b\u75eb\u6837\u4e8b\u4ef6\u521d\u7b5b\u3002" : completed ? "\u766b\u75eb\u6837\u4e8b\u4ef6\u521d\u7b5b\u5b8c\u6210\uff0c\u53ef\u7ee7\u7eed\u4eba\u5de5\u77eb\u6b63\u3002" : "\u70b9\u51fb\u5f00\u59cb\u521d\u7b5b\u540e\uff0c\u7cfb\u7edf\u4f1a\u8bfb\u53d6\u5019\u9009\u4e8b\u4ef6\u548c\u6a21\u578b\u5019\u9009\u6807\u8bb0\u3002");
     startPanel.innerHTML = `
       <div class="inline-staging-callout inline-workbench-toolbar">
         <div>
           <p class="eyebrow">操作台工具栏</p>
           <h2>${completed ? "算法结果已载入，继续人工矫正" : "先阅片，再按需初筛"}</h2>
-          <p data-testid="inline-epilepsy-gate-reason">${escapeHtml(gateReason)} 波形、Stage 条、时频证据与候选事件保持同一时间尺度。</p>
+          <p data-testid="inline-epilepsy-gate-reason">${escapeHtml(gateReason)} 波形、候选标记、时频证据与候选事件保持同一时间尺度。</p>
         </div>
         <div class="real-actions compact-actions">
           <button class="primary-btn" type="button" data-testid="inline-epilepsy-start-screening" data-real-action="run-epilepsy-ml" title="${escapeHtml(gateReason)}" ${(!planReady || running) ? "disabled" : ""}><span>${running ? "运行中" : completed ? "重新初筛" : "开始初筛"}</span></button>
@@ -6060,10 +6630,10 @@ function renderInlineEpilepsyWorkbench() {
     summary.innerHTML = `
       <div class="panel-head compact"><h2>结果概览</h2><span class="badge ${resultReady ? "" : "warn"}">${resultReady ? "真实结果已载入" : state.epilepsyInline.resultLoadStatus}</span></div>
       <div class="metric-grid compact-metrics">
-        <article class="metric"><span>候选事件</span><strong>${counts.eventCount}</strong><small>来自本次 events artifact</small></article>
-        <article class="metric"><span>Epoch</span><strong>${counts.epochCount}</strong><small>来自本次 epoch predictions</small></article>
-        <article class="metric"><span>Stage_Code=1</span><strong>${counts.seizureEpochs}</strong><small>模型候选命中</small></article>
-        <article class="metric"><span>人工矫正</span><strong>${draftCount}</strong><small>${state.epilepsyInline.draftSaved ? "已同步后端复核会话" : "本地草稿"}</small></article>
+        <article class="metric"><span>候选事件</span><strong>${counts.eventCount}</strong><small>来自本次结果文件</small></article>
+        <article class="metric"><span>Epoch</span><strong>${counts.epochCount}</strong><small>来自模型分段结果</small></article>
+        <article class="metric"><span>候选命中</span><strong>${counts.seizureEpochs}</strong><small>模型候选标记</small></article>
+        <article class="metric"><span>人工矫正</span><strong>${draftCount}</strong><small>${state.epilepsyInline.draftSaved ? "已保存复核记录" : "本地草稿"}</small></article>
       </div>
       <div class="segment-summary">源结果来自本次初筛任务；人工矫正只写复核版本，不覆盖原始算法输出。</div>
       ${state.epilepsyInline.resultLoadError ? `<p class="small-muted danger-text" data-testid="inline-epilepsy-result-load-error">结果读取错误：${escapeHtml(state.epilepsyInline.resultLoadError)}</p>` : ""}
@@ -6075,29 +6645,85 @@ function renderInlineEpilepsyWorkbench() {
       ? (state.epilepsyInline.epochRows || []).map((row, index) => {
           const code = Number(row.Stage_Code ?? row.stage_code ?? 0);
           const epochIndex = row.epoch_index ?? index;
+          const epochDurationSec = Number(row.duration_sec || row.duration || 4);
           const mappedEvent = inlineEpilepsyEventForEpoch(epochIndex, events);
           const active = mappedEvent?.id && mappedEvent.id === selectedEventId ? " selected" : "";
-          return `<button type="button" class="${code === 1 ? "candidate" : ""}${active}" data-epilepsy-action="select-epoch" data-epoch-index="${escapeHtml(epochIndex)}" data-event-id="${escapeHtml(mappedEvent?.id || "")}" title="${mappedEvent ? "选择对应候选事件" : "该 epoch 暂无候选事件"}">${escapeHtml(String(code))}</button>`;
+          const inWindow = (epochIndex * epochDurationSec < displayEndSec && (epochIndex + 1) * epochDurationSec > displayStartSec) ? " in-window" : "";
+          return `<button type="button" class="${code === 1 ? "candidate" : ""}${active}${inWindow}" data-epilepsy-action="select-epoch" data-epoch-index="${escapeHtml(epochIndex)}" data-event-id="${escapeHtml(mappedEvent?.id || "")}" title="${mappedEvent ? "选择对应候选事件" : "该 epoch 暂无候选事件"}">${escapeHtml(String(code))}</button>`;
         }).join("")
-      : `<em>运行初筛后显示每个 epoch 的 Stage_Code。</em>`;
+      : `<em>运行初筛后显示每个 epoch 的模型候选标记。</em>`;
+    var epochDur = Number((state.epilepsyInline.epochRows[0] && state.epilepsyInline.epochRows[0].duration_sec) || (state.epilepsyInline.epochRows[0] && state.epilepsyInline.epochRows[0].duration) || 4);
+    var totalEpochs = (state.epilepsyInline.epochRows || []).length;
+    var totalDur = totalEpochs * epochDur;
+    var timeLabels = "";
+    // 时间刻度：0s, 60s, 120s(2min), 180s(3min)... 精确覆盖所有 epoch
+    for (var ts = 0; ts <= totalDur; ts += 60) {
+      var labelText = ts >= 120 ? (ts / 60).toFixed(0) + "min" : ts + "s";
+      var labelPos = totalDur > 0 ? (ts / totalDur) * 100 : 0;
+      timeLabels += '<span style="position:absolute;left:' + labelPos.toFixed(1) + '%;top:0;font-size:10px;color:#64748b;transform:translateX(-50%);white-space:nowrap">' + labelText + '</span>';
+    }
+    // 发作起点：扫描 epoch 按钮 DOM 中第一个显示 "1" 的位置
+    var onsetMarkerHtml = "";
+    if (resultReady && cells.indexOf('>1<') > 0) {
+      var onsetSec = 0;
+      for (var fi = 0; fi < totalEpochs; fi++) {
+        var scRow = state.epilepsyInline.epochRows[fi];
+        var sc = Number((scRow && (scRow.Stage_Code !== undefined ? scRow.Stage_Code : scRow.stage_code)) || 0);
+        if (sc === 1) { onsetSec = fi * epochDur; break; }
+      }
+      if (onsetSec === 0) {
+        // fallback: direct DOM scan
+        var btns = document.querySelectorAll(".inline-epoch-strip button");
+        for (var bi = 0; bi < btns.length; bi++) {
+          if (btns[bi].textContent.trim() === "1") { onsetSec = bi * epochDur; break; }
+        }
+      }
+      if (onsetSec > 0) {
+        var onsetPct = totalDur > 0 ? (onsetSec / totalDur) * 100 : 0;
+        onsetMarkerHtml = '<div class="epoch-onset-marker" data-testid="inline-epilepsy-onset-marker" style="left:' + onsetPct.toFixed(1) + '%" title="\u53d1\u4f5c\u8d77\u70b9 ~' + onsetSec.toFixed(0) + 's"></div>';
+      }
+    }
+    // 窗口高亮条
+    var winLeftPct = totalDur > 0 ? (displayStartSec / totalDur) * 100 : 0;
+    var winWidthPct = totalDur > 0 ? (Math.min(displayDurationSec, totalDur - displayStartSec) / totalDur) * 100 : 0;
     epoch.innerHTML = `
-      <div class="panel-head compact"><h2>Stage_Code / Epoch 时间轴</h2><span class="badge">${resultReady ? "artifact bound" : "等待结果"}</span></div>
-      <div class="inline-epoch-strip" data-testid="inline-epilepsy-stage-strip" data-source-task="${escapeHtml(task?.id || "")}" data-sync-scale="${escapeHtml(syncScale)}" data-selected-event="${escapeHtml(selectedEventId)}">${cells}</div>
+      <div class="panel-head compact"><h2>候选标记时间轴</h2><span class="badge">${resultReady ? "结果已载入" : "等待结果"}</span></div>
+      <div class="epoch-strip-outer" data-testid="inline-epilepsy-epoch-outer">
+        ${resultReady ? '<div class="epoch-time-scale" data-testid="inline-epilepsy-time-scale">' + timeLabels + '</div>' : ""}
+        <div class="inline-epoch-strip" data-testid="inline-epilepsy-stage-strip" data-source-task="${escapeHtml(task?.id || "")}" data-sync-scale="${escapeHtml(syncScale)}" data-selected-event="${escapeHtml(selectedEventId)}">${cells}</div>
+        ${resultReady ? '<div class="epoch-window-overlay" data-testid="inline-epilepsy-window-overlay" style="left:' + winLeftPct.toFixed(1) + '%;width:' + Math.max(1, winWidthPct).toFixed(1) + '%" title="' + displayStartSec.toFixed(1) + '-' + displayEndSec.toFixed(1) + 's"></div>' : ""}
+        ${resultReady ? onsetMarkerHtml : ""}
+      </div>
     `;
   }
   const eventsPanel = qs('[data-testid="inline-epilepsy-events-panel"]');
   if (eventsPanel) {
+    var eventStatusMap = {};
+    (state.epilepsyInline.draftCommands || []).slice().reverse().forEach(function(cmd) {
+      if (cmd.eventId && !eventStatusMap[cmd.eventId]) {
+        var lbl = String(cmd.label || "").toLowerCase();
+        if (/seizure|保留|keep/.test(lbl)) eventStatusMap[cmd.eventId] = "confirmed";
+        else if (/artifact|排除|reject|normal/.test(lbl)) eventStatusMap[cmd.eventId] = "rejected";
+        else if (/review|复核|needs/.test(lbl)) eventStatusMap[cmd.eventId] = "needs_review";
+      }
+    });
+    var statusCounts = { confirmed: 0, rejected: 0, needs_review: 0, unreviewed: 0 };
+    var dotColors = { confirmed: "#16a34a", rejected: "#dc2626", needs_review: "#f59e0b", unreviewed: "#94a3b8" };
+    var dotTitles = { confirmed: "保留候选", rejected: "排除/伪迹", needs_review: "需复核", unreviewed: "待矫正" };
     const rows = events.map((event) => {
       const active = event.id === selectedEventId ? "selected" : "";
       const eventTimeText = `${event.start.toFixed(1)}-${event.end.toFixed(1)}s`;
       const eventEpochText = `epoch ${event.startEpoch}-${event.endEpoch}`;
       const ariaLabel = `${event.label}, ${eventTimeText}, ${eventEpochText}`;
-      return `<button type="button" class="inline-event-row ${active}" data-epilepsy-action="select-event" data-event-id="${escapeHtml(event.id)}" aria-label="${escapeHtml(ariaLabel)}"><span><strong>${escapeHtml(event.label)}</strong><small> - ${escapeHtml(eventTimeText)} / ${escapeHtml(eventEpochText)}</small></span></button>`;
+      var st = eventStatusMap[event.id] || "unreviewed";
+      statusCounts[st] = (statusCounts[st] || 0) + 1;
+      return `<button type="button" class="inline-event-row ${active}" data-epilepsy-action="select-event" data-event-id="${escapeHtml(event.id)}" aria-label="${escapeHtml(ariaLabel)}"><span class="event-status-dot" style="background:${dotColors[st]}" title="${dotTitles[st]}"></span><span><strong>${escapeHtml(event.label)}</strong><small> - ${escapeHtml(eventTimeText)} / ${escapeHtml(eventEpochText)}</small></span></button>`;
     }).join("");
+    var summaryBadge = "已判 " + (statusCounts.confirmed + statusCounts.rejected) + "/" + events.length;
     eventsPanel.innerHTML = `
-      <div class="panel-head compact"><h2>候选事件与人工矫正</h2><span class="badge warn">${events.length} 个候选</span></div>
-      <div class="segment-summary">选择候选事件后，可在人工矫正区标记为“保留候选 / 排除候选 / 需复核”；“需复核”只写复核状态，不写第三种 Stage_Code。</div>
-      <div class="inline-event-list">${rows || `<div class="empty-object-state"><strong>暂无候选事件</strong><span>请先运行初筛，或检查本次 artifacts。</span></div>`}</div>
+      <div class="panel-head compact"><h2>候选事件与人工矫正</h2><span class="badge warn">${events.length} 个候选 ･ ${summaryBadge}</span></div>
+      <div class="segment-summary">选择候选事件后，可在人工矫正区标记为“保留候选 / 排除候选 / 需复核”；<span class="status-legend"><i style="color:#16a34a">●</i>保留 <i style="color:#dc2626">●</i>排除 <i style="color:#f59e0b">●</i>复核 <i style="color:#94a3b8">●</i>待判</span></div>
+      <div class="inline-event-list">${rows || `<div class="empty-object-state"><strong>暂无候选事件</strong><span>请先运行初筛，或检查本次结果文件。</span></div>`}</div>
     `;
   }
   const waveform = qs('[data-testid="inline-epilepsy-waveform-panel"]');
@@ -6125,7 +6751,7 @@ function renderInlineEpilepsyWorkbench() {
       <div class="inline-wave-toolbar">
         <span class="inline-mode-pill ${waveformReady ? "ready" : "blocked"}" data-testid="inline-epilepsy-waveform-status">${waveformReady ? `已加载波形 · ${(wavePayload.channels || []).slice(0, 8).length} 通道` : "等待波形窗口"}</span>
         <span class="inline-mode-pill">${escapeHtml(syncScale)}s 同步尺度</span>
-        <span class="inline-mode-pill ${resultReady ? "ready" : "blocked"}">${resultReady ? "Stage_Code 已绑定" : "尚未运行初筛"}</span>
+        <span class="inline-mode-pill ${resultReady ? "ready" : "blocked"}">${resultReady ? "候选标记已载入" : "尚未运行初筛"}</span>
       </div>
       <div class="inline-reader-toolbar" data-testid="inline-epilepsy-reader-toolbar">
         <div class="inline-reader-group" aria-label="waveform browse controls">
@@ -6147,12 +6773,12 @@ function renderInlineEpilepsyWorkbench() {
         </div>
         <div class="inline-reader-group inline-reader-toggles" aria-label="overlay controls">
           <button type="button" data-epilepsy-action="reader-toggle-overlay" data-overlay="candidates" aria-pressed="${reader.overlayVisibility.candidates ? "true" : "false"}" data-testid="inline-epilepsy-toggle-candidates">候选</button>
-          <button type="button" data-epilepsy-action="reader-toggle-overlay" data-overlay="stageCode" aria-pressed="${reader.overlayVisibility.stageCode ? "true" : "false"}" data-testid="inline-epilepsy-toggle-stage">Stage_Code</button>
+          <button type="button" data-epilepsy-action="reader-toggle-overlay" data-overlay="stageCode" aria-pressed="${reader.overlayVisibility.stageCode ? "true" : "false"}" data-testid="inline-epilepsy-toggle-stage">候选标记</button>
           <button type="button" data-epilepsy-action="reader-toggle-overlay" data-overlay="reviewEdits" aria-pressed="${reader.overlayVisibility.reviewEdits ? "true" : "false"}" data-testid="inline-epilepsy-toggle-review">人工矫正</button>
         </div>
       </div>
       <div class="inline-wave-canvas ${waveformReady ? "ready" : "blocked"}" data-source-task="${escapeHtml(task?.id || "")}" data-sync-scale="${escapeHtml(syncScale)}" data-selected-event="${escapeHtml(selectedEventId)}" data-waveform-status="${escapeHtml(waveformStatus)}" data-waveform-fetch-status="${escapeHtml(waveformFetchStatus)}" data-displayed-start-sec="${displayStartSec.toFixed(3)}" data-displayed-duration-sec="${displayDurationSec.toFixed(3)}">
-        <canvas data-testid="inline-epilepsy-waveform-canvas" data-sync-scale="${escapeHtml(syncScale)}" data-selected-event="${escapeHtml(selectedEventId)}" data-waveform-status="${escapeHtml(waveformStatus)}" data-waveform-fetch-status="${escapeHtml(waveformFetchStatus)}" aria-label="癫痫样事件分析台原始 EEG 波形"></canvas>
+        <canvas data-testid="inline-epilepsy-waveform-canvas" data-sync-scale="${escapeHtml(syncScale)}" data-selected-event="${escapeHtml(selectedEventId)}" data-waveform-status="${escapeHtml(waveformStatus)}" data-waveform-fetch-status="${escapeHtml(waveformFetchStatus)}" aria-label="癫痫样候选事件复核台原始 EEG 波形"></canvas>
       </div>
     `;
     const inlineCanvas = waveform.querySelector('[data-testid="inline-epilepsy-waveform-canvas"]');
@@ -6175,7 +6801,7 @@ function renderInlineEpilepsyWorkbench() {
     spectrogram.innerHTML = `
       <div class="panel-head compact"><div><h2>时频证据层</h2><p>基于当前同一波形窗口即时计算 STFT 预览，与波形同轴联动；它不是正式 TFR、PSD 或 Band Power 分析结果。</p></div><div class="inline-scale-control-group" data-testid="inline-epilepsy-sync-scale-readout"><span>跟随阅片窗</span><strong>${escapeHtml(syncScale)}s</strong></div></div>
       <div class="inline-spectrogram-shell" data-sync-scale="${escapeHtml(syncScale)}" data-selected-event="${escapeHtml(selectedEventId)}" data-source-task="${escapeHtml(task?.id || "")}">
-        <canvas data-testid="inline-epilepsy-spectrogram-canvas" data-sync-scale="${escapeHtml(syncScale)}" data-selected-event="${escapeHtml(selectedEventId)}" data-source-task="${escapeHtml(task?.id || "")}" data-spectrogram-status="${waveformReady ? "ready" : "waiting"}" aria-label="癫痫样事件分析台 STFT 预览"></canvas>
+        <canvas data-testid="inline-epilepsy-spectrogram-canvas" data-sync-scale="${escapeHtml(syncScale)}" data-selected-event="${escapeHtml(selectedEventId)}" data-source-task="${escapeHtml(task?.id || "")}" data-spectrogram-status="${waveformReady ? "ready" : "waiting"}" aria-label="癫痫样候选事件复核台 STFT 预览"></canvas>
         <div class="inline-spectrogram-event"><span>${waveformReady ? escapeHtml(waveWindowText) : "等待波形窗口"}</span><strong>${selectedEvent ? "候选事件同步高亮" : "运行后同步候选事件"}</strong></div>
       </div>
       <p class="small-muted" data-testid="inline-epilepsy-spectrogram-source-copy">当前图只由同一波形窗口的 waveform chunk 即时派生 STFT 预览，用于同步阅片参考；它不是正式 TFR、PSD 或 Band Power 分析结果，也不会写入结果产物。</p>
@@ -6183,7 +6809,7 @@ function renderInlineEpilepsyWorkbench() {
   }
   const source = qs('[data-testid="inline-epilepsy-source-panel"]');
   if (source) {
-    source.innerHTML = `<div class="panel-head compact"><h2>源结果与合同</h2></div><div class="empty-object-state"><strong>${resultReady ? "源结果只读保留" : "等待源结果"}</strong><span>Stage_Code、候选事件、阈值和模型产物来自本次 task；人工矫正另存为草稿，不覆盖原始 ML 输出。</span></div>`;
+    source.innerHTML = `<div class="panel-head compact"><h2>源结果记录</h2></div><div class="empty-object-state"><strong>${resultReady ? "源结果只读保留" : "等待源结果"}</strong><span>模型候选标记、候选事件、阈值和结果文件来自本次任务；人工矫正另存为草稿，不覆盖原始模型输出。</span></div>`;
   }
   const review = qs('[data-testid="inline-epilepsy-review-panel"]');
   if (review) {
@@ -6194,7 +6820,7 @@ function renderInlineEpilepsyWorkbench() {
       <div class="inline-review-status"><strong>${selectedEvent ? escapeHtml(selectedEvent.label) : "请选择候选事件"}</strong><span>${correction ? escapeHtml(correction.displayLabel || correction.label) : "人工矫正只写入复核草稿：保留候选会保留该候选，排除候选会把对应 epoch 改为 0，需复核只写复核状态。"}</span></div>
       <div class="inline-correction-actions">
         <button class="ghost-btn danger-soft" type="button" data-epilepsy-action="set-correction" data-correction="Seizure" data-correction-label="保留候选" data-event-id="${escapeHtml(selectedEventId)}" title="${escapeHtml(canCorrect ? "把当前候选保留在复核版本中。" : correctionDisabledReason)}" data-disabled-reason="${escapeHtml(canCorrect ? "" : correctionDisabledReason)}" ${canCorrect ? "" : "disabled"}>保留候选</button>
-        <button class="primary-btn" type="button" data-epilepsy-action="set-correction" data-correction="Normal" data-correction-label="排除候选" data-event-id="${escapeHtml(selectedEventId)}" title="${escapeHtml(canCorrect ? "把当前候选排除，并把对应 epoch 写为 0。" : correctionDisabledReason)}" data-disabled-reason="${escapeHtml(canCorrect ? "" : correctionDisabledReason)}" ${canCorrect ? "" : "disabled"}>排除候选</button>
+        <button class="ghost-btn" type="button" data-epilepsy-action="set-correction" data-correction="Normal" data-correction-label="排除候选" data-event-id="${escapeHtml(selectedEventId)}" title="${escapeHtml(canCorrect ? "把当前候选排除，并把对应 epoch 写为 0。" : correctionDisabledReason)}" data-disabled-reason="${escapeHtml(canCorrect ? "" : correctionDisabledReason)}" ${canCorrect ? "" : "disabled"}>排除候选</button>
         <button class="ghost-btn" type="button" data-epilepsy-action="set-correction" data-correction="Artifact" data-correction-label="标为伪迹" data-event-id="${escapeHtml(selectedEventId)}" title="${escapeHtml(canCorrect ? "把当前候选标为伪迹，复核导出中保留审计原因。" : correctionDisabledReason)}" data-disabled-reason="${escapeHtml(canCorrect ? "" : correctionDisabledReason)}" ${canCorrect ? "" : "disabled"}>标为伪迹</button>
         <button class="ghost-btn" type="button" data-epilepsy-action="set-correction" data-correction="Needs review" data-correction-label="需复核" data-event-id="${escapeHtml(selectedEventId)}" title="${escapeHtml(canCorrect ? "把当前候选标记为需要后续复核。" : correctionDisabledReason)}" data-disabled-reason="${escapeHtml(canCorrect ? "" : correctionDisabledReason)}" ${canCorrect ? "" : "disabled"}>需复核</button>
       </div>
@@ -6208,12 +6834,12 @@ function renderInlineEpilepsyWorkbench() {
         <button class="ghost-btn" type="button" data-epilepsy-action="undo" title="${draftCount ? "撤销最近一条人工矫正。" : "暂无可撤销的人工矫正。"}" data-disabled-reason="${draftCount ? "" : "暂无可撤销的人工矫正。"}" ${draftCount ? "" : "disabled"}>撤销</button>
         <button class="ghost-btn" type="button" data-epilepsy-action="redo" title="${state.epilepsyInline.redoCommands.length ? "重做最近撤销的人工矫正。" : "暂无可重做的人工矫正。"}" data-disabled-reason="${state.epilepsyInline.redoCommands.length ? "" : "暂无可重做的人工矫正。"}" ${state.epilepsyInline.redoCommands.length ? "" : "disabled"}>重做</button>
         <button class="ghost-btn danger-soft" type="button" data-epilepsy-action="reset" title="${draftCount ? "清空当前本地复核草稿。" : "暂无可清空的人工矫正草稿。"}" data-disabled-reason="${draftCount ? "" : "暂无可清空的人工矫正草稿。"}" ${draftCount ? "" : "disabled"}>清空</button>
-        <button class="ghost-btn" type="button" data-epilepsy-action="save-draft" title="${escapeHtml(canSave ? "保存人工矫正草稿到后端复核会话。" : saveDisabledReason)}" data-disabled-reason="${escapeHtml(canSave ? "" : saveDisabledReason)}" ${canSave ? "" : "disabled"}>${savingReview ? "正在保存" : state.epilepsyInline.draftSaved ? "已保存到后端" : "保存复核草稿"}</button>
-        <button class="primary-btn" type="button" data-epilepsy-action="publish-results" ${canPublish ? "" : "disabled"} title="${escapeHtml(canPublish ? "注册人工修订层产物并进入结果查看。" : publishDisabledReason)}" data-disabled-reason="${escapeHtml(canPublish ? "" : publishDisabledReason)}">${exportingReview ? "正在发布" : state.epilepsyInline.exportStatus === "exported" ? "已发布到结果查看" : "发布到结果查看"}</button>
+        <button class="ghost-btn" type="button" data-epilepsy-action="save-draft" title="${escapeHtml(canSave ? "保存人工矫正草稿到复核记录。" : saveDisabledReason)}" data-disabled-reason="${escapeHtml(canSave ? "" : saveDisabledReason)}" ${canSave ? "" : "disabled"}>${savingReview ? "正在保存" : state.epilepsyInline.draftSaved ? "已保存复核记录" : "保存复核草稿"}</button>
+        <button class="ghost-btn" type="button" data-epilepsy-action="publish-results" ${canPublish ? "" : "disabled"} title="${escapeHtml(canPublish ? "生成复核结果并进入结果页。" : publishDisabledReason)}" data-disabled-reason="${escapeHtml(canPublish ? "" : publishDisabledReason)}">${exportingReview ? "正在发布" : state.epilepsyInline.exportStatus === "exported" ? "已发布到结果页" : "发布到结果页"}</button>
         ${state.epilepsyInline.exportStatus === "exported" ? `<button class="ghost-btn" type="button" data-testid="inline-epilepsy-view-results" data-view-jump="statistics">查看复核结果</button>` : ""}
       </div>
-      <div class="inline-draft-ledger" data-testid="inline-epilepsy-draft-ledger"><b>复核草稿 ${draftCount} 条${state.epilepsyInline.draftSaved ? " / 已同步后端" : " / 本地待保存"}</b><span>${state.epilepsyInline.draftCommands.map((item) => `${item.eventId}: ${item.displayLabel || item.label}`).join(" / ") || "暂无人工矫正草稿。"}</span></div>
-      <p class="small-muted">保存会写入后端 epilepsy review session；发布会注册人工修订层 artifacts，不覆盖原始 ML 输出。状态：${escapeHtml(exportLabel)}。</p>
+      <div class="inline-draft-ledger" data-testid="inline-epilepsy-draft-ledger"><b>复核草稿 ${draftCount} 条${state.epilepsyInline.draftSaved ? " / 已保存" : " / 本地待保存"}</b><span>${state.epilepsyInline.draftCommands.map((item) => escapeHtml(`${item.eventId}: ${item.displayLabel || item.label}`)).join(" / ") || "暂无人工矫正草稿。"}</span></div>
+      <p class="small-muted">保存会写入复核记录；发布会生成复核结果文件，不覆盖原始模型输出。状态：${escapeHtml(exportLabel)}。</p>
       ${state.epilepsyInline.reviewSaveError ? `<p class="small-muted danger-text" data-testid="inline-epilepsy-review-save-error">保存错误：${escapeHtml(state.epilepsyInline.reviewSaveError)}</p>` : ""}
       ${state.epilepsyInline.exportError ? `<p class="small-muted danger-text" data-testid="inline-epilepsy-export-error">发布错误：${escapeHtml(state.epilepsyInline.exportError)}</p>` : ""}
       <p class="small-muted">科研支持用途，不用于诊断、确诊、治疗或临床分诊。</p>
@@ -6233,7 +6859,7 @@ async function openEpilepsyWorkbenchFromPlan() {
     await ensureTeachingSandboxReady({ preview: false, moduleName: "epilepsy_ml" }).catch(() => null);
     renderInlineEpilepsyWorkbench();
   }
-  return { id: "epilepsy_workbench_inline", plan_id: state.real.plan?.id || null, gated: !hasConfirmedPlan() };
+  return { id: "epilepsy_workbench_inline", plan_id: state.real.plan?.id || null, gated: !isAnalysisReady() };
 }
 
 async function seedWorkspaceForLocalE2E(seed = null) {
@@ -6505,7 +7131,7 @@ function validateEmail(email) {
 function userFacingAuthMessage(message) {
   const text = String(message || "");
   const lower = text.toLowerCase();
-  if (!text.trim()) return "\u64cd\u4f5c\u672a\u5b8c\u6210\uff0c\u8bf7\u68c0\u67e5\u4fe1\u606f\u540e\u91cd\u8bd5\u3002";
+  if (!text.trim()) return "";
   if (lower.includes("verification code") && (lower.includes("invalid") || lower.includes("expired"))) {
     return "\u9a8c\u8bc1\u7801\u65e0\u6548\u6216\u5df2\u8fc7\u671f\uff0c\u8bf7\u91cd\u65b0\u83b7\u53d6\u540e\u518d\u8bd5\u3002";
   }
@@ -6535,9 +7161,36 @@ function setLoginMessage(message, type = "info") {
   target.textContent = userFacingAuthMessage(message);
   target.classList.toggle("error", type === "error");
   target.classList.toggle("success", type === "success");
+  target.toggleAttribute("hidden", !target.textContent.trim());
+}
+
+function setAuthenticatedShellVisible(isAuthenticated) {
+  const loginScreen = qs("#loginScreen");
+  const appShell = qs("#appShell");
+  document.body.classList.toggle("login-active", !isAuthenticated);
+  document.body.classList.toggle("workspace-active", Boolean(isAuthenticated));
+  document.body.dataset.shellMode = isAuthenticated ? "workspace" : "login";
+  if (loginScreen) {
+    loginScreen.hidden = Boolean(isAuthenticated);
+    loginScreen.inert = Boolean(isAuthenticated);
+    loginScreen.setAttribute("aria-hidden", isAuthenticated ? "true" : "false");
+  }
+  if (appShell) {
+    appShell.hidden = !isAuthenticated;
+    appShell.inert = !isAuthenticated;
+    appShell.setAttribute("aria-hidden", isAuthenticated ? "false" : "true");
+  }
+  publishE2EState();
 }
 
 function switchLoginTab(tab) {
+  if (tab === "customerRegister") {
+    setLoginFieldValidity(true);
+    qsa("[data-login-tab]").forEach((button) => button.classList.toggle("active", button.dataset.loginTab === tab));
+    qsa(".login-form").forEach((form) => form.classList.toggle("active", form.id === `${tab}Form`));
+    setLoginMessage("试点阶段由运营人员开通账号。", "info");
+    return;
+  }
   qsa("[data-login-tab]").forEach((button) => button.classList.toggle("active", button.dataset.loginTab === tab));
   qsa(".login-form").forEach((form) => form.classList.toggle("active", form.id === `${tab}Form`));
   setLoginFieldValidity(true);
@@ -6551,21 +7204,21 @@ function rememberSession(role, persist = true, extra = {}) {
 }
 
 function clearSession() {
+  clearAuthenticatedArtifactObjectUrls();
   localStorage.removeItem(AUTH_KEY);
   sessionStorage.removeItem(AUTH_KEY);
 }
 
 function showLoginScreen(message = "", type = "info") {
   state.role = null;
-  const loginScreen = qs("#loginScreen");
-  const appShell = qs("#appShell");
-  if (loginScreen) loginScreen.hidden = false;
-  if (appShell) appShell.hidden = true;
+  delete document.body.dataset.role;
+  document.body.dataset.currentRole = "logged-out";
+  setAuthenticatedShellVisible(false);
   if (window.location.hash) {
     history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
   }
   switchLoginTab("customerLogin");
-  if (message) setLoginMessage(message, type);
+  setLoginMessage(message || "", type);
   applyCleanVisibleCopy();
   if (window.lucide) lucide.createIcons();
 }
@@ -6613,8 +7266,8 @@ async function refreshWallet() {
   try {
     const wallet = await apiJson("/billing/wallet");
     state.wallet = wallet;
-    if (qs("#balanceMain")) qs("#balanceMain").textContent = Number(wallet.balance_credits ?? wallet.balance ?? 0).toFixed(2);
-    if (qs("#balanceSide")) qs("#balanceSide").textContent = `\u4f59\u989d ${Number(wallet.balance_credits ?? wallet.balance ?? 0).toFixed(2)}`;
+    if (qs("#balanceMain")) qs("#balanceMain").textContent = "试用中";
+    if (qs("#balanceSide")) qs("#balanceSide").textContent = "个人中心";
     if (qs("#walletBalance")) qs("#walletBalance").textContent = Number(wallet.balance_credits ?? wallet.balance ?? 0).toFixed(2);
   } catch (error) {
     state.wallet = null;
@@ -6627,80 +7280,15 @@ async function refreshAdminConsole() {
 }
 
 async function handleSandboxRecharge() {
-  const amount = Number(state.rechargeAmount || 1000);
-  const method = state.paymentMethod || "alipay";
-  try {
-    const order = await apiJson("/billing/recharge", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        account_id: currentAccountId(),
-        amount_credits: amount,
-        payment_method: method,
-        note: "Local review sandbox recharge; no real payment.",
-      }),
-    });
-    const confirmed = await apiJson(`/billing/recharge/${encodeURIComponent(order.id)}/confirm`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        provider_trade_no: `sandbox_${Date.now()}`,
-        status: "paid",
-        operator_note: "Confirmed by visible UI sandbox button.",
-      }),
-    });
-    await refreshWallet();
-    const message = `沙盒充值已完成：${money(confirmed.amount_credits || amount)}，不涉及真实资金。`;
-    setTextIfPresent("#rechargeNotice span", message);
-    recordUiAction("billing:recharge", "pass", message, { order_id: confirmed.id, amount, method, persistence: "backend_billing" });
-    showToast(message);
-    return confirmed;
-  } catch (error) {
-    const message = `沙盒充值未完成：${error.message || error}`;
-    setTextIfPresent("#rechargeNotice span", message);
-    recordUiAction("billing:recharge", "blocked", message);
-    showToast(message);
-    return null;
-  }
-}
-
-async function handleInvoiceSubmit() {
-  const title = qs("#invoiceTitleInput")?.value.trim() || "QLanalyser 沙盒发票";
-  const taxNumber = qs("#invoiceTaxInput")?.value.trim() || "";
-  const amount = Number(qs("#invoiceAmountInput")?.value || 0);
-  const email = qs("#invoiceEmailInput")?.value.trim() || getStoredCustomer().email || demoCustomer.email;
-  if (!title || !email || amount <= 0) {
-    const message = "请填写发票抬头、接收邮箱和有效金额后再提交。";
-    setTextIfPresent("#invoiceNotice span", message);
-    recordUiAction("invoice:submit", "blocked", message);
-    showToast(message);
-    return null;
-  }
-  try {
-    const invoice = await apiJson("/invoices", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        account_id: currentAccountId(),
-        invoice_title: title,
-        tax_number: taxNumber,
-        amount_credits: amount,
-        recipient_email: email,
-        note: "Local review sandbox invoice request.",
-      }),
-    });
-    const message = `沙盒发票申请已提交：${invoice.id}。`;
-    setTextIfPresent("#invoiceNotice span", message);
-    recordUiAction("invoice:submit", "pass", message, { invoice_id: invoice.id, persistence: "backend_invoice_request" });
-    showToast(message);
-    return invoice;
-  } catch (error) {
-    const message = `沙盒发票申请未完成：${error.message || error}`;
-    setTextIfPresent("#invoiceNotice span", message);
-    recordUiAction("invoice:submit", "blocked", message);
-    showToast(message);
-    return null;
-  }
+  const message = "已记录线下确认提醒；正式额度和服务状态由运营后台更新。";
+  setTextIfPresent("#rechargeNotice span", message);
+  if (qs("#balanceMain")) qs("#balanceMain").textContent = "试用中";
+  recordUiAction("service:offline-confirmation-requested", "pass", message, {
+    persistence: "ui_service_record",
+    account_id: currentAccountId(),
+  });
+  showToast(message);
+  return { status: "recorded", mode: "offline_service_record" };
 }
 
 async function refreshInbox() {
@@ -6718,7 +7306,7 @@ async function refreshInbox() {
       `).join("");
       table.innerHTML = `
         <div class="table-row head"><span>标题</span><span>状态</span><span>时间</span><span>附件</span></div>
-        ${rows || `<div class="table-row"><span>暂无沙盒发票记录。</span><span>-</span><span>-</span><span>-</span></div>`}
+        ${rows || `<div class="table-row"><span>暂无服务消息。</span><span>-</span><span>-</span><span>-</span></div>`}
       `;
     }
     const message = (items || []).length ? `发票箱已刷新：${items.length} 条记录。` : "发票箱已刷新：暂无记录。";
@@ -6743,12 +7331,63 @@ const PROGRESS_STEPS = [
   { id: 'report', label: '生成报告', view: 'publication' },
 ];
 
+const PAGE_ROUTE_CONTRACT = {
+  dashboard: { view: "dashboard", roles: ["customer"], workflow: "project" },
+  storage: { view: "storage", roles: ["customer"], workflow: "data" },
+  analysis: { view: "analysis", roles: ["customer"], workflow: "preparation" },
+  workflow: { view: "workflow", roles: ["customer"], workflow: "analysis" },
+  epilepsyWorkbenchInline: { view: "epilepsyWorkbenchInline", roles: ["customer"], workflow: "analysis", parent: "workflow" },
+  statistics: { view: "statistics", roles: ["customer"], workflow: "results" },
+  publication: { view: "publication", roles: ["customer"], workflow: "report" },
+  userCenter: { view: "userCenter", roles: ["customer"], workflow: null },
+  upload: { aliasOf: "storage" },
+  paradigms: { redirectTo: "dashboard" },
+  journey: { view: "journey", roles: ["admin"], workflow: null },
+  adminDashboard: { view: "adminDashboard", roles: ["admin"], workflow: null },
+  adminOperations: { view: "adminOperations", roles: ["admin"], workflow: null },
+  adminFinance: { view: "adminFinance", roles: ["admin"], workflow: null },
+  adminSystem: { view: "adminSystem", roles: ["admin"], workflow: null },
+};
+
+function routeFallbackForRole(role = state.role) {
+  return role === "admin" ? "adminDashboard" : "dashboard";
+}
+
+function resolvePageRoute(viewName, role = state.role) {
+  const requestedView = String(viewName || routeFallbackForRole(role));
+  let route = PAGE_ROUTE_CONTRACT[requestedView] || { view: requestedView };
+  let targetView = route.aliasOf || route.redirectTo || route.view || requestedView;
+  let contract = PAGE_ROUTE_CONTRACT[targetView] || { view: targetView };
+
+  if (!role && !new Set(["login", "register"]).has(targetView)) {
+    return { requestedView, targetView, blocked: true, reason: "login-required" };
+  }
+  if (contract.roles && role && !contract.roles.includes(role)) {
+    targetView = routeFallbackForRole(role);
+    contract = PAGE_ROUTE_CONTRACT[targetView] || { view: targetView };
+  }
+  if (!document.getElementById(targetView)) {
+    targetView = routeFallbackForRole(role);
+    contract = PAGE_ROUTE_CONTRACT[targetView] || { view: targetView };
+  }
+  return {
+    requestedView,
+    targetView,
+    navView: contract.parent || targetView,
+    aliasOf: route.aliasOf || "",
+    redirectedFrom: route.redirectTo ? requestedView : "",
+    contract,
+  };
+}
+
 function getWorkspaceProgressState() {
+  const hasCompletedTask = Boolean(latestAnalysisTask()?.id);
   return {
     hasProject: Boolean(state.real.project?.id),
     hasFile: Boolean(state.real.eegFile?.id),
-    hasPreparationPlan: Boolean(state.real.plan?.id || state.real.epochSet?.epoch_set_id),
-    hasCompletedTask: Boolean(latestAnalysisTask()?.id),
+    hasPreparationPlan: isAnalysisReady(),
+    hasCompletedTask,
+    hasViewedResults: Boolean(hasCompletedTask && state.real.resultsViewed),
     hasReport: Boolean(state.real.report?.id),
   };
 }
@@ -6758,20 +7397,44 @@ function getCurrentProgressStep(progress) {
   if (!progress.hasFile) return 'data';
   if (!progress.hasPreparationPlan) return 'preparation';
   if (!progress.hasCompletedTask) return 'analysis';
-  if (!progress.hasReport) return 'results';
+  if (!progress.hasViewedResults) return 'results';
+  if (!progress.hasReport) return 'report';
   return 'report';
 }
 
 function getStepState(stepId, progress) {
-  const order = ['project', 'data', 'preparation', 'analysis', 'results', 'report'];
-  const idx = order.indexOf(stepId);
-  if (idx < 0) return 'pending';
-  const checks = [progress.hasProject, progress.hasFile, progress.hasPreparationPlan, progress.hasCompletedTask, progress.hasReport];
-  // A step is completed if all checks up to and including that step are true
-  for (let i = 0; i <= idx; i++) {
-    if (!checks[i]) return 'pending';
-  }
-  return 'completed';
+  const completed = {
+    project: progress.hasProject,
+    data: progress.hasFile,
+    preparation: progress.hasPreparationPlan,
+    analysis: progress.hasCompletedTask,
+    results: progress.hasViewedResults,
+    report: progress.hasReport,
+  };
+  return completed[stepId] ? 'completed' : 'pending';
+}
+
+function getWorkspaceNextRecommendation(progress = getWorkspaceProgressState()) {
+  if (!progress.hasProject) return { label: "创建或打开项目", view: "dashboard" };
+  if (!progress.hasFile) return { label: "上传或选择 EEG 数据", view: "storage" };
+  if (!progress.hasPreparationPlan) return { label: "确认准备并进入分析", view: "analysis" };
+  if (!progress.hasCompletedTask) return { label: "运行 PSD 分析", view: "workflow" };
+  if (!progress.hasViewedResults) return { label: "查看分析结果", view: "statistics" };
+  if (!progress.hasReport) return { label: "生成报告", view: "publication" };
+  return { label: "下载报告包", view: "publication" };
+}
+
+function getRecoveryActionForAnalysisFlow() {
+  const progress = getWorkspaceProgressState();
+  const next = getWorkspaceNextRecommendation(progress);
+  const icon = {
+    dashboard: "folder-kanban",
+    storage: "database",
+    analysis: "sliders-horizontal",
+    workflow: "activity",
+    publication: "file-output",
+  }[next.view] || "arrow-right";
+  return { ...next, icon };
 }
 
 function renderWorkspaceProgressBar() {
@@ -6785,7 +7448,7 @@ function renderWorkspaceProgressBar() {
     }
     // 个人中心/账号页不属于工作流，隐藏流程条
     const currentViewId = document.querySelector('.view.active')?.id;
-    const nonWorkflowViews = new Set(['userCenter', 'login', 'register']);
+    const nonWorkflowViews = new Set(['dashboard', 'userCenter', 'login', 'register']);
     if (nonWorkflowViews.has(currentViewId)) {
       bar.hidden = true;
       return;
@@ -6795,15 +7458,23 @@ function renderWorkspaceProgressBar() {
     const progress = getWorkspaceProgressState();
     const currentStep = getCurrentProgressStep(progress);
     const currentView = currentViewId;
+    const next = getWorkspaceNextRecommendation(progress);
 
-    bar.innerHTML = PROGRESS_STEPS.map((step, i) => {
+    const stepHtml = PROGRESS_STEPS.map((step, i) => {
       const stepState = getStepState(step.id, progress);
-      const isActive = step.view === currentView || step.id === currentStep;
-      return `<button type="button" class="progress-step ${isActive ? 'active' : ''} ${stepState === 'completed' ? 'completed' : ''}" data-progress-view="${step.view}">
+      const isActive = step.view === currentView;
+      const isRecommended = step.id === currentStep && !isActive;
+      return `<button type="button" class="progress-step ${isActive ? 'active' : ''} ${isRecommended ? 'recommended' : ''} ${stepState === 'completed' ? 'completed' : ''}" data-progress-view="${step.view}">
         <span class="step-num">${stepState === 'completed' ? '✓' : i + 1}</span>
         <span>${step.label}</span>
       </button>${i < PROGRESS_STEPS.length - 1 ? '<span class="progress-step-divider">→</span>' : ''}`;
     }).join('');
+    bar.innerHTML = `
+      <div class="progress-step-list">${stepHtml}</div>
+      <button type="button" class="workflow-next-hint" data-progress-view="${next.view}">
+        <span>下一步</span><strong>${escapeHtml(next.label)}</strong>
+      </button>
+    `;
 
     bar.querySelectorAll('[data-progress-view]').forEach(btn => {
       btn.addEventListener('click', () => setView(btn.dataset.progressView));
@@ -6813,45 +7484,72 @@ function renderWorkspaceProgressBar() {
   }
 }
 
+function renderDashboardStarter(progress = getWorkspaceProgressState()) {
+  const panel = qs('[data-testid="project-crud-panel"]');
+  if (!panel || state.role !== "customer") return;
+  let starter = panel.querySelector('[data-testid="dashboard-starter"]');
+  if (!starter) {
+    starter = document.createElement("div");
+    starter.className = "dashboard-starter";
+    starter.dataset.testid = "dashboard-starter";
+    const head = panel.querySelector(".panel-head");
+    if (head?.nextSibling) head.after(starter);
+    else panel.prepend(starter);
+  }
+  const next = getWorkspaceNextRecommendation(progress);
+  const currentStep = getCurrentProgressStep(progress);
+  const stepHtml = PROGRESS_STEPS.map((step, index) => {
+    const stepState = getStepState(step.id, progress);
+    return `<button type="button" class="starter-step ${step.id === currentStep ? "active" : ""} ${stepState === "completed" ? "completed" : ""}" data-progress-view="${step.view}" aria-current="${step.id === currentStep ? "step" : "false"}">
+      <span>${stepState === "completed" ? "✓" : index + 1}</span><strong>${escapeHtml(step.label)}</strong>
+    </button>`;
+  }).join("");
+  starter.innerHTML = `
+    <div class="starter-steps">${stepHtml}</div>
+    <div class="starter-actions">
+      <button type="button" class="ghost-btn mini starter-next" data-progress-view="${escapeHtml(next.view)}" ${currentStep === "project" ? "hidden aria-hidden=\"true\"" : ""}><span>${escapeHtml(next.label)}</span></button>
+      <button type="button" class="ghost-btn mini starter-demo" data-teaching-action="quickstart" title="载入合成 EEG 数据并进入数据准备"><i data-lucide="graduation-cap"></i><span>使用示例 EEG 走一遍</span></button>
+    </div>
+  `;
+  starter.querySelectorAll("[data-progress-view]").forEach((button) => {
+    button.addEventListener("click", () => setView(button.dataset.progressView));
+  });
+}
+
 function setView(viewName) {
   const aliases = {
     billing: "userCenter",
     invoice: "userCenter",
-    upload: "storage",
-    paradigms: "journey",
   };
-  const parentViews = {
-    epilepsyWorkbenchInline: "workflow",
-  };
-  const customerHiddenViews = new Set(["journey"]);
-  const requestedView = String(viewName || "dashboard");
-  let targetView = aliases[requestedView] || requestedView;
-  
-  // SEC-FIX: Prevent accessing internal views without login
-  const publicViews = new Set(["login", "register"]);
-  if (!state.role && !publicViews.has(targetView)) {
-    console.warn(`尝试访问 ${targetView} 但未登录，重定向到登录页`);
+  const requestedView = aliases[String(viewName || "")] || String(viewName || routeFallbackForRole());
+  const resolved = resolvePageRoute(requestedView);
+  if (resolved.blocked) {
+    console.warn(`尝试访问 ${requestedView} 但未登录，重定向到登录页`);
     logout(false);
     return;
   }
-  
-  if (state.role !== "admin" && customerHiddenViews.has(targetView)) {
-    targetView = "dashboard";
+  const targetView = resolved.targetView;
+  if (targetView === "statistics" && latestAnalysisTask()?.id) {
+    state.real.resultsViewed = true;
+    markLatestResultsReviewed().catch(() => null);
   }
+  document.body.dataset.requestedView = resolved.requestedView;
+  document.body.dataset.routeAliasOf = resolved.aliasOf || "";
+  document.body.dataset.routeRedirectedFrom = resolved.redirectedFrom || "";
   qsa(".view").forEach((section) => {
     section.classList.toggle("active", section.id === targetView);
   });
   qsa("[data-view]").forEach((button) => {
-    const navView = parentViews[targetView] || targetView;
-    button.classList.toggle("active", button.dataset.view === navView);
+    button.classList.toggle("active", button.dataset.view === resolved.navView);
   });
   const viewTitle = qs("#viewTitle");
   if (viewTitle) {
-    const navView = parentViews[targetView] || targetView;
-    const activeButton = qsa(`[data-view="${navView}"]`).find((button) => button.closest?.(".nav"));
+    const activeButton = qsa(`[data-view="${resolved.navView}"]`).find((button) => button.closest?.(".nav"));
     viewTitle.textContent = titles[targetView] || activeButton?.textContent?.trim() || targetView;
   }
-  window.location.hash = `#${targetView}`;
+  if (window.location.hash !== `#${targetView}`) {
+    window.location.hash = `#${targetView}`;
+  }
   requestAnimationFrame(() => window.scrollTo({ top: 0, left: 0, behavior: "auto" }));
   ensureRealEegFileInput();
   renderStorageManagement();
@@ -6893,8 +7591,8 @@ function startDemoWorkspace(persist = true) {
   });
   rememberSession("customer", persist);
   loginAs("customer", getStoredCustomer());
-  setLoginMessage("\u5df2\u8fdb\u5165 QLanalyser \u9879\u76ee\u5de5\u4f5c\u53f0\u3002", "success");
-  showToast("\u5df2\u8fdb\u5165\u9879\u76ee\u5de5\u4f5c\u53f0\u3002");
+  setLoginMessage("已进入 QLanalyser Online。", "success");
+  showToast("已进入 QLanalyser Online。");
 }
 
 function fillDemoCustomerCredentials() {
@@ -6955,8 +7653,13 @@ async function loginCustomer(email, password, remember) {
     loginAs("customer", getStoredCustomer());
     await refreshWallet();
     setLoginFieldValidity(true);
-    setLoginMessage("\u5df2\u8fdb\u5165 QLanalyser \u9879\u76ee\u5de5\u4f5c\u53f0\u3002", "success");
+    setLoginMessage("已进入 QLanalyser Online。", "success");
   } catch (error) {
+    if (email === demoCustomer.email && password === demoCustomer.password && (isLocalHost() || hasExplicitCustomerDemoMode())) {
+      console.warn("Demo login backend unavailable; entering local demo workspace.", error);
+      startDemoWorkspace(remember);
+      return;
+    }
     setLoginMessage(error.message || "\u767b\u5f55\u5931\u8d25\uff0c\u8bf7\u68c0\u67e5\u8d26\u53f7\u548c\u5bc6\u7801\u3002", "error");
   }
 }
@@ -7040,8 +7743,8 @@ async function loginAdmin(email, password) {
   rememberSession("admin", true, { token: session.token, accountId: session.account?.id });
   loginAs("admin");
   await refreshAdminConsole();
-  setLoginMessage("\u5df2\u8fdb\u5165 QLanalyser \u8fd0\u8425\u5de5\u4f5c\u53f0\u3002", "success");
-  showToast("\u5df2\u8fdb\u5165\u8fd0\u8425\u5de5\u4f5c\u53f0\u3002");
+  setLoginMessage("已进入 QLanalyser 内部后台。", "success");
+  showToast("已进入 QLanalyser 内部后台。");
 }
 
 function sendSandboxVerificationCode() {
@@ -7120,8 +7823,14 @@ async function restoreSession() {
         loginAs(session.role, session.role === "customer" ? getStoredCustomer() : null);
         return;
       } catch (error) {
-        // Network error, allow offline access but log
-        console.warn("无法验证token（网络错误），允许离线访问:", error);
+        if (session.role === "admin") {
+          console.warn("管理员 token 无法验证，清除本地 session:", error);
+          clearSession();
+          logout(false);
+          return;
+        }
+        // Customer demo can continue offline in local development.
+        console.warn("无法验证客户 token（网络错误），允许本地客户访问:", error);
         loginAs(session.role, session.role === "customer" ? getStoredCustomer() : null);
         return;
       }
@@ -7133,18 +7842,22 @@ async function restoreSession() {
 }
 
 function loginAs(role, profile = null) {
+  clearAuthenticatedArtifactObjectUrls();
   state.role = role;
-  qs("#loginScreen").hidden = true;
-  qs("#appShell").hidden = false;
+  setAuthenticatedShellVisible(true);
   applyRoleNavigationState(role);
   ensureRealEegFileInput();
   if (role === "admin") {
-    qs("#roleLabel").textContent = "运营账号";
-    qs("#balanceSide").textContent = "管理后台";
+    state.teaching.active = false;
+    state.teaching.guideActive = false;
+    state.teaching.datasetLoaded = false;
+    hideTeachingGuideOverlay();
+    qs("#roleLabel").textContent = "内部账号";
+    qs("#balanceSide").textContent = "后台";
     qs("#accountHint").textContent = "查看任务、客户与系统状态";
     const accountMeta = qs("#accountMeta");
     if (accountMeta) accountMeta.textContent = "admin / 管理权限";
-    qs("#topEyebrow").textContent = "运营后台";
+    qs("#topEyebrow").textContent = "QLanalyser Online · 内部后台";
     renderAdminCustomerProfile();
     setView("adminDashboard");
   } else {
@@ -7152,14 +7865,12 @@ function loginAs(role, profile = null) {
     const isDemoCustomer = customer.email === demoCustomer.email;
     qs("#roleLabel").textContent = customer.name || "客户账号";
     qs("#balanceSide").textContent = "个人中心";
-    qs("#accountHint").textContent = isDemoCustomer
-      ? `${customer.org || "QuanLan Online"} / 本地审核账号`
-      : `${customer.org || "未设置机构"} / ${customer.email || "未设置邮箱"}`;
+    qs("#accountHint").textContent = visibleCustomerShellHint(customer);
     const accountMeta = qs("#accountMeta");
     if (accountMeta) {
-      accountMeta.textContent = `${maskEmail(customer.email || demoCustomer.email)} / ${isDemoCustomer ? "审核账号" : "客户账号"}`;
+      accountMeta.textContent = `${maskEmail(customer.email || demoCustomer.email)} / 客户账号`;
     }
-    qs("#topEyebrow").textContent = "项目工作台";
+    qs("#topEyebrow").textContent = "QLanalyser Online · EEG 数据到报告";
     const hashView = window.location.hash.slice(1);
     const targetView = isEpilepsyWorkbenchDeepLinkIntent() 
       ? "epilepsyWorkbenchInline" 
@@ -7171,7 +7882,7 @@ function loginAs(role, profile = null) {
         recordUiAction("epilepsy:deeplink-bootstrap", "blocked", error?.message || String(error));
       });
     }).catch((error) => {
-      recordUiAction("workspace:refresh", "blocked", error.message || "项目工作台刷新失败");
+      recordUiAction("workspace:refresh", "blocked", error.message || "项目刷新失败");
       if (isEpilepsyWorkbenchDeepLinkIntent()) bootstrapEpilepsyDeepLinkWorkbench("login_restore_after_refresh_error").catch(() => null);
     });
   }
@@ -7187,38 +7898,32 @@ function applyShellCopyFixes(role, profile = null) {
 
 function applyShellCopyFixesAsciiLegacy(role, profile = null) {
   if (role === "admin") {
-    qs("#roleLabel").textContent = "运营账户";
-    qs("#balanceSide").textContent = "运营概览";
+    qs("#roleLabel").textContent = "内部账号";
+    qs("#balanceSide").textContent = "后台";
     qs("#accountHint").textContent = "管理客户、项目、任务、发票和系统状态";
-    qs("#topEyebrow").textContent = "运营后台";
+    qs("#topEyebrow").textContent = "QLanalyser Online · 内部后台";
     return;
   }
   const customer = profile || getStoredCustomer();
-  const isDemoCustomer = customer.email === demoCustomer.email;
   qs("#roleLabel").textContent = customer.name || "客户账户";
   qs("#balanceSide").textContent = "账户概览";
-  qs("#accountHint").textContent = isDemoCustomer
-    ? `${customer.org || "Quanlan Neuro Lab"} · 当前项目工作区`
-    : `${customer.org || "个人账户"} · ${customer.email || "未绑定邮箱"}`;
+  qs("#accountHint").textContent = visibleCustomerShellHint(customer);
   qs("#topEyebrow").textContent = "QLanalyser Online · EEG 数据到报告";
 }
 
 function applyShellCopyFixesAscii(role, profile = null) {
   if (role === "admin") {
-    qs("#roleLabel").textContent = "\u8fd0\u8425\u8d26\u6237";
-    qs("#balanceSide").textContent = "\u8fd0\u8425";
-    qs("#accountHint").textContent = "\u7ba1\u7406\u5ba2\u6237\u9879\u76ee\u3001\u4efb\u52a1\u3001\u8ba2\u5355\u3001\u5f00\u7968\u548c\u7cfb\u7edf\u72b6\u6001";
-    qs("#topEyebrow").textContent = "\u8fd0\u8425 / \u4eca\u65e5\u9879\u76ee";
+    qs("#roleLabel").textContent = "内部账号";
+    qs("#balanceSide").textContent = "后台";
+    qs("#accountHint").textContent = "查看账号、任务、交付与系统状态";
+    qs("#topEyebrow").textContent = "QLanalyser Online · 内部后台";
     return;
   }
   const customer = profile || getStoredCustomer();
-  const isDemoCustomer = customer.email === demoCustomer.email;
-  qs("#roleLabel").textContent = isDemoCustomer ? "\u5ba2\u6237\u8d26\u6237" : (customer.name || "\u5ba2\u6237\u8d26\u6237");
-  qs("#balanceSide").textContent = "\u8d26\u6237\u6982\u89c8";
-  qs("#accountHint").textContent = isDemoCustomer
-    ? `\u5168\u6f9c\u8111\u79d1\u5b66 \u00b7 \u5f53\u524d\u9879\u76ee\u5de5\u4f5c\u533a`
-    : `${customer.org || "\u4e2a\u4eba\u8d26\u6237"} \u00b7 ${customer.email || "\u672a\u7ed1\u5b9a\u90ae\u7bb1"}`;
-  qs("#topEyebrow").textContent = "\u5f53\u524d\u9879\u76ee";
+  qs("#roleLabel").textContent = customer.name || "客户账号";
+  qs("#balanceSide").textContent = "个人中心";
+  qs("#accountHint").textContent = visibleCustomerShellHint(customer);
+  qs("#topEyebrow").textContent = "QLanalyser Online · EEG 数据到报告";
 }
 
 function renderProjectDataManagement() {
@@ -7324,7 +8029,7 @@ function renderProjectDataManagement() {
           <span>${escapeHtml(projectDisplayName(item) || "未命名项目")}${isSelected ? `<small>当前项目</small>` : ""}</span>
           <span>${escapeHtml(String(count || 0))} 份数据</span>
           <span>${escapeHtml(projectStatusLabel(item, files))}</span>
-          <button class="ghost-btn mini" type="button" data-project-select="${escapeHtml(item.id)}">${isSelected ? "已选中" : "进入项目"}</button>
+          <button class="ghost-btn mini" type="button" data-project-select="${escapeHtml(item.id)}">${isSelected ? "已选中" : "打开项目"}</button>
         </div>
       `;
     }).join("");
@@ -7527,7 +8232,7 @@ function updateDashboardSummaryCards({ project, file, plan, epochSet, projectFil
     ? (file?.id ? "进入数据预处理" : "先选数据")
     : "先选项目";
   const nextHint = project?.id
-    ? "数据管理页会在选中项目后展开当前项目的数据。"
+    ? "数据页会在选中项目后展开当前项目的数据。"
     : "先选项目，再展开数据列表。";
 
   if (projectCardValue) projectCardValue.textContent = projectName;
@@ -7544,6 +8249,12 @@ function setTextIfPresent(selector, text) {
   if (node) node.textContent = text;
 }
 
+function setBrandKickerMarkup() {
+  const node = qs(".entry-kicker");
+  if (!node) return;
+  node.innerHTML = "全澜脑科学<sup>®</sup> | QuanLan BrainScience<sup>®</sup>";
+}
+
 function setAllTextIfPresent(selector, text) {
   qsa(selector).forEach((node) => {
     node.textContent = text;
@@ -7553,6 +8264,123 @@ function setAllTextIfPresent(selector, text) {
 function setValueIfPresent(selector, value) {
   const node = qs(selector);
   if (node) node.value = value;
+}
+
+function setButtonTone(button, tone = "ghost") {
+  if (!button) return;
+  button.classList.toggle("primary-btn", tone === "primary");
+  button.classList.toggle("ghost-btn", tone !== "primary");
+}
+
+function setNodeHidden(node, hidden) {
+  if (!node) return;
+  node.hidden = Boolean(hidden);
+  node.setAttribute("aria-hidden", hidden ? "true" : "false");
+}
+
+function visibleCustomerShellHint(customer = getStoredCustomer()) {
+  const org = String(customer?.org || "").trim();
+  const email = String(customer?.email || "").trim();
+  if (org && email) return `${org} · ${maskEmail(email)}`;
+  if (org) return org;
+  if (email) return maskEmail(email);
+  return "客户账号";
+}
+
+function applySinglePrimaryActionGate() {
+  if (state.role !== "customer") return;
+  const progress = getWorkspaceProgressState();
+  const dashboard = qs("#dashboard");
+  if (dashboard) {
+    const createButton = dashboard.querySelector('[data-real-action="create-project"]');
+    const chooseDataButton = dashboard.querySelector('[data-view-jump="storage"]');
+    if (createButton) {
+      setButtonTone(createButton, progress.hasProject ? "ghost" : "primary");
+      const label = createButton.querySelector("span");
+      if (label) label.textContent = progress.hasProject ? "新建项目" : "创建或打开项目";
+    }
+    if (chooseDataButton) {
+      setNodeHidden(chooseDataButton, !progress.hasProject);
+      setButtonTone(chooseDataButton, progress.hasProject && !progress.hasFile ? "primary" : "ghost");
+      const label = chooseDataButton.querySelector("span");
+      if (label) label.textContent = progress.hasFile ? "查看数据" : "上传或选择数据";
+    }
+  }
+
+  const storage = qs("#storage");
+  if (storage) {
+    const chooseFile = storage.querySelector('[data-file-trigger="real-eeg-file-storage"]');
+    const upload = storage.querySelector('[data-real-action="upload-eeg"]');
+    const pending = Boolean(qs("#real-eeg-file")?.files?.[0]);
+    setButtonTone(chooseFile, progress.hasProject && !pending ? "primary" : "ghost");
+    setButtonTone(upload, progress.hasProject && pending ? "primary" : "ghost");
+  }
+
+  qsa('[data-real-action="confirm-plan-inline"]').forEach((button) => {
+    setNodeHidden(button, Boolean(button.closest('[data-testid="preprocessing-inline-panel"]')));
+  });
+  qsa('[data-real-action="save-epoch-set"]').forEach((button) => setButtonTone(button, "ghost"));
+}
+
+function applyCustomerAccountCopy() {
+  if (state.role !== "customer") return;
+  const customer = getStoredCustomer();
+  const displayName = customer?.name || "客户账号";
+  setTextIfPresent("#roleLabel", displayName);
+  setTextIfPresent("#balanceSide", "个人中心");
+  setTextIfPresent("#accountHint", visibleCustomerShellHint(customer));
+  setTextIfPresent("#userCenterName", displayName);
+  setTextIfPresent("#userCenterEmail", customer?.email || demoCustomer.email);
+  setTextIfPresent("#userCenterOrg", customer?.org || "全澜脑科学");
+  setTextIfPresent("#userCenterRole", "客户账号");
+}
+
+function applyAdminToneDownCopy() {
+  if (state.role !== "admin") return;
+  setTextIfPresent("#topEyebrow", "QLanalyser Online · 内部后台");
+  setTextIfPresent("#roleLabel", "内部账号");
+  setTextIfPresent("#balanceSide", "后台");
+  setTextIfPresent("#accountHint", "账号、任务、交付与系统状态");
+  const nav = qs(".nav");
+  if (nav) nav.setAttribute("aria-label", "QLanalyser 后台导航");
+  setTextIfPresent('[data-view="adminOperations"] span', "任务队列");
+  setTextIfPresent('[data-view="adminFinance"] span', "结算记录");
+  setTextIfPresent('[data-view="journey"] span', "质检");
+  setTextIfPresent("#adminDashboard .metric:nth-child(1) span", "项目记录");
+  setTextIfPresent("#adminDashboard .metric:nth-child(1) small", "最近项目变更");
+  setTextIfPresent("#adminDashboard .panel.span-2 h2", "后台概览");
+  setTextIfPresent("#adminDashboard .panel.span-2 .panel-head p", "查看账号、任务、交付与系统状态。");
+  setTextIfPresent("#adminDashboard .checklist label:last-child", "交付提醒等待确认。");
+  setTextIfPresent("#adminDashboard .work-grid .panel:last-child h2", "最近账号变更");
+  setTextIfPresent("#adminOperations h2", "任务队列");
+  setTextIfPresent("#adminOperations .panel-head p", "查看上传、预处理、分析、出图和导出任务状态。");
+  setTextIfPresent("#adminOperations .table-row.head span:nth-child(2)", "所属账号");
+  setTextIfPresent("#adminOperations .table-row.head span:nth-child(4)", "处理");
+  setTextIfPresent("#adminFinance h2", "服务记录与开票状态");
+  setTextIfPresent("#adminFinance .panel-head p", "查看服务记录、额度变更和开票状态。");
+  setTextIfPresent("#adminFinance .table-row.head span:nth-child(1)", "记录");
+  setTextIfPresent("#adminFinance .table-row.head span:nth-child(2)", "额度");
+  setTextIfPresent("#adminFinance .panel:not(.span-2) h2", "结算摘要");
+  setTextIfPresent("#adminSystem .queue-grid div:nth-child(2) span", "队列容量");
+  setTextIfPresent("#adminSystem .queue-grid div:nth-child(2) b", "正常");
+  setTextIfPresent("#adminSystem .queue-grid div:nth-child(3) strong", "稳定");
+  setTextIfPresent("#adminSystem .queue-grid div:nth-child(3) span", "上传服务");
+  setTextIfPresent("#adminSystem .queue-grid div:nth-child(3) b", "正常");
+}
+
+function applyFinalVisibleCopyGate() {
+  const nav = qs(".nav");
+  if (nav) nav.setAttribute("aria-label", state.role === "admin" ? "QLanalyser 后台导航" : "QLanalyser 客户业务导航");
+  const adminCorner = qs(".admin-corner");
+  if (adminCorner) {
+    adminCorner.title = "内部入口";
+    adminCorner.setAttribute("aria-label", "内部入口");
+    const label = adminCorner.querySelector("span");
+    if (label) label.textContent = "内部";
+  }
+  applySinglePrimaryActionGate();
+  applyCustomerAccountCopy();
+  applyAdminToneDownCopy();
 }
 
 const BAD_VISIBLE_COPY_RE = /[?]{2,}|\uFFFD|\u5f85\u5b8c\u5584|\u951f|\u5bc0\u544a|\u5be4\u544a|\u93ba|\u942d|\u6fc2|\u7f01|\u95c1|\u5a34|\u95b8|\u6d94|\u7039|\u9357|\u93c2|\u5bee|\u5bb8|\u8d94|\u7ed4|\u6fa7|\u9a9e|\u5ddf|\u93c9/;
@@ -7566,8 +8394,8 @@ function cleanRuntimeMessage(message, action = "") {
   if (!hasBadVisibleCopy(text)) return text;
   const actionName = String(action || "");
   if (actionName.startsWith("auth:")) return "账号操作已记录，页面已更新。";
-  if (actionName.startsWith("billing:")) return "沙盒计费操作已记录。";
-  if (actionName.startsWith("invoice:") || actionName.startsWith("inbox:")) return "沙盒交付状态已更新。";
+  if (actionName.startsWith("billing:")) return "试用服务记录已更新。";
+  if (actionName.startsWith("invoice:") || actionName.startsWith("inbox:")) return "开票或交付状态已更新。";
   if (actionName.startsWith("audit:")) return "操作记录已打开。";
   if (actionName.startsWith("help:") || actionName.startsWith("upload:")) return "帮助说明已打开。";
   if (actionName.startsWith("ia:")) return "当前项目或数据操作已记录。";
@@ -7618,26 +8446,26 @@ function sanitizeVisibleCopyTree(root = qs("#appShell") || document.body) {
 
 function applyLegacyVisibleCopyCleanup() {
   const navLabels = {
-    dashboard: "项目管理",
-    storage: "数据管理",
-    analysis: "数据准备",
-    workflow: "分析任务",
-    statistics: "结果查看",
-    publication: "报告交付",
-    journey: "质量检查",
+    dashboard: "项目",
+    storage: "数据",
+    analysis: "准备",
+    workflow: "分析",
+    statistics: "结果",
+    publication: "报告",
+    journey: "质检",
     userCenter: "个人中心",
-    adminDashboard: "运营首页",
-    adminOperations: "任务运营",
-    adminFinance: "财务管理",
+    adminDashboard: "后台总览",
+    adminOperations: "任务队列",
+    adminFinance: "结算记录",
     adminSystem: "系统状态",
   };
   Object.entries(navLabels).forEach(([view, label]) => setTextIfPresent(`[data-view="${view}"] span`, label));
   const activeView = qs(".view.active")?.id || "dashboard";
-  setTextIfPresent("#viewTitle", titles[activeView] || "项目分析");
+  setTextIfPresent("#viewTitle", PRODUCT_VIEW_TITLES[activeView] || titles[activeView] || "QLanalyser Online");
   setTextIfPresent("#logoutBtn span", "退出");
-  setTextIfPresent("#roleLabel", "个人中心");
-  setTextIfPresent("#balanceSide", "账户与财务");
-  setTextIfPresent("#accountHint", "余额、充值、发票、权限和设置");
+  setTextIfPresent("#roleLabel", state.role === "admin" ? "内部账号" : "个人中心");
+  setTextIfPresent("#balanceSide", state.role === "admin" ? "后台" : "个人中心");
+  setTextIfPresent("#accountHint", state.role === "admin" ? "账号、任务、交付与系统状态" : visibleCustomerShellHint(getStoredCustomer()));
   setTextIfPresent("#realRuntimeStatus", qs("#realRuntimeStatus")?.textContent?.trim() || "等待创建或选择项目。");
   setTextIfPresent("#realEegFileName", qs("#realEegFileName")?.textContent?.includes("待完善") ? "尚未选择文件" : qs("#realEegFileName")?.textContent || "尚未选择文件");
   setTextIfPresent("#dashboard .metric-grid .metric:nth-child(1) span", "当前项目");
@@ -7649,22 +8477,21 @@ function applyLegacyVisibleCopyCleanup() {
   setTextIfPresent("#dashboard .metric-grid .metric:nth-child(4) span", "下一步");
   setTextIfPresent("#dashboard .metric-grid .metric:nth-child(4) strong", "先选项目");
   setTextIfPresent("#dashboard .metric-grid .metric:nth-child(4) small", "先选项目，再展开数据列表");
-  setTextIfPresent("#topEyebrow", "QLanalyser Online · EEG 数据到报告");
+  setTextIfPresent("#topEyebrow", state.role === "admin" ? "QLanalyser Online · 内部后台" : "QLanalyser Online · EEG 数据到报告");
   const customer = getStoredCustomer();
-  setTextIfPresent("#userCenterName", customer.name || "演示用户");
+  setTextIfPresent("#userCenterName", customer.name || "客户账号");
   setTextIfPresent("#userCenterEmail", customer.email || "demo.customer@quanlan.cn");
-  setTextIfPresent("#userCenterOrg", customer.org || "QuanLan Review Sandbox");
-  const sideBalanceText = String(qs("#balanceMain")?.textContent || "1000.00").replace(/[^\d.]/g, "");
-  setTextIfPresent("#userCenterBalance", `￥${Number(sideBalanceText || 1000).toFixed(2)}`);
+  setTextIfPresent("#userCenterOrg", customer.org || "全澜脑科学");
+  setTextIfPresent("#userCenterBalance", "试用中");
   const textPairs = [
-    ['[data-testid="project-crud-panel"] h2', "\u9879\u76ee\u7ba1\u7406"],
-    ['[data-testid="project-crud-panel"] .panel-head p', "\u53ea\u505a\u9879\u76ee\u7684\u521b\u5efa\u3001\u7f16\u8f91\u3001\u5f52\u6863\u548c\u5220\u9664\uff1b\u8fdb\u5165\u9879\u76ee\u540e\u518d\u5904\u7406\u9879\u76ee\u5185\u6570\u636e\u3002"],
-    ['[data-testid="project-data-crud-panel"] h2', "\u6570\u636e\u7ba1\u7406"],
-    ['[data-testid="project-data-crud-panel"] .panel-head p', "\u53ea\u505a\u5f53\u524d\u9879\u76ee\u5185\u6570\u636e\u6587\u4ef6\u7684\u67e5\u770b\u3001\u5907\u6ce8\u3001\u4e0a\u4f20\u65b0\u7248\u672c\u548c\u5220\u9664\u3002"],
+    ['[data-testid="project-crud-panel"] h2', "第 1 步：创建或打开项目"],
+    ['[data-testid="project-crud-panel"] .panel-head p', "项目会保存本次分析的数据、准备记录、任务、结果和报告。"],
+    ['[data-testid="project-data-crud-panel"] h2', "\u9879\u76ee\u5185\u6570\u636e"],
+    ['[data-testid="project-data-crud-panel"] .panel-head p', "\u6253\u5f00\u9879\u76ee\u540e\uff0c\u5728\u8fd9\u91cc\u67e5\u770b\u6570\u636e\u6982\u51b5\u548c\u4e0b\u4e00\u6b65\u5165\u53e3\uff1b\u4e0a\u4f20\u548c\u6587\u4ef6\u6574\u7406\u8bf7\u8fdb\u5165\u201c\u6570\u636e\u201d\u3002"],
     ['[data-testid="ia-page-boundary-note"] h2', "\u9875\u9762\u8fb9\u754c"],
-    ['[data-testid="ia-page-boundary-note"] .panel-head p', "\u9879\u76ee\u7ba1\u7406\u9875\u53ea\u8d1f\u8d23\u9879\u76ee\u4e0e\u6570\u636e\u7ba1\u7406\uff1b\u5206\u6790\u548c\u9884\u5904\u7406\u4ece\u9879\u76ee\u5165\u53e3\u8fdb\u5165\u3002"],
-    ['[data-testid="data-preparation-workbench"] h2', "\u6570\u636e\u51c6\u5907\u5de5\u4f5c\u53f0"],
-    ['[data-testid="data-preparation-workbench"] .panel-head p', "\u5bf9\u540c\u4e00\u9879\u76ee\u4e0b\u6bcf\u4e2a\u6570\u636e\u6587\u4ef6\u9010\u4e00\u9884\u89c8\u3001\u9884\u5904\u7406\u3001\u7f16\u8f91\u6570\u636e\u6bb5\u548c\u6807\u7b7e\uff0c\u6700\u540e\u518d\u63d0\u4ea4\u4efb\u52a1\u3002"],
+    ['[data-testid="ia-page-boundary-note"] .panel-head p', "项目页只负责打开项目；数据、准备、分析和报告按主流程推进。"],
+    ['[data-testid="data-preparation-workbench"] h2', "检查 EEG 数据"],
+    ['[data-testid="data-preparation-workbench"] .panel-head p', "先看波形和基础质量，再确认准备方案。"],
     ['[data-testid="single-file-preview-panel"] h2', "\u5355\u6587\u4ef6\u9884\u89c8\u4e0e\u4fee\u8ba2"],
     ['[data-testid="segment-tag-editor-panel"] h2', "\u5f53\u524d\u4fee\u6539\u8bb0\u5f55"],
     ['[data-testid="segment-tag-editor-panel"] .panel-head p', "\u7247\u6bb5\u5254\u9664\u3001\u6062\u590d\u3001\u6807\u7b7e\u548c\u574f\u9053\u4fee\u6539\u4f1a\u5148\u8bb0\u5728\u8fd9\u91cc\uff0c\u4fdd\u5b58\u524d\u4e0d\u7834\u574f\u539f\u59cb\u6570\u636e\u3002"],
@@ -7674,9 +8501,9 @@ function applyLegacyVisibleCopyCleanup() {
     ['[data-testid="event-epoch-panel"] .panel-head p', "\u4fdd\u5b58 ERP/P300 \u4e8b\u4ef6\u6620\u5c04\u3001\u5206\u6bb5\u7a97\u53e3\u3001\u57fa\u7ebf\u548c\u5254\u9664\u8bb0\u5f55\u3002"],
     ['[data-testid="data-preparation-submit-last"] h2', "\u786e\u8ba4\u6570\u636e\u51c6\u5907\u540e\u518d\u63d0\u4ea4"],
     ['[data-testid="data-preparation-submit-last"] .panel-head p', "确认数据准备方案、事件分段和质控记录后，再进入分析任务。"],
-    ['[data-testid="analysis-task-workbench"] h2', "分析任务"],
-    ['[data-testid="analysis-task-workbench"] .panel-head p', "选择已准备好的 EEG 数据后，可开始当前可用的分析方法。"],
-    ['[data-testid="analysis-task-submit-and-report"] h2', "\u63d0\u4ea4\u5206\u6790\u4e0e\u751f\u6210\u62a5\u544a"],
+    ['[data-testid="analysis-task-workbench"] h2', "选择分析方法"],
+    ['[data-testid="analysis-task-workbench"] .panel-head p', "根据当前数据和准备状态，选择可以运行的分析任务。"],
+    ['[data-testid="analysis-task-submit-and-report"] h2', "运行分析"],
   ];
   textPairs.forEach(([selector, text]) => setTextIfPresent(selector, text));
   const labels = [
@@ -7711,7 +8538,7 @@ function applyLegacyVisibleCopyCleanup() {
     ['[data-real-action="download-epoch-record"] span', "\u4e0b\u8f7d\u6570\u636e\u51c6\u5907\u8bb0\u5f55"],
     ['[data-real-action="confirm-plan-inline"] span', "\u786e\u8ba4\u6570\u636e\u51c6\u5907"],
     ['[data-real-action="download-plan-json"] span', "\u4e0b\u8f7d\u5904\u7406\u8bb0\u5f55"],
-    ['[data-real-action="create-report"] span', "生成交付报告"],
+    ['[data-real-action="create-report"] span', "生成报告"],
     ['[data-real-action="run-psd"] span', "开始 PSD 分析"],
     ['[data-real-action="run-erp"] span', "开始 ERP 分析"],
     ['[data-real-action="run-tfr"] span', "开始 TFR 时频分析"],
@@ -7721,8 +8548,8 @@ function applyLegacyVisibleCopyCleanup() {
     ['[data-real-action="run-pac"] span', "开始 PAC 耦合分析"],
     ['[data-real-action="run-connectivity"] span', "开始 Connectivity 连接性分析"],
     ['[data-ia-action="select-prep-data"] span', "\u9009\u62e9\u5e76\u9884\u89c8"],
-    ['[data-view-jump="statistics"] span', "\u67e5\u770b\u7ed3\u679c"],
-    ['[data-view-jump="publication"] span', "\u4e0b\u8f7d\u62a5\u544a"],
+    ['[data-view-jump="statistics"] span', "查看结果"],
+    ['[data-view-jump="publication"] span', "下载报告"],
     ["#submitBtn span", "\u63d0\u4ea4\u5206\u6790"],
   ];
   buttons.forEach(([selector, text]) => setTextIfPresent(selector, text));
@@ -7780,8 +8607,8 @@ function applyLegacyVisibleCopyCleanup() {
   });
   setTextIfPresent("#segmentSummary", hasBadVisibleCopy(qs("#segmentSummary")?.textContent) ? "\u5f53\u524d\u6570\u636e\u6bb5\u548c\u6807\u7b7e\u4fee\u8ba2\u5df2\u8bb0\u5f55\u3002" : qs("#segmentSummary")?.textContent || "\u5f53\u524d\u6570\u636e\u6bb5\u548c\u6807\u7b7e\u4fee\u8ba2\u5df2\u8bb0\u5f55\u3002");
   const methodCopy = {
-    qc: ["数据准备与质量检查", "在分析前查看数据概况、基础质量提示、预览和准备记录。"],
-    preprocessing_readiness: ["数据准备与质量检查", "在分析前查看数据概况、基础质量提示、预览和准备记录。"],
+    qc: ["准备与数据质量", "在分析前查看数据概况、基础质量提示、预览和准备记录。"],
+    preprocessing_readiness: ["准备与数据质量", "在分析前查看数据概况、基础质量提示、预览和准备记录。"],
     psd: ["PSD 频谱与频段功率", "输出频谱、频段功率和通道级表格，适合查看主要频段分布。"],
     psd_bandpower: ["PSD 频谱与频段功率", "输出频谱、频段功率和通道级表格，适合查看主要频段分布。"],
     erp: ["ERP 事件相关电位", "基于事件分段输出波形、指标和剔除记录，适合事件相关分析。"],
@@ -7806,19 +8633,19 @@ function applyLegacyVisibleCopyCleanup() {
   setAllTextIfPresent(".ia-section-title strong", "\u6570\u636e\u961f\u5217");
   setAllTextIfPresent(".ia-section-title span", "\u9010\u4e2a\u6570\u636e\u8fdb\u884c\u9884\u89c8\u548c\u9884\u5904\u7406");
   const loginCopy = [
-    [".admin-corner span", "\u7ba1\u7406"],
+    [".admin-corner span", "\u5185\u90e8"],
     [".login-brand .cover-copy h1", "\u7814\u7a76\u7ea7\u8111\u7535\u5206\u6790\u5e73\u53f0"],
     [".login-brand .cover-copy p", "\u6e05\u6670\u3001\u53ef\u590d\u73b0\u7684\u8111\u7535\u5206\u6790\u5de5\u4f5c\u533a\u3002"],
-    [".account-title span", "\u7814\u7a76\u5de5\u4f5c\u533a"],
-    [".account-title strong", "\u8fdb\u5165\u5206\u6790\u5de5\u4f5c\u53f0"],
-    [".account-title small", "\u4e0a\u4f20\u6570\u636e\u3001\u8fd0\u884c\u6d41\u7a0b\u3001\u4e0b\u8f7d\u7ed3\u679c\u5305\u3002"],
+    [".account-title span", "QLanalyser Online"],
+    [".account-title strong", "\u767b\u5f55"],
+    [".account-title small", ""],
     ['[data-login-tab="customerLogin"]', "\u767b\u5f55"],
-    ['[data-login-tab="customerRegister"]', "\u6ce8\u518c\u8d26\u53f7"],
+    ['[data-login-tab="customerRegister"]', "\u8d26\u53f7\u5f00\u901a"],
     ['label:has(#customerEmail) span', "\u90ae\u7bb1 / \u624b\u673a\u53f7"],
     ['label:has(#customerPassword) span', "\u5bc6\u7801"],
-    ["#customerLoginBtn span", "\u767b\u5f55\u5e76\u8fdb\u5165\u5de5\u4f5c\u53f0"],
+    ["#customerLoginBtn span", "\u767b\u5f55\u5e76\u8fdb\u5165\u9879\u76ee"],
     ['[data-lab-link="module-lab"] span', "\u67e5\u770b\u65b9\u6cd5\u5e93"],
-    ["#forgotPasswordBtn", "\u5e2e\u52a9\u4e0e\u8d26\u53f7\u627e\u56de"],
+    ["#forgotPasswordBtn", "\u627e\u56de\u8d26\u53f7"],
     ["#rememberCustomer", ""],
   ];
   loginCopy.forEach(([selector, text]) => {
@@ -7848,48 +8675,45 @@ function applyLegacyVisibleCopyCleanup() {
     const actions = item.querySelector(".real-actions");
     if (actions && !actions.querySelector("a,button")) actions.textContent = "\u7ed3\u679c\u6587\u4ef6\u751f\u6210\u4e2d\u6216\u6682\u65e0\u53ef\u4e0b\u8f7d\u5ba1\u8ba1\u4ea7\u7269\u3002";
   });
-  if (qs("#realResultReview") && !qs("#realResultReview [data-result-module]") && !latestAnalysisTask()) {
-    qs("#realResultReview").innerHTML = "<p>尚未生成分析结果。请先完成数据准备，再从 8 项分析方法中选择一种开始。</p>";
-  }
   applyResultSurfaceCopy();
   renderEegPreviewEmptyState();
   sanitizeVisibleCopyTree();
 }
 
 const PRODUCT_NAV_LABELS = {
-  dashboard: "项目管理",
-  storage: "数据管理",
-  analysis: "数据准备",
-  workflow: "分析任务",
-  statistics: "结果查看",
-  publication: "报告交付",
-  journey: "质量检查",
-  billing: "费用与充值",
+  dashboard: "项目",
+  storage: "数据",
+  analysis: "准备",
+  workflow: "分析",
+  statistics: "结果",
+  publication: "报告",
+  journey: "质检",
+  billing: "服务记录",
   invoice: "发票申请",
   inbox: "发票箱",
   userCenter: "个人中心",
   adminDashboard: "后台总览",
-  adminOperations: "任务运营",
-  adminFinance: "财务管理",
+  adminOperations: "任务队列",
+  adminFinance: "结算记录",
   adminSystem: "系统状态",
 };
 
 const PRODUCT_VIEW_TITLES = {
-  dashboard: "项目管理",
-  storage: "数据管理",
-  analysis: "数据准备",
-  workflow: "分析任务",
-  epilepsyWorkbenchInline: "癫痫样事件分析台",
-  statistics: "结果查看",
-  publication: "报告交付",
-  journey: "质量检查",
-  billing: "费用与充值",
+  dashboard: "第 1 步：创建或打开项目",
+  storage: "上传或选择 EEG 数据",
+  analysis: "检查 EEG 数据",
+  workflow: "选择分析方法",
+  epilepsyWorkbenchInline: "癫痫样候选事件复核台",
+  statistics: "查看分析结果",
+  publication: "生成和下载报告",
+  journey: "交付质检",
+  billing: "服务记录",
   invoice: "发票申请",
   inbox: "发票箱",
   userCenter: "个人中心",
   adminDashboard: "后台总览",
-  adminOperations: "任务运营",
-  adminFinance: "财务管理",
+  adminOperations: "任务队列",
+  adminFinance: "结算记录",
   adminSystem: "系统状态",
 };
 
@@ -8045,6 +8869,9 @@ function renderStorageManagement() {
   const hasFile = Boolean(file?.id);
   const projectName = hasProject ? (projectDisplayName(project) || project.id) : "未打开项目";
   const selectedPrep = preparationRecordLabel(plan, epochSet);
+  storage.classList.toggle("storage-no-project", !hasProject);
+  storage.classList.toggle("storage-no-data", hasProject && !projectFiles.length);
+  storage.classList.toggle("storage-has-data", hasProject && Boolean(projectFiles.length));
 
   if (contextBar) {
     contextBar.innerHTML = `
@@ -8056,21 +8883,23 @@ function renderStorageManagement() {
   }
   if (projectHint) {
     projectHint.textContent = hasProject
-      ? `当前项目：${projectName}。数据文件按项目管理。`
-      : "数据文件按项目管理，请先到项目管理打开一个项目。";
+      ? `当前项目：${projectName}。数据文件随项目留痕。`
+      : "请先到项目页打开一个项目，再选择 EEG 数据。";
   }
   uploadButtons.forEach((button) => {
     button.disabled = !hasProject;
     button.title = hasProject ? "上传到当前项目" : "请先打开项目";
+    button.hidden = !hasProject;
+    button.setAttribute("aria-hidden", hasProject ? "false" : "true");
   });
 
   if (fileRows) {
     if (!hasProject) {
       fileRows.innerHTML = `
         <div class="storage-empty-state">
-          <strong>请先打开项目</strong>
-          <span>数据文件按项目管理，打开项目后再上传或选择数据。</span>
-          <button class="primary-btn mini" type="button" data-view-jump="dashboard">去项目管理</button>
+          <strong>第 1 步还没完成：请先创建或打开项目</strong>
+          <span>项目会保存本次 EEG 分析的数据、准备方案、任务、结果和报告。</span>
+          <button class="primary-btn mini" type="button" data-view-jump="dashboard">创建或打开项目</button>
         </div>
       `;
     } else if (!projectFiles.length) {
@@ -8087,7 +8916,7 @@ function renderStorageManagement() {
           || plans.find((candidate) => candidate.input_file_id === item.id)
           || null;
         const selected = item.id === file?.id;
-        const actionLabel = selected ? "当前数据" : "预览并准备";
+        const actionLabel = selected ? "当前数据" : "选择数据";
         const displayName = eegFileDisplayName(item) || "EEG 数据文件";
         const originalName = String(item.original_filename || item.id || "").trim();
         const secondaryName = originalName && originalName !== displayName ? originalName : "";
@@ -8109,11 +8938,11 @@ function renderStorageManagement() {
 
   if (fileDetail) {
     if (!hasProject) {
-      fileDetail.innerHTML = `
-        <strong>数据文件详情</strong>
-        <p>请先打开一个项目。这里会显示当前项目内的数据文件、备注和进入数据准备的入口。</p>
-      `;
+      fileDetail.hidden = true;
+      fileDetail.setAttribute("aria-hidden", "true");
     } else if (!hasFile) {
+      fileDetail.hidden = false;
+      fileDetail.setAttribute("aria-hidden", "false");
       fileDetail.innerHTML = `
         <strong>${escapeHtml(projectName)}</strong>
         <p>${projectFiles.length ? "请从左侧选择一份数据文件。" : "当前项目还没有数据文件。"}</p>
@@ -8123,6 +8952,8 @@ function renderStorageManagement() {
         </div>
       `;
     } else {
+      fileDetail.hidden = false;
+      fileDetail.setAttribute("aria-hidden", "false");
       fileDetail.innerHTML = `
         <strong>${escapeHtml(eegFileDisplayName(file) || file.id)}</strong>
         <p>${escapeHtml(fileDetailLabel(file))}</p>
@@ -8132,7 +8963,7 @@ function renderStorageManagement() {
           <span><b>准备记录：</b>${escapeHtml(selectedPrep)}</span>
         </div>
         <div class="real-actions compact-actions">
-          <button class="primary-btn" type="button" data-view-jump="analysis"><i data-lucide="sliders-horizontal"></i><span>进入数据准备</span></button>
+          <button class="primary-btn" type="button" data-view-jump="analysis"><i data-lucide="sliders-horizontal"></i><span>检查 EEG 数据</span></button>
           <button class="ghost-btn" type="button" data-ia-action="rename-data"><i data-lucide="tag"></i><span>编辑名称 / 备注</span></button>
         </div>
       `;
@@ -8167,12 +8998,6 @@ function applyCustomerTrialStorageSurfaceCleanup() {
     "#storage [data-ia-action=\"archive-data\"]",
   ].join(", ");
   setSurfaceHiddenForCustomer(hideInTeaching, teachingSurface);
-
-  const policyPanel = qs('[data-testid="storage-file-policy"]');
-  if (policyPanel) {
-    policyPanel.hidden = teachingSurface;
-    policyPanel.setAttribute("aria-hidden", teachingSurface ? "true" : "false");
-  }
 
   const projectHint = qs("#storageProjectHint");
   if (projectHint && teachingSurface) {
@@ -8279,8 +9104,8 @@ function renderProjectDataManagement() {
     projectRows.innerHTML = `
       <div class="table-row head project-row-head"><span>项目名称</span><span>数据</span><span>状态</span><span>最近更新</span><span>操作</span></div>
       ${rows || (shouldShowProjectRows
-        ? `<div class="empty-object-state"><strong>暂无项目</strong><span>先创建项目，再上传或管理 EEG 数据。</span><button class="primary-btn mini" type="button" data-real-action="create-project">创建项目</button></div>`
-        : `<div class="empty-object-state"><strong>项目列表已收起</strong><span>请先搜索项目或创建新项目；选中项目后再展开项目内数据。</span><button class="primary-btn mini" type="button" data-real-action="create-project">创建项目</button></div>`)}
+        ? `<div class="empty-object-state"><strong>暂无项目</strong><span>先创建项目，再上传或选择 EEG 数据。</span><button class="ghost-btn mini" type="button" data-real-action="create-project">创建项目</button></div>`
+        : `<div class="empty-object-state"><strong>项目列表已收起</strong><span>请先搜索项目或创建新项目；选中项目后再展开项目内数据。</span><button class="ghost-btn mini" type="button" data-real-action="create-project">创建项目</button></div>`)}
     `;
   }
 
@@ -8292,8 +9117,8 @@ function renderProjectDataManagement() {
   }
   if (prepRevisionState) {
     prepRevisionState.textContent = project?.id
-      ? (file?.id ? `当前数据：${eegFileDisplayName(file)}；${preparationStatusLabel(file, plan, epochSet)}。` : "数据状态：等待上传或选择数据。")
-      : "数据状态：未选择项目。";
+      ? (file?.id ? `当前数据：${eegFileDisplayName(file)}；${preparationStatusLabel(file, plan, epochSet)}。` : "当前数据：未选择。")
+      : "当前数据：未选择。";
   }
   if (dataEmptyState) {
     dataEmptyState.hidden = Boolean(project?.id && projectFiles.length > 0);
@@ -8301,8 +9126,8 @@ function renderProjectDataManagement() {
     const body = dataEmptyState.querySelector("span");
     if (title) title.textContent = project?.id ? "当前项目暂无数据" : "请先选择项目";
     if (body) body.textContent = project?.id
-      ? "选择 EEG 数据并上传到当前项目，上传后这里会显示数据列表、预览入口和下一步入口。"
-      : "选中项目后才显示项目内数据，避免在项目管理页展开无关列表。";
+      ? "当前项目还没有数据。"
+      : "选中项目后显示数据数量和下一步。";
   }
   if (uploadRow) uploadRow.hidden = true;
   if (dataActions) dataActions.hidden = true;
@@ -8319,11 +9144,10 @@ function renderProjectDataManagement() {
     dataRows.hidden = !project?.id;
     dataRows.innerHTML = project?.id
       ? `
-        <div class="project-detail-summary">
+        <div class="project-detail-summary compact-project-data-summary">
           <span><b>数据文件：</b>${projectFiles.length} 个</span>
-          <span><b>项目状态：</b>${escapeHtml(projectStatusLabel(project, files))}</span>
-          <span><b>下一步：</b>${projectFiles.length ? "进入数据管理选择文件" : "进入数据管理上传 EEG 数据"}</span>
-          <button class="primary-btn mini" type="button" data-view-jump="storage">进入数据管理</button>
+          <span><b>下一步：</b>${projectFiles.length ? "去数据页选择文件" : "去数据页上传数据"}</span>
+          <button class="ghost-btn mini" type="button" data-view-jump="storage">去选择数据</button>
         </div>
       `
       : "";
@@ -8345,7 +9169,7 @@ function renderProjectDataManagement() {
     }).join("") : "";
     prepQueue.innerHTML = `
       <div class="table-row head prep-row-head"><span>\u6570\u636e\u6587\u4ef6</span><span>\u51c6\u5907\u72b6\u6001</span><span>\u64cd\u4f5c</span></div>
-      ${rows || `<div class="empty-object-state"><strong>${project?.id ? "\u5f53\u524d\u9879\u76ee\u6682\u65e0\u6570\u636e" : "\u8bf7\u5148\u9009\u62e9\u9879\u76ee"}</strong><span>${project?.id ? "\u8bf7\u56de\u5230\u6570\u636e\u7ba1\u7406\u4e0a\u4f20 EEG \u6570\u636e\u3002" : "\u5148\u5728\u9879\u76ee\u7ba1\u7406\u4e2d\u6253\u5f00\u9879\u76ee\uff0c\u518d\u9010\u4e2a\u9884\u5904\u7406\u9879\u76ee\u5185\u6570\u636e\u3002"}</span><button class="ghost-btn mini" type="button" data-view-jump="${project?.id ? "storage" : "dashboard"}">${project?.id ? "\u8fdb\u5165\u6570\u636e\u7ba1\u7406" : "\u8fd4\u56de\u9879\u76ee\u7ba1\u7406"}</button></div>`}
+      ${rows || `<div class="empty-object-state"><strong>${project?.id ? "\u5f53\u524d\u9879\u76ee\u6682\u65e0\u6570\u636e" : "\u8bf7\u5148\u9009\u62e9\u9879\u76ee"}</strong><span>${project?.id ? "\u8bf7\u56de\u5230\u6570\u636e\u9875\u4e0a\u4f20 EEG \u6570\u636e\u3002" : "\u5148\u5728\u9879\u76ee\u9875\u6253\u5f00\u9879\u76ee\uff0c\u518d\u9009\u62e9\u9879\u76ee\u5185\u6570\u636e\u3002"}</span><button class="ghost-btn mini" type="button" data-view-jump="${project?.id ? "storage" : "dashboard"}">${project?.id ? "\u8fdb\u5165\u6570\u636e\u9875" : "\u8fd4\u56de\u9879\u76ee"}</button></div>`}
     `;
   }
 
@@ -8363,10 +9187,12 @@ function updateDashboardSummaryCards({ project, file, plan, epochSet, projectFil
   const fileName = file?.id ? (eegFileDisplayName(file) || file.id) : (project?.id ? "未选择数据" : "未选择数据");
   const fileNote = file?.id ? `${fileStatusLabel(file)} · ${fileDetailLabel(file)}` : (project?.id ? `${projectFiles.length} 个数据文件` : "选择项目后显示数据文件");
   const prepText = file?.id ? preparationStatusLabel(file, plan, epochSet) : "未开始";
-  const nextText = project?.id ? (file?.id ? "进入数据准备" : "上传或选择数据") : "先选项目";
+  const progress = getWorkspaceProgressState();
+  const next = getWorkspaceNextRecommendation(progress);
+  const nextText = next.label;
   const nextNote = project?.id
-    ? "数据管理只展开当前项目内的数据和操作。"
-    : "先选择项目，再展开数据管理。";
+    ? "按数据、准备、分析、结果、报告继续推进。"
+    : "先创建或打开项目。";
 
   setTextIfPresent("#dashboard .metric-grid .metric:nth-child(1) span", "当前项目");
   setTextIfPresent("#dashboard .metric-grid .metric:nth-child(1) strong", projectName);
@@ -8386,6 +9212,7 @@ function updateDashboardSummaryCards({ project, file, plan, epochSet, projectFil
 function applyProjectDashboardEmptyState() {
   try {
     const hasProject = Boolean(state.real.project?.id || (state.workspace.projects || []).length > 0);
+    renderDashboardStarter();
     // When no project exists and none is selected, hide secondary panels
     // to avoid repeating "you haven't started" across 6+ sections.
     const targets = [
@@ -8428,14 +9255,18 @@ function applyProjectDashboardEmptyState() {
 /* ── Analysis page state gate (P0-3) ────────────────────────────── */
 function applyAnalysisPageStateGate() {
   try {
+    const hasProject = Boolean(state.real.project?.id || state.workspace.selectedProjectId);
     const hasFile = Boolean(state.real.eegFile?.id || currentWorkspaceFile()?.id);
     const analysisView = qs('#analysis');
     if (!analysisView) return;
+    analysisView.classList.toggle('analysis-no-project', !hasProject);
+    analysisView.classList.toggle('analysis-no-file', !hasFile);
 
     const waveformControls = qs('#analysis .eeg-toolbar');
     const prepSettings = qs('[data-testid="preprocessing-inline-panel"]') || qs('.preprocessing-side-panel');
     const editWorkbench = qs('[data-testid="preview-edit-workbench"]');
     const previewPanel = qs('[data-testid="single-file-preview-panel"]');
+    const waveformLayout = qs('#analysis .waveform-prep-layout');
 
     // Determine where to render the placeholder
     let placeholder = qs('#analysisEmptyPlaceholder');
@@ -8445,19 +9276,25 @@ function applyAnalysisPageStateGate() {
       if (waveformControls) waveformControls.style.display = 'none';
       if (prepSettings) prepSettings.style.display = 'none';
       if (editWorkbench) editWorkbench.style.display = 'none';
+      if (waveformLayout) waveformLayout.style.display = 'none';
 
       if (!placeholder && placeholderParent) {
         placeholder = document.createElement('div');
         placeholder.id = 'analysisEmptyPlaceholder';
         placeholder.className = 'analysis-empty-placeholder';
-        placeholder.innerHTML = '<strong>请先选择数据</strong><span>在项目管理或数据管理选择一份 EEG 数据后，波形预览与预处理控件会显示在这里。</span><button class="primary-btn mini" type="button" data-view-jump="storage">去选择数据</button>';
         placeholderParent.prepend(placeholder);
+      }
+      if (placeholder) {
+        placeholder.innerHTML = hasProject
+          ? '<strong>还没有选择 EEG 数据</strong><span>请先在数据页选择或上传文件。之后这里会显示波形预览、通道信息和基础检查。</span><button class="primary-btn mini" type="button" data-view-jump="storage">选择 EEG 数据</button>'
+          : '<strong>请先创建或打开项目</strong><span>项目确定后，再上传或选择 EEG 数据进入检查。</span><button class="primary-btn mini" type="button" data-view-jump="dashboard">创建或打开项目</button>';
       }
       if (placeholder) placeholder.style.display = '';
     } else {
       if (waveformControls) waveformControls.style.display = '';
       if (prepSettings) prepSettings.style.display = '';
       if (editWorkbench) editWorkbench.style.display = '';
+      if (waveformLayout) waveformLayout.style.display = '';
       if (placeholder) placeholder.style.display = 'none';
     }
   } catch (e) {
@@ -8469,20 +9306,20 @@ function applyAnalysisPageStateGate() {
 function groupAnalysisMethods() {
   const methods = [
     { id: 'psd', label: 'PSD 频谱与频段功率', group: 'recommended' },
-    { id: 'erp', label: 'ERP 事件相关电位', group: 'needs_events', condition: '需要事件标记' },
-    { id: 'tfr', label: 'TFR 时频分析', group: 'needs_events', condition: '需要事件标记' },
+    { id: 'erp', label: 'ERP 事件相关电位', group: 'conditional', condition: '需要事件标记' },
+    { id: 'tfr', label: 'TFR 时频分析', group: 'advanced', condition: '需要事件标记' },
     { id: 'multitaper_psd', label: 'Multitaper PSD', group: 'advanced' },
     { id: 'multitaper_tfr', label: 'Multitaper TFR', group: 'advanced' },
     { id: 'pac', label: 'PAC 相位-振幅耦合', group: 'advanced' },
     { id: 'connectivity', label: 'Connectivity 连接性分析', group: 'advanced' },
     { id: 'reference_csd', label: 'CSD 电流源密度', group: 'advanced', condition: '需要通道位置' },
-    { id: 'epilepsy_ml', label: '癫痫样事件分析台', group: 'special' },
+    { id: 'epilepsy_ml', label: '癫痫样候选事件复核台', group: 'special' },
   ];
 
   const groups = {
-    recommended: { title: '推荐运行', methods: [] },
-    needs_events: { title: '需要事件标记', methods: [] },
-    advanced: { title: '高级方法', methods: [] },
+    recommended: { title: '推荐先运行', methods: [] },
+    conditional: { title: '条件方法', methods: [] },
+    advanced: { title: '进阶分析', methods: [] },
     special: { title: '专项工作台', methods: [] },
   };
 
@@ -8502,11 +9339,20 @@ function regroupAnalysisMethods() {
     if (!existingCards.length) return;
 
     const groups = groupAnalysisMethods();
-    const groupOrder = ['recommended', 'needs_events', 'advanced', 'special'];
+    const groupOrder = ['recommended', 'conditional', 'advanced', 'special'];
 
     container.innerHTML = groupOrder.map(key => {
       const g = groups[key];
       if (!g.methods.length) return '';
+      if (key === "advanced") {
+        return `
+          <details class="method-group method-group-collapsible" data-method-group="${key}">
+            <summary class="method-group-title">${g.title}<span class="method-group-count">${g.methods.length} 项</span></summary>
+            <p class="method-group-note">这些方法需要事件、统计设计、通道位置或额外复核，当前不建议作为第一次分析。</p>
+            <div class="method-group-grid"></div>
+          </details>
+        `;
+      }
       return `
         <div class="method-group" data-method-group="${key}">
           <h3 class="method-group-title">${g.title}<span class="method-group-count">${g.methods.length} 项</span></h3>
@@ -8518,7 +9364,7 @@ function regroupAnalysisMethods() {
     // Map module IDs to their group
     const moduleToGroup = {};
     groups.recommended.methods.forEach(m => moduleToGroup[m.id] = 'recommended');
-    groups.needs_events.methods.forEach(m => moduleToGroup[m.id] = 'needs_events');
+    groups.conditional.methods.forEach(m => moduleToGroup[m.id] = 'conditional');
     groups.advanced.methods.forEach(m => moduleToGroup[m.id] = 'advanced');
     groups.special.methods.forEach(m => moduleToGroup[m.id] = 'special');
 
@@ -8555,7 +9401,7 @@ function applyProductPageStructureCleanup() {
     statistics.innerHTML = `
       <section class="panel span-2" data-testid="results-review-workbench">
         <div class="panel-head">
-          <div><h2>结果查看</h2><p>本页展示已完成分析的图表、表格和参数记录。需要下载完整文件时，请到“报告交付”。</p></div>
+          <div><h2>查看分析结果</h2><p>查看已完成任务的图表、表格、参数、质量提醒和解释边界。</p></div>
         </div>
         <div id="realResultReview" class="result-review"></div>
       </section>
@@ -8572,13 +9418,13 @@ function applyProductPageStructureCleanup() {
     publication.innerHTML = `
       <section class="panel span-2" data-testid="report-delivery-workbench">
         <div class="panel-head">
-          <div><h2>报告交付</h2><p>管理已生成的交付报告、在线预览、完整下载和交付清单。</p></div>
-          <button class="primary-btn" type="button" data-real-action="create-report"><i data-lucide="file-output"></i><span>生成交付报告</span></button>
+          <div><h2>生成和下载报告</h2><p>把结果、图表、参数、方法和复现记录打包交付。</p></div>
+          <button class="primary-btn" type="button" data-real-action="create-report" hidden><i data-lucide="file-output"></i><span>生成报告</span></button>
         </div>
         <div class="delivery-grid" id="realDeliveryLinks"></div>
       </section>
-      <section class="panel" data-testid="report-package-contract">
-        <div class="panel-head compact"><h2>\u4ea4\u4ed8\u5305\u5185\u5bb9</h2></div>
+      <section class="panel" data-testid="report-package-contract" hidden>
+        <div class="panel-head compact"><h2>报告包内容</h2></div>
         <div class="storage-table compact-table">
           <div class="table-row head"><span>\u5185\u5bb9</span><span>\u7528\u9014</span><span>\u72b6\u6001</span></div>
           <div class="table-row"><span>\u56fe\u8868</span><span>\u7ed3\u679c\u67e5\u770b\u548c\u6c47\u62a5</span><span class="run">\u968f\u62a5\u544a\u751f\u6210</span></div>
@@ -8596,21 +9442,21 @@ function applyProductPageStructureCleanup() {
     journey.innerHTML = `
       <section class="panel span-2" data-testid="review-validation-workbench">
         <div class="panel-head">
-          <div><h2>\u8bc4\u5ba1\u9a8c\u8bc1</h2><p>\u8fd9\u91cc\u53ea\u653e\u4ea7\u54c1\u9a8c\u8bc1\u548c\u8bc4\u5ba1\u95e8\uff1b\u4e0d\u518d\u91cd\u590d\u9879\u76ee\u3001\u6570\u636e\u3001\u5206\u6790\u6d41\u7a0b\u6559\u5b66\u3002</p></div>
+          <div><h2>交付质检</h2><p>后台检查数据、准备记录、结果文件和报告包是否具备交付条件；不评估临床诊断结论。</p></div>
         </div>
         <div class="review-gate-grid">
-          <article class="review-gate-card"><strong>页面可操作检查</strong><span>按用户路径检查按钮、页面跳转和等待状态是否清楚。</span><b>已纳入</b></article>
-          <article class="review-gate-card"><strong>结果完整性检查</strong><span>核对图、表、方法记录、提醒和下载入口是否齐全。</span><b>已纳入</b></article>
-          <article class="review-gate-card"><strong>科学边界检查</strong><span>避免把描述性结果写成诊断、因果或群组统计结论。</span><b>已纳入</b></article>
-          <article class="review-gate-card"><strong>中文与界面检查</strong><span>检查页面无乱码、无内部词、无重复入口、无无效按钮。</span><b>已纳入</b></article>
+          <article class="review-gate-card"><strong>任务产物</strong><span>核对分析任务、图表、表格和结果文件是否齐全。</span><b>待复核</b></article>
+          <article class="review-gate-card"><strong>准备记录</strong><span>确认输入数据、准备方案、参数和修订记录可追溯。</span><b>待复核</b></article>
+          <article class="review-gate-card"><strong>报告包</strong><span>检查方法说明、结果摘要和下载入口是否完整。</span><b>待复核</b></article>
+          <article class="review-gate-card"><strong>边界说明</strong><span>确认结果保持科研分析支持边界，避免诊断化表述。</span><b>待复核</b></article>
         </div>
       </section>
       <section class="panel" data-testid="review-action-panel">
-        <div class="panel-head compact"><h2>\u4e0b\u4e00\u6b65\u9a8c\u8bc1</h2></div>
+        <div class="panel-head compact"><h2>后台处理</h2></div>
         <div class="real-actions compact-actions">
-          <button class="ghost-btn" type="button" data-view-jump="dashboard"><i data-lucide="folder-kanban"></i><span>\u56de\u5230\u9879\u76ee\u7ba1\u7406</span></button>
-          <button class="ghost-btn" type="button" data-view-jump="statistics"><i data-lucide="chart-no-axes-combined"></i><span>\u68c0\u67e5\u7ed3\u679c</span></button>
-          <button class="ghost-btn" type="button" data-view-jump="publication"><i data-lucide="file-down"></i><span>\u68c0\u67e5\u62a5\u544a</span></button>
+          <button class="ghost-btn" type="button" data-view-jump="adminOperations"><i data-lucide="list-checks"></i><span>查看任务队列</span></button>
+          <button class="ghost-btn" type="button" data-view-jump="adminDashboard"><i data-lucide="monitor-dot"></i><span>回到后台总览</span></button>
+          <button class="ghost-btn" type="button" data-view-jump="adminSystem"><i data-lucide="server-cog"></i><span>查看系统状态</span></button>
         </div>
       </section>
     `;
@@ -8623,20 +9469,20 @@ function applyProductPageStructureCleanup() {
       <div class="user-center-product-grid" data-testid="user-center-product-grid">
         <section class="panel user-center-column" data-testid="user-account-column">
           <div class="panel-head">
-            <div><h2>\u8d26\u6237\u4e2d\u5fc3</h2><p>\u7ba1\u7406\u767b\u5f55\u8eab\u4efd\u3001\u6743\u9650\u3001\u5b89\u5168\u548c\u5e38\u7528\u504f\u597d\u3002</p></div>
+            <div><h2>个人中心</h2><p>管理账号、权限、安全和常用偏好。</p></div>
           </div>
           <div class="profile-card clean-profile">
-            <div><span>\u59d3\u540d</span><strong id="userCenterName">\u6f14\u793a\u7528\u6237</strong></div>
+            <div><span>\u59d3\u540d</span><strong id="userCenterName">客户账号</strong></div>
             <div><span>\u767b\u5f55\u8d26\u53f7</span><strong id="userCenterEmail">demo.customer@quanlan.cn</strong></div>
-            <div><span>\u6240\u5c5e\u5355\u4f4d</span><strong id="userCenterOrg">QuanLan Review Sandbox</strong></div>
-            <div><span>\u8d26\u53f7\u72b6\u6001</span><strong>\u672c\u5730\u5ba1\u6838\u8d26\u53f7</strong></div>
+            <div><span>\u6240\u5c5e\u5355\u4f4d</span><strong id="userCenterOrg">全澜脑科学</strong></div>
+            <div><span>\u8d26\u53f7\u72b6\u6001</span><strong id="userCenterRole">客户账号</strong></div>
           </div>
           <div class="user-center-section">
             <h3>\u6743\u9650\u8303\u56f4</h3>
             <div class="audit-list">
-              <span><b>\u9879\u76ee\u6743\u9650\uff1a</b>\u53ef\u67e5\u770b\u548c\u7ba1\u7406\u6f14\u793a\u9879\u76ee</span>
-              <span><b>\u6570\u636e\u6743\u9650\uff1a</b>\u4ec5\u9650\u672c\u5730\u6d4b\u8bd5\u6570\u636e</span>
-              <span><b>\u8bc4\u5ba1\u6743\u9650\uff1a</b>\u53ef\u6267\u884c\u4ea7\u54c1\u5ba1\u6838\u548c\u9a8c\u8bc1</span>
+              <span><b>\u9879\u76ee\u6743\u9650\uff1a</b>可查看和管理授权项目</span>
+              <span><b>\u6570\u636e\u6743\u9650\uff1a</b>可上传、选择和准备项目内 EEG 数据</span>
+              <span><b>\u7ed3\u679c\u6743\u9650\uff1a</b>可查看结果并生成报告包</span>
             </div>
           </div>
           <div class="user-center-section">
@@ -8648,51 +9494,24 @@ function applyProductPageStructureCleanup() {
           </div>
         </section>
 
-        <section class="panel user-center-column" data-testid="user-finance-column">
-          <div class="panel-head">
-            <div><h2>\u8d22\u52a1\u4e0e\u670d\u52a1</h2><p>\u5145\u503c\u3001\u4f59\u989d\u3001\u8ba2\u5355\u3001\u53d1\u7968\u3001\u901a\u77e5\u548c\u5e2e\u52a9\u90fd\u5728\u8fd9\u91cc\u7edf\u4e00\u7ba1\u7406\u3002</p></div>
+        <section class="panel user-center-column subdued-service-column" data-testid="user-finance-column">
+          <div class="panel-head compact">
+            <div><h2>试用服务记录</h2><p>客户侧只显示服务状态和交付入口。</p></div>
           </div>
-          <div class="finance-summary">
-            <div><span>\u5f53\u524d\u4f59\u989d</span><strong id="userCenterBalance">\uffe51000.00</strong></div>
-            <div><span>\u8d26\u53f7\u5b89\u5168</span><strong>\u672c\u5730\u5ba1\u6838\u4e13\u7528\u4f4e\u6743\u9650\u8d26\u53f7</strong></div>
+          <div class="service-record-list">
+            <div><span>服务状态</span><strong id="userCenterBalance">试用中</strong></div>
+            <div><span>记录状态</span><strong>线下确认后更新</strong></div>
+            <div><span>交付记录</span><strong>报告页下载</strong></div>
           </div>
+          <button class="ghost-btn" id="rechargeBtn" type="button"><i data-lucide="clipboard-check"></i><span>提醒运营确认</span></button>
+          <div class="notice" id="rechargeNotice"><i data-lucide="badge-check"></i><span>等待线下确认。</span></div>
           <div class="user-center-section">
-            <h3>\u5145\u503c</h3>
-            <div class="balance">\uffe5<span id="balanceMain">1000.00</span></div>
-            <div class="recharge compact-recharge">
-              <button data-recharge="100">\uffe5100</button>
-              <button data-recharge="500">\uffe5500</button>
-              <button class="active" data-recharge="1000">\uffe51000</button>
-              <button data-recharge="5000">\uffe55000</button>
-            </div>
-            <button class="primary-btn" id="rechargeBtn" type="button"><i data-lucide="wallet-cards"></i><span>\u5145\u503c</span></button>
-          </div>
-          <div class="user-center-section">
-            <h3>\u8ba2\u5355\u4e0e\u53d1\u7968</h3>
-            <div class="invoice-form compact-invoice-form">
-              <label><span>\u53d1\u7968\u62ac\u5934</span><input id="invoiceTitleInput" value="\u67d0\u67d0\u5927\u5b66\u8ba4\u77e5\u795e\u7ecf\u79d1\u5b66\u5b9e\u9a8c\u5ba4" /></label>
-              <label><span>\u5f00\u7968\u91d1\u989d</span><div class="with-unit"><input id="invoiceAmountInput" value="5.00" /><em>\u5143</em></div></label>
-              <label><span>\u63a5\u6536\u90ae\u7bb1</span><input id="invoiceEmailInput" value="demo.customer@quanlan.cn" /></label>
-            </div>
-            <button class="primary-btn" id="invoiceBtn" type="button"><i data-lucide="send"></i><span>\u63d0\u4ea4\u5f00\u7968\u7533\u8bf7</span></button>
-            <div class="notice" id="invoiceNotice"><i data-lucide="badge-check"></i><span>\u7b49\u5f85\u63d0\u4ea4\u3002</span></div>
-          </div>
-          <div class="user-center-section two-col-section">
-            <div>
-              <h3>\u901a\u77e5</h3>
-              <div class="checklist compact-checklist">
-                <label><input type="checkbox" checked /> \u5206\u6790\u5b8c\u6210\u63d0\u9192</label>
-                <label><input type="checkbox" checked /> \u62a5\u544a\u751f\u6210\u63d0\u9192</label>
-                <label><input type="checkbox" /> \u53d1\u7968\u5ba1\u6838\u63d0\u9192</label>
-              </div>
-            </div>
-            <div>
-              <h3>\u8bbe\u7f6e\u4e0e\u504f\u597d</h3>
-              <div class="checklist compact-checklist">
-                <label><input type="checkbox" checked /> \u767b\u5f55\u540e\u8fdb\u5165\u9879\u76ee\u7ba1\u7406</label>
-                <label><input type="checkbox" checked /> \u4e0b\u8f7d\u524d\u663e\u793a\u6821\u9a8c\u72b6\u6001</label>
-                <label><input type="checkbox" /> \u4f7f\u7528\u7d27\u51d1\u5217\u8868</label>
-              </div>
+            <h3>\u901a\u77e5</h3>
+            <div class="checklist compact-checklist">
+              <label><input type="checkbox" checked /> \u5206\u6790\u5b8c\u6210\u63d0\u9192</label>
+              <label><input type="checkbox" checked /> \u62a5\u544a\u751f\u6210\u63d0\u9192</label>
+              <label><input type="checkbox" checked /> 登录后进入最近项目</label>
+              <label><input type="checkbox" checked /> \u4e0b\u8f7d\u524d\u663e\u793a\u6821\u9a8c\u72b6\u6001</label>
             </div>
           </div>
         </section>
@@ -8705,37 +9524,37 @@ function applyProductPageStructureCleanup() {
 function applyLoginAndAdminCleanCopy() {
   const loginPairs = [
     [".boss-home", "返回首页"],
-    [".entry-kicker", "全澜脑科学 | QuanLan BrainScience"],
-    [".entry-brand-lockup small", "面向科研团队的 EEG 数据管理、分析交付与复现记录平台。"],
-    [".cover-copy p", "让脑电数据管理更清晰，让分析流程更简单，让研究结果更容易交付。"],
-    [".account-title span", "研究工作区"],
-    [".account-title strong", "进入分析项目"],
-    [".account-title small", "上传数据、选择方法、下载结果材料。"],
+    [".entry-brand-lockup small", "清晰数据管理 · 流程化分析 · 规范结果交付"],
+    [".account-title span", "QLanalyser Online"],
+    [".account-title strong", "登录"],
+    [".account-title small", ""],
     ['[data-login-tab="customerLogin"]', "登录"],
-    ['[data-login-tab="customerRegister"]', "注册账号"],
-    ['[data-login-tab="adminLogin"]', "运营后台"],
+    ['[data-login-tab="customerRegister"]', "账号开通"],
     ['label:has(#customerEmail) span', "邮箱 / 手机号"],
     ['label:has(#customerPassword) span', "密码"],
     ['label:has(#adminEmail) span', "管理员邮箱"],
     ['label:has(#adminPassword) span', "管理员密码"],
-    [".admin-note", "后台仅用于运营人员管理客户、订单、任务和系统状态。"],
-    ["#customerLoginBtn span", "登录并进入项目"],
-    ["#forgotPasswordBtn", "帮助与账号找回"],
+    [".admin-note", "后台用于内部人员查看任务、账号和系统状态。"],
+    ["#customerLoginBtn span", "登录"],
+    ["#forgotPasswordBtn", "找回账号"],
     ['#adminLoginForm button[type="submit"] span', "进入后台"],
   ];
   loginPairs.forEach(([selector, text]) => setTextIfPresent(selector, text));
+  setBrandKickerMarkup();
   const emailInput = qs("#customerEmail");
   const passwordInput = qs("#customerPassword");
   const adminEmail = qs("#adminEmail");
   const adminPassword = qs("#adminPassword");
   if (emailInput) emailInput.placeholder = "输入已注册邮箱或体验手机号";
   if (passwordInput) passwordInput.placeholder = "请输入账户密码";
-  if (adminEmail) adminEmail.placeholder = "运营后台账号";
+  if (emailInput && !emailInput.value) emailInput.value = demoCustomer.email;
+  if (passwordInput && !passwordInput.value) passwordInput.value = demoCustomer.password;
+  if (adminEmail) adminEmail.placeholder = "内部后台账号";
   if (adminPassword) adminPassword.placeholder = "请输入后台密码";
   const loginBrand = qs(".login-brand");
   if (loginBrand) loginBrand.setAttribute("aria-label", "QLanalyser 脑电分析平台封面");
   const valueCards = qsa(".entry-value-grid article");
-  [["数据归档", "原始数据、事件表、参数与结果统一留痕。"], ["分析流程", "从基础质量预览、数据准备到结果导出，按科研分析流程推进。"], ["交付复核", "图表、表格、方法说明和操作记录可一起交付。"]].forEach(([title, body], index) => {
+  [["清晰数据管理", "原始数据、事件表、参数与结果统一留痕。"], ["流程化分析", "从质量预览、数据准备到结果导出，按科研分析流程推进。"], ["规范结果交付", "图表、表格、方法说明和操作记录可一起交付。"]].forEach(([title, body], index) => {
     const card = valueCards[index];
     if (!card) return;
     const strong = card.querySelector("strong");
@@ -8749,43 +9568,107 @@ function applyLoginAndAdminCleanCopy() {
     button.setAttribute("aria-hidden", state.role !== "admin" ? "true" : "false");
   });
   const activeView = qs(".view.active")?.id || "dashboard";
-  setTextIfPresent("#viewTitle", PRODUCT_VIEW_TITLES[activeView] || "项目分析");
-  setTextIfPresent("#topEyebrow", "QLanalyser Online · EEG 数据到报告");
+  setTextIfPresent("#viewTitle", PRODUCT_VIEW_TITLES[activeView] || "QLanalyser Online");
+  setTextIfPresent("#topEyebrow", state.role === "admin" ? "QLanalyser Online · 内部后台" : "QLanalyser Online · EEG 数据到报告");
   applyTeachingModeChrome();
   setTextIfPresent("#logoutBtn span", "退出");
-  setTextIfPresent("#roleLabel", state.role === "admin" ? "运营后台" : "个人中心");
+  setTextIfPresent("#roleLabel", state.role === "admin" ? "内部账号" : "个人中心");
 }
 
 
+function renderWorkflowPrimaryAction() {
+  const panel = qs('[data-testid="analysis-task-workbench"]');
+  if (!panel) return;
+  let target = panel.querySelector('[data-testid="workflow-primary-action"]');
+  if (!target) {
+    target = document.createElement("div");
+    target.className = "workflow-primary-action";
+    target.dataset.testid = "workflow-primary-action";
+    panel.appendChild(target);
+  }
+  const progress = getWorkspaceProgressState();
+  if (!progress.hasProject) {
+    target.innerHTML = `
+      <strong>第 1 步还没完成：创建或打开项目</strong>
+      <span>项目会保存本次分析的数据、准备记录、任务、结果和报告。</span>
+      <button class="primary-btn" type="button" data-view-jump="dashboard"><i data-lucide="folder-kanban"></i><span>创建或打开项目</span></button>
+    `;
+  } else if (!progress.hasFile) {
+    target.innerHTML = `
+      <strong>第 2 步还没完成：上传或选择 EEG 数据</strong>
+      <span>当前项目还没有可分析的数据文件。</span>
+      <button class="primary-btn" type="button" data-view-jump="storage"><i data-lucide="database"></i><span>上传或选择数据</span></button>
+    `;
+  } else if (!progress.hasPreparationPlan) {
+    target.innerHTML = `
+      <strong>第 3 步还没完成：确认数据准备</strong>
+      <span>请先检查 EEG 数据并确认准备方案。</span>
+      <button class="primary-btn" type="button" data-view-jump="analysis"><i data-lucide="sliders-horizontal"></i><span>确认准备并进入分析</span></button>
+    `;
+  } else {
+    target.innerHTML = `
+      <strong>推荐先运行 PSD</strong>
+      <span>查看不同频段的能量分布。结果仅作科研分析参考，不作为诊断结论。</span>
+      <button class="primary-btn" type="button" data-real-action="run-psd"><i data-lucide="activity"></i><span>运行 PSD 分析</span></button>
+    `;
+  }
+  if (window.lucide) window.lucide.createIcons();
+}
+
 function applyCustomerAnalysisTaskCopy() {
-  setTextIfPresent('[data-testid="analysis-task-workbench"] h2', "分析任务");
-  setTextIfPresent('[data-testid="analysis-task-workbench"] .panel-head p', "选择已准备好的 EEG 数据后，可开始当前可用的分析方法。");
-  setTextIfPresent('[data-testid="analysis-task-workbench"] .badge', "当前可用：8 项分析方法");
-  setTextIfPresent(".analysis-context-strip span", "前置要求：已选择项目、已选择数据，并已完成或确认数据准备。");
-  setTextIfPresent('[data-testid="analysis-method-scope-panel"] h2', "当前可用分析方法");
-  setTextIfPresent('[data-testid="analysis-method-scope-panel"] .panel-head p', "选择一个分析目标，系统会根据当前数据条件提示可运行的方法。");
+  const planReady = isAnalysisReady();
+  const scopePanel = qs('[data-testid="analysis-method-scope-panel"]');
+  const groupedMethods = qs("#analysisMethodsGrouped");
+  setTextIfPresent('[data-testid="analysis-task-workbench"] h2', "选择分析方法");
+  setTextIfPresent('[data-testid="analysis-task-workbench"] .panel-head p', "根据当前数据和准备状态，选择可以运行的分析任务。");
+  setTextIfPresent('[data-testid="analysis-task-workbench"] .badge', planReady ? "推荐先运行 PSD" : "等待数据准备");
+  setTextIfPresent(".analysis-context-strip span", planReady ? "数据准备已确认，可以提交推荐分析。" : "前置要求：已选择项目、已选择数据，并确认数据准备方案。");
+  setTextIfPresent('[data-testid="analysis-method-scope-panel"] h2', "分析方法");
+  setTextIfPresent('[data-testid="analysis-method-scope-panel"] .panel-head p', "第一次分析先运行 PSD；ERP 仅在事件标记有效时开放。");
+  renderWorkflowPrimaryAction();
+  if (scopePanel) {
+    scopePanel.hidden = !planReady;
+    scopePanel.setAttribute("aria-hidden", planReady ? "false" : "true");
+    scopePanel.classList.toggle("workflow-methods-locked", !planReady);
+  }
+  if (groupedMethods && !planReady) groupedMethods.innerHTML = "";
   const methodCards = qsa('[data-testid="analysis-method-scope-panel"] .ia-method-card');
-  const moduleOrder = ["psd", "erp", "tfr", "multitaper_psd", "multitaper_tfr", "pac", "connectivity", "reference_csd"];
+  const moduleOrder = ["psd", "erp", "tfr", "multitaper_psd", "multitaper_tfr", "pac", "connectivity", "reference_csd", "epilepsy_ml"];
+  const customerVisibleModules = new Set(["psd", "erp"]);
   const customerMethodCopy = {
-    psd: ["PSD 频谱与频段功率", "输出频谱、频段功率和通道级表格，适合查看主要频段分布。", "频谱", "available", "run-psd"],
-    erp: ["ERP 事件相关电位", "基于事件分段输出波形、指标和剔除记录，适合事件相关分析。", "需事件", "available", "run-erp"],
-    tfr: ["TFR 时频分析", "查看事件前后的时频功率和相位一致性，并记录频率范围与基线设置。", "时频", "available", "run-tfr"],
-    multitaper_psd: ["Multitaper PSD", "使用多窗谱估计查看频谱功率，适合对频谱结果做参数化比较。", "多窗谱", "available", "run-multitaper-psd"],
-    multitaper_tfr: ["Multitaper TFR", "查看事件锁定的多窗时频结果，并记录事件、基线和窗参数。", "多窗时频", "available", "run-multitaper-tfr"],
-    pac: ["PAC 相位-振幅耦合", "查看相位-振幅耦合的描述性图表和表格，不能单独解释为因果机制。", "耦合", "available", "run-pac"],
-    connectivity: ["Connectivity 连接性分析", "查看连接性矩阵和边表，结果用于研究参考，不证明信息流或因果方向。", "连接", "available", "run-connectivity"],
-    reference_csd: ["CSD 电流源密度计算", "基于通道位置信息计算头皮电位空间分布变化；这是传感器空间滤波，不是源定位或诊断。", "需通道位置", "available", "run-reference-csd"],
+    psd: ["PSD 频谱分析", "查看不同频段的能量分布；结果仅作科研分析参考。", "推荐", "recommended", "run-psd"],
+    erp: ["ERP 事件相关电位", "适合有事件标记的数据。运行前需要确认 target、standard 或其他事件语义。", "需事件", "conditional", "run-erp"],
+    tfr: ["TFR 时频分析", "需要事件、时间窗和基线设置，适合进阶研究。", "进阶", "advanced", "run-tfr"],
+    multitaper_psd: ["Multitaper PSD", "用于对频谱结果做参数化比较，不作为第一次分析首选。", "进阶", "advanced", "run-multitaper-psd"],
+    multitaper_tfr: ["Multitaper TFR", "需要事件锁定和窗参数，适合进阶时频分析。", "进阶", "advanced", "run-multitaper-tfr"],
+    pac: ["PAC 相位-振幅耦合", "描述相位与振幅的统计耦合，不能单独解释为因果机制。", "进阶", "advanced", "run-pac"],
+    connectivity: ["Connectivity 连接性分析", "描述通道间统计关联，不证明信息流或因果方向。", "进阶", "advanced", "run-connectivity"],
+    reference_csd: ["CSD 电流源密度计算", "需要通道位置信息；这是传感器空间滤波，不是源定位或诊断。", "进阶", "advanced", "run-reference-csd"],
+    epilepsy_ml: ["癫痫样候选事件复核台", "候选事件初筛和人工复核操作台；科研辅助用途，不作为诊断或临床结论。", "专项", "conditional", "open-epilepsy-workbench"],
   };
   methodCards.forEach((card, index) => {
     const moduleId = card.dataset.moduleId || moduleOrder[index];
+    const visibleToCustomer = state.role === "admin" || customerVisibleModules.has(moduleId);
+    card.hidden = !visibleToCustomer;
+    card.setAttribute("aria-hidden", visibleToCustomer ? "false" : "true");
+    if (!visibleToCustomer) {
+      card.disabled = true;
+      card.setAttribute("aria-disabled", "true");
+      card.dataset.disabledReason = "该方法属于进阶/内部流程，客户工作区暂不开放。";
+      return;
+    }
     const copy = customerMethodCopy[moduleId];
     if (!copy) return;
     const [title, body, status, tone, action] = copy;
     card.dataset.moduleId = moduleId;
     card.dataset.realAction = action;
     card.setAttribute("type", "button");
-    card.setAttribute("title", `${title}：点击后按当前数据条件运行或提示前置步骤。`);
-    card.classList.remove("beta", "draft", "dependency", "available");
+    const availability = moduleAvailability(moduleId);
+    card.disabled = !availability.enabled;
+    card.setAttribute("aria-disabled", availability.enabled ? "false" : "true");
+    card.dataset.disabledReason = availability.enabled ? "" : availability.reason;
+    card.setAttribute("title", availability.reason || `${title}：点击后按当前数据条件运行或提示前置步骤。`);
+    card.classList.remove("beta", "draft", "dependency", "available", "recommended", "conditional", "advanced");
     if (tone) card.classList.add(tone);
     const strong = card.querySelector("strong");
     const span = card.querySelector("span");
@@ -8806,22 +9689,34 @@ function applyCleanVisibleCopy() {
   applyCustomerTrialAnalysisSurfaceCleanup();
   applyCustomerTrialStorageSurfaceCleanup();
   const activeView = qs(".view.active")?.id || "dashboard";
-  setTextIfPresent("#viewTitle", PRODUCT_VIEW_TITLES[activeView] || "项目分析");
-  setTextIfPresent("#topEyebrow", "QLanalyser Online · EEG 数据到报告");
+  setTextIfPresent("#viewTitle", PRODUCT_VIEW_TITLES[activeView] || "QLanalyser Online");
   setTextIfPresent("#logoutBtn span", "退出");
-  setTextIfPresent("#roleLabel", "个人中心");
-  setTextIfPresent("#balanceSide", "账户与财务");
-  setTextIfPresent("#accountHint", "余额、充值、发票、权限和设置");
-  setTextIfPresent('[data-testid="project-crud-panel"] h2', "项目管理");
-  setTextIfPresent('[data-testid="project-crud-panel"] .panel-head p', "先建立或打开一个研究项目，再选择项目内数据。");
+  const teachingButton = qs("#teachingModeBtn");
+  if (teachingButton) {
+    teachingButton.hidden = state.role === "admin";
+    teachingButton.setAttribute("aria-hidden", state.role === "admin" ? "true" : "false");
+  }
+  if (state.role === "admin") {
+    setTextIfPresent("#topEyebrow", "QLanalyser Online · 内部后台");
+    setTextIfPresent("#roleLabel", "内部账号");
+    setTextIfPresent("#balanceSide", "后台");
+    setTextIfPresent("#accountHint", "账号、任务、交付与系统状态");
+  } else {
+    setTextIfPresent("#topEyebrow", "QLanalyser Online · EEG 数据到报告");
+    setTextIfPresent("#roleLabel", getStoredCustomer()?.name || "客户账号");
+    setTextIfPresent("#balanceSide", "个人中心");
+    setTextIfPresent("#accountHint", visibleCustomerShellHint(getStoredCustomer()));
+  }
+  setTextIfPresent('[data-testid="project-crud-panel"] h2', "第 1 步：创建或打开项目");
+  setTextIfPresent('[data-testid="project-crud-panel"] .panel-head p', "项目会保存本次分析的数据、准备记录、任务、结果和报告。");
   setTextIfPresent("#workspaceProjectSearch + span", "项目搜索");
   setTextIfPresent('label:has(#workspaceProjectSearch) span', "搜索项目");
   const projectSearch = qs("#workspaceProjectSearch");
   if (projectSearch) projectSearch.placeholder = "按项目名或项目编号搜索";
-  setTextIfPresent('label[for="workspaceShowReviewProjects"] span', "显示内部/归档项目");
+  setTextIfPresent('label[for="workspaceShowReviewProjects"] span', state.role === "admin" ? "显示内部/归档项目" : "显示更多项目");
   updateProjectVisibilityToggleLabel();
   setTextIfPresent('[data-testid="project-data-crud-panel"] h2', "项目内数据");
-  setTextIfPresent('[data-testid="project-data-crud-panel"] .panel-head p', "打开项目后，在这里查看项目内数据概况和下一步入口；上传和文件整理请进入“数据管理”。");
+  setTextIfPresent('[data-testid="project-data-crud-panel"] .panel-head p', "打开项目后，在这里查看项目内数据概况和下一步入口；上传和文件整理请进入“数据”。");
   setTextIfPresent('[data-file-trigger="real-eeg-file"] span', "选择 EEG 数据");
   setTextIfPresent('[data-real-action="upload-eeg"] span', "上传到当前项目");
   setTextIfPresent("#realEegFileName", qs("#realEegFileName")?.textContent || "尚未选择文件");
@@ -8837,6 +9732,7 @@ function applyCleanVisibleCopy() {
   sanitizeVisibleCopyTree();
   updateRealActionGate();
   applyCustomerTrialP0Fixes();
+  applyFinalVisibleCopyGate();
 }
 
 
@@ -9083,10 +9979,18 @@ function handleInlineEpilepsyReaderKeydown(event) {
   const key = event.key;
   if (key === "ArrowLeft") {
     event.preventDefault();
-    panInlineEpilepsyViewport(-EDF_BROWSER_INTERACTION_CONSTANTS.arrowPanRatio, file);
+    if (event.ctrlKey || event.metaKey) {
+      panInlineEpilepsyViewport(-EDF_BROWSER_INTERACTION_CONSTANTS.arrowPanRatio, file);
+    } else {
+      selectInlineEpilepsyRelativeCandidate(-1, { file: file });
+    }
   } else if (key === "ArrowRight") {
     event.preventDefault();
-    panInlineEpilepsyViewport(EDF_BROWSER_INTERACTION_CONSTANTS.arrowPanRatio, file);
+    if (event.ctrlKey || event.metaKey) {
+      panInlineEpilepsyViewport(EDF_BROWSER_INTERACTION_CONSTANTS.arrowPanRatio, file);
+    } else {
+      selectInlineEpilepsyRelativeCandidate(1, { file: file });
+    }
   } else if (key === "PageUp") {
     event.preventDefault();
     panInlineEpilepsyViewport(-EDF_BROWSER_INTERACTION_CONSTANTS.pagePanRatio, file);
@@ -9107,6 +10011,46 @@ function handleInlineEpilepsyReaderKeydown(event) {
       const reader = inlineEpilepsyReaderState();
       reader.sensitivityUvPerRow = Math.max(EDF_BROWSER_INTERACTION_CONSTANTS.minSensitivityUvPerRow, reader.sensitivityUvPerRow / EDF_BROWSER_INTERACTION_CONSTANTS.gainStepRatio);
     }
+  } else if (key === "k" || key === "K") {
+    event.preventDefault();
+    var selId = state.epilepsyInline && state.epilepsyInline.selectedEventId;
+    if (selId) {
+      state.epilepsyInline.draftCommands.push({ eventId: selId, label: "Seizure", displayLabel: "保留候选", at: new Date().toISOString() });
+      state.epilepsyInline.redoCommands = [];
+      state.epilepsyInline.draftSaved = false;
+      showToast("候选事件 " + selId + " → 保留候选");
+      renderInlineEpilepsyWorkbench();
+      return true;
+    }
+  } else if (key === "r" || key === "R") {
+    event.preventDefault();
+    var selId2 = state.epilepsyInline && state.epilepsyInline.selectedEventId;
+    if (selId2) {
+      state.epilepsyInline.draftCommands.push({ eventId: selId2, label: "Artifact", displayLabel: "排除候选", at: new Date().toISOString() });
+      state.epilepsyInline.redoCommands = [];
+      state.epilepsyInline.draftSaved = false;
+      showToast("候选事件 " + selId2 + " → 排除/伪迹");
+      renderInlineEpilepsyWorkbench();
+      setTimeout(function() { selectInlineEpilepsyRelativeCandidate(1, { file: file }); }, 200);
+      return true;
+    }
+  } else if (key === "m" || key === "M") {
+    event.preventDefault();
+    var selId3 = state.epilepsyInline && state.epilepsyInline.selectedEventId;
+    if (selId3) {
+      state.epilepsyInline.draftCommands.push({ eventId: selId3, label: "Needs review", displayLabel: "需复核", at: new Date().toISOString() });
+      state.epilepsyInline.redoCommands = [];
+      state.epilepsyInline.draftSaved = false;
+      showToast("候选事件 " + selId3 + " → 需复核");
+      renderInlineEpilepsyWorkbench();
+      return true;
+    }
+  } else if (key === "Escape") {
+    event.preventDefault();
+    state.epilepsyInline.selectedEventId = "";
+    renderInlineEpilepsyWorkbench();
+    showToast("已取消选中，返回自由浏览");
+    return true;
   } else {
     return false;
   }
@@ -9229,9 +10173,9 @@ document.addEventListener("click", (event) => {
   if (loginTabButton) {
     event.preventDefault?.();
     switchLoginTab(loginTabButton.dataset.loginTab);
-    const message = loginTabButton.dataset.loginTab === "customerRegister"
-      ? "已切换到注册账号。"
-      : (loginTabButton.dataset.loginTab === "adminLogin" ? "已切换到运营后台。" : "已切换到登录。");
+  const message = loginTabButton.dataset.loginTab === "customerRegister"
+      ? "试点阶段由运营人员开通账号。"
+      : (loginTabButton.dataset.loginTab === "adminLogin" ? "已切换到内部后台。" : "已切换到登录。");
     recordUiAction("auth:switch-tab", "pass", message, { tab: loginTabButton.dataset.loginTab });
     return;
   }
@@ -9247,6 +10191,7 @@ document.addEventListener("click", (event) => {
     event.preventDefault?.();
     const action = teachingButton.dataset.teachingAction;
     if (action === "start") startTeachingMode({ showGuide: true });
+    else if (action === "quickstart") startTeachingMode({ showGuide: false, quickStart: true, targetView: "analysis" });
     else if (action === "exit") closeTeachingMode();
     else if (action === "guide") {
       state.teaching.guideActive = true;
@@ -9275,36 +10220,10 @@ document.addEventListener("click", (event) => {
     loginAdmin(qs("#adminEmail")?.value.trim() || "", qs("#adminPassword")?.value || "");
     return;
   }
-  const payMethodButton = event.target?.closest?.("[data-pay-method]");
-  if (payMethodButton) {
-    event.preventDefault?.();
-    state.paymentMethod = payMethodButton.dataset.payMethod || "alipay";
-    qsa("[data-pay-method]").forEach((button) => button.classList.toggle("active", button === payMethodButton));
-    const message = `已选择沙盒支付方式：${state.paymentMethod === "wechat_pay" ? "微信" : "支付宝"}。`;
-    recordUiAction("billing:select-payment-method", "pass", message, { payment_method: state.paymentMethod });
-    showToast(message);
-    return;
-  }
-  const rechargeAmountButton = event.target?.closest?.("[data-recharge]");
-  if (rechargeAmountButton) {
-    event.preventDefault?.();
-    state.rechargeAmount = Number(rechargeAmountButton.dataset.recharge || 1000);
-    qsa("[data-recharge]").forEach((button) => button.classList.toggle("active", button === rechargeAmountButton));
-    const message = `已选择沙盒充值金额：${money(state.rechargeAmount)}。`;
-    recordUiAction("billing:select-recharge-amount", "pass", message, { amount: state.rechargeAmount });
-    showToast(message);
-    return;
-  }
   const rechargeButton = event.target?.closest?.("#rechargeBtn");
   if (rechargeButton) {
     event.preventDefault?.();
     handleSandboxRecharge();
-    return;
-  }
-  const invoiceButton = event.target?.closest?.("#invoiceBtn");
-  if (invoiceButton) {
-    event.preventDefault?.();
-    handleInvoiceSubmit();
     return;
   }
   const inboxButton = event.target?.closest?.("#refreshInboxBtn");
@@ -9523,6 +10442,14 @@ document.addEventListener("input", (event) => {
   }
   if (event.target?.matches?.("#eegStartInput")) {
     eegState.start = numberFromInput("#eegStartInput", eegState.start);
+    // FIX: 输入起点后自动 debounce 触发波形重载（不再需要失焦/回车）
+    if (window.__eegStartReloadTimer) clearTimeout(window.__eegStartReloadTimer);
+    window.__eegStartReloadTimer = setTimeout(() => {
+      window.__eegStartReloadTimer = null;
+      syncEegControlsFromState();
+      drawEegOverviewBar();
+      reloadWaveformPreview().catch((error) => showToast(error.message || "波形预览更新失败。"));
+    }, 400);
   }
 });
 
@@ -9545,6 +10472,15 @@ window.addEventListener("resize", () => {
   }, 120);
 });
 
+window.addEventListener("wheel", (event) => {
+  if (event.ctrlKey || event.metaKey) event.preventDefault();
+}, { passive: false, capture: true });
+
+window.addEventListener("keydown", (event) => {
+  if (!(event.ctrlKey || event.metaKey)) return;
+  if (["+", "-", "=", "0"].includes(event.key)) event.preventDefault();
+}, { capture: true });
+
 if (window.ResizeObserver) {
   const eegResizeObserver = new ResizeObserver(() => {
     window.clearTimeout(eegState.resizeTimer);
@@ -9565,6 +10501,12 @@ window.addEventListener("hashchange", () => {
   const hash = window.location.hash.slice(1);
   if (hash && state.role) {
     setView(hash);
+  }
+});
+
+document.addEventListener("click", (event) => {
+  if (event.target?.id === "eegOverviewBar" || event.target?.closest?.("#eegOverviewBar")) {
+    handleEegOverviewClick(event);
   }
 });
 
@@ -9593,7 +10535,14 @@ if (logoutButton) {
   });
 }
 
-restoreSession();
-applyCustomerDemoMode();
-applyCleanVisibleCopy();
+async function bootstrapApplication() {
+  await restoreSession();
+  applyCustomerDemoMode();
+  applyCleanVisibleCopy();
+}
+
+bootstrapApplication().catch((error) => {
+  console.warn("QLanalyser bootstrap failed:", error);
+  applyCleanVisibleCopy();
+});
 })();

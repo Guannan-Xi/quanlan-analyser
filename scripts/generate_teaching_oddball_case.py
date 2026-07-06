@@ -24,12 +24,15 @@ OUTPUTS = WORK / "outputs"
 
 CHANNELS = ["Fz", "Cz", "Pz", "Oz", "P3", "P4", "O1", "O2"]
 SFREQ = 250.0
-DURATION_SEC = 60.0
+DURATION_SEC = 600.0
 RANDOM_SEED = 20260618
 
 
-STANDARD_ONSETS = np.arange(2.0, 50.0, 2.0)[:24]
-TARGET_ONSETS = np.array([5.0, 11.0, 17.0, 23.0, 29.0, 35.0, 41.0, 47.0, 53.0, 55.5, 57.0, 58.5])
+# 10 分钟版本：standard 每 ~2.5s 一个（共 240 个），target 每 ~7.5s 一个（共 80 个）
+# 保持 oddball 比例约 1:3
+STANDARD_ONSETS = np.arange(2.0, DURATION_SEC - 1.0, 2.5)
+# target onset：每 3 个 standard 后插入 1 个 target，jitter 避免周期性
+TARGET_ONSETS = np.arange(5.0, DURATION_SEC - 1.0, 7.5)
 TARGET_ONSETS = TARGET_ONSETS[TARGET_ONSETS < DURATION_SEC - 1.0]
 
 

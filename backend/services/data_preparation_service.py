@@ -327,6 +327,11 @@ def _validate_epoch_set_payload(input_file_id: str, payload: EpochSetCreate | Ep
     tmax = payload.tmax if getattr(payload, "tmax", None) is not None else (current.tmax if current else None)
     if tmin is None or tmax is None or float(tmax) <= float(tmin):
         raise HTTPException(status_code=422, detail="Epoch set requires tmax > tmin")
+    event_count = getattr(payload, "event_count", None)
+    if event_count is None and current is not None:
+        event_count = current.event_count
+    if event_count is None or int(event_count) <= 0:
+        raise HTTPException(status_code=422, detail="Epoch set requires at least one mapped event")
     boundary = getattr(payload, "boundary", None) or (current.boundary if current else "")
     if "not for clinical diagnosis" not in str(boundary).lower():
         raise HTTPException(status_code=422, detail="Epoch set boundary must include a non-diagnostic statement")

@@ -100,16 +100,25 @@ def create_report(payload: ReportCreate) -> ReportRead:
     return report
 
 
-def get_report(report_id: str) -> ReportRead:
+def get_report(report_id: str, requesting_user_id: str | None = None) -> ReportRead:
     _refresh_reports()
     try:
-        return _reports[report_id]
+        report = _reports[report_id]
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Report not found") from exc
+    if requesting_user_id is not None and report.owner_user_id != requesting_user_id:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code": "PERMISSION_DENIED",
+                "message": "You do not have permission to access this report",
+            },
+        )
+    return report
 
 
-def get_report_file(report_id: str, kind: str) -> Path:
-    report = get_report(report_id)
+def get_report_file(report_id: str, kind: str, requesting_user_id: str | None = None) -> Path:
+    report = get_report(report_id, requesting_user_id=requesting_user_id)
     if kind == "html":
         path = report.html_path
     elif kind == "package":

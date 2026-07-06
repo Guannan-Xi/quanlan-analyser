@@ -1,6 +1,6 @@
 # QLanalyser User Guide
 
-Date: 2026-06-22
+Date: 2026-07-03
 
 ## 1. What this product does
 
@@ -48,7 +48,28 @@ Open the result page and check the summary, tables, figures, and warnings.
 
 Download the report package for review or handoff.
 
-## 3. What belongs in the personal center
+## 3. Analysis modules
+
+### 3.1 Phase-Amplitude Coupling (PAC)
+
+QLanalyser provides two PAC variants:
+
+- **PAC V1** (`pac_cfc`, beta): single-metric Tort Modulation Index output with
+  comodulogram, phase-bin, and dynamic-curve figures plus a full artifact bundle.
+- **PAC V2** (`pac_cfc_v2`, stable candidate, promoted 2026-07-03): a faster,
+  multi-metric PAC variant supporting Modulation Index (MI), Mean Vector Length
+  (MVL), and KL divergence. V2 is 2.22x-4.74x faster than V1 and its MI output
+  matches V1 exactly (correlation r = 1.000000).
+
+PAC is single-record descriptive sensor-space output only. It is not for
+diagnosis, treatment, clinical decision support, causality, source localization,
+brain-region communication, or group-level inference. No p-value or formal
+significance conclusion is produced.
+
+For the full V1/V2 differences (default parameters, metric support, output
+format, speed), see `work/pac_dev/PAC_V1_V2_COMPARISON.md`.
+
+## 4. What belongs in the personal center
 
 The personal center is for account-related actions:
 
@@ -61,7 +82,7 @@ The personal center is for account-related actions:
 
 It can also hold account status, reminders, and other non-workflow items that would otherwise clutter the project workspace.
 
-## 4. What does not belong in the main work area
+## 5. What does not belong in the main work area
 
 The main workflow should not be cluttered with:
 
@@ -70,7 +91,7 @@ The main workflow should not be cluttered with:
 - irrelevant billing controls;
 - method previews that are not part of the current task.
 
-## 5. When something goes wrong
+## 6. When something goes wrong
 
 If a button does not work or a step is blocked:
 

@@ -200,7 +200,28 @@ def run_erp(input_path: str | Path, output_dir: str | Path, parameters: dict | N
 
     tmin = float(parameters.get("tmin", -0.2))
     tmax = float(parameters.get("tmax", 0.8))
-    baseline = parameters.get("baseline", [None, 0.0])
+    
+    # P0-ALGO-03: EEGLAB-compatible baseline correction
+    # Default to EEGLAB standard: pre-stimulus baseline (-0.2, 0) 
+    # Support explicit baseline_mode for compatibility
+    baseline_mode = parameters.get("baseline_mode", "eeglab_prestim")
+    
+    if baseline_mode == "eeglab_prestim":
+        # EEGLAB standard: pre-stimulus baseline window
+        baseline = parameters.get("baseline", [-0.2, 0.0])
+    elif baseline_mode == "full_epoch":
+        # Alternative: use full epoch as baseline
+        baseline = parameters.get("baseline", [None, None])
+    elif baseline_mode == "custom":
+        # Allow user-specified baseline
+        baseline = parameters.get("baseline", [None, 0.0])
+    elif baseline_mode == "none":
+        # No baseline correction
+        baseline = None
+    else:
+        # Fallback to EEGLAB standard
+        baseline = parameters.get("baseline", [-0.2, 0.0])
+    
     baseline_tuple = tuple(baseline) if baseline is not None else None
     reject_by_annotation = bool(parameters.get("reject_by_annotation", True))
     reject_uv = parameters.get("reject_eeg_uv")
@@ -303,7 +324,9 @@ def run_erp(input_path: str | Path, output_dir: str | Path, parameters: dict | N
         "tmin": tmin,
         "tmax": tmax,
         "baseline": baseline,
+        "baseline_mode": baseline_mode,  # P0-ALGO-03: Record baseline mode for reproducibility
         "baseline_state": "baseline_correction_applied" if baseline is not None else "no_baseline_correction",
+        "baseline_eeglab_compatibility": "EEGLAB pre-stimulus standard" if baseline_mode == "eeglab_prestim" else f"custom mode: {baseline_mode}",
         "reject_by_annotation": reject_by_annotation,
         "epoch_rejection_policy": epoch_rejection_policy,
         "bad_spans": epoch_rejection_policy["bad_spans"],
@@ -333,6 +356,8 @@ def run_erp(input_path: str | Path, output_dir: str | Path, parameters: dict | N
     method_path.write_text(
         "ERP analysis used MNE-Python annotations/events to epoch EEG around event markers, baseline-correct epochs, "
         "average by condition, and extract N100/P200/P300 window amplitudes and latencies from ROI-aware channel sets. "
+        f"Baseline correction mode: {baseline_mode} (baseline window: {baseline}). "
+        "By default, EEGLAB-compatible pre-stimulus baseline (-0.2, 0) is applied to ensure consistency with EEGLAB P300 analysis standards. "
         "Marker timing, condition semantics, reference choice, and ROI selection must be verified before interpretation. "
         "This descriptive single-record ERP output is not diagnostic, clinical, causal, or group-level evidence.\n",
         encoding="utf-8",
