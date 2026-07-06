@@ -266,11 +266,14 @@ def _candidate_metrics(path: Path, event: dict[str, Any]) -> dict[str, Any]:
 
 @router.get("/lab/epilepsy-full-flow/records")
 def list_he_records(request: Request, inspect: bool = Query(False)) -> dict[str, Any]:
+    root = _sample_root()
     records = [_record_payload(path, request, include_metadata=inspect) for path in _sample_paths()]
+    root_display = str(root) if _local_paths_allowed(request) else SAFE_SAMPLE_ROOT
     return {
-        "root": str(HE_SAMPLE_ROOT) if _is_local_request(request) else SAFE_SAMPLE_ROOT,
+        "root": root_display,
         "safe_root": SAFE_SAMPLE_ROOT,
         "is_local_request": _is_local_request(request),
+        "path_visibility": "local_absolute" if _local_paths_allowed(request) else "safe_relative",
         "records": records,
         "non_medical_scope": "research_screening_support_only",
     }
@@ -285,7 +288,7 @@ def preflight_he_record(record_id: str, request: Request) -> dict[str, Any]:
         "reader": "mne_preload_false",
         "large_file_strategy": "windowed_reading_only",
         "browser_full_load_allowed": False,
-        "candidate_generation": "backend_seeded_real_window_metrics_v1",
+        "candidate_generation": "seeded_candidate_times_with_real_edf_window_metrics_v2",
         "report_boundary": "research_screening_support_only",
     }
     return record
@@ -305,7 +308,7 @@ def generate_he_candidates(record_id: str, request: Request) -> dict[str, Any]:
             "index": index,
             "score": metrics["backend_score"],
             "backend_metrics": metrics,
-            "source": "backend_real_edf_window_metrics",
+            "source": "seeded_time_real_edf_window_metrics",
             "evidence_window": {
                 "start_sec": max(0.0, float(seed["start_sec"]) - 10.0),
                 "duration_sec": min(30.0, float(seed["duration_sec"]) + 20.0),
@@ -315,8 +318,8 @@ def generate_he_candidates(record_id: str, request: Request) -> dict[str, Any]:
     return {
         "record": record,
         "candidates": candidates,
-        "candidate_source": "backend_seeded_real_edf_window_metrics_v1",
-        "algorithm_status": "windowed_backend_preview",
+        "candidate_source": "seeded_candidate_times_with_real_edf_window_metrics_v2",
+        "algorithm_status": "lab_preview_not_validated_detector",
         "limitations": [
             "候选时间点来自 HE 开发种子，后端分数来自真实 EDF 小窗口指标。",
             "尚未完成全记录训练模型扫描，不能估计敏感性或特异性。",
