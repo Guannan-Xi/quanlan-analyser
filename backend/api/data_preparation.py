@@ -29,23 +29,11 @@ def _assert_file_access(file_id: str, current: AccountRead) -> EEGFileRead:
 
 
 def _plan_visible_to_current(plan: DataPreparationPlanRead, current: AccountRead) -> bool:
-    if current.role == "admin" or plan.owner_user_id == current.id:
-        return True
-    try:
-        _assert_file_access(plan.input_file_id, current)
-        return True
-    except Exception:
-        return False
+    return current.role == "admin" or plan.owner_user_id == current.id
 
 
 def _epoch_visible_to_current(epoch_set: EpochSetRead, current: AccountRead) -> bool:
-    if current.role == "admin" or epoch_set.owner_user_id == current.id:
-        return True
-    try:
-        _assert_file_access(epoch_set.input_file_id, current)
-        return True
-    except Exception:
-        return False
+    return current.role == "admin" or epoch_set.owner_user_id == current.id
 
 
 def _owner_for_file(eeg_file: EEGFileRead, current: AccountRead) -> str:
@@ -77,7 +65,11 @@ def list_data_preparation_plans(
 ) -> list[DataPreparationPlanRead]:
     if input_file_id:
         _assert_file_access(input_file_id, current)
-    plans = data_preparation_service.list_plans(project_id=project_id, input_file_id=input_file_id)
+    plans = data_preparation_service.list_plans(
+        project_id=project_id,
+        input_file_id=input_file_id,
+        owner_user_id=_requesting_user_id(current),
+    )
     return [plan for plan in plans if _plan_visible_to_current(plan, current)]
 
 
@@ -86,8 +78,7 @@ def get_data_preparation_plan(
     plan_id: str,
     current: AccountRead = Depends(account_service.require_current_account),
 ) -> DataPreparationPlanRead:
-    plan = data_preparation_service.get_plan(plan_id)
-    _assert_file_access(plan.input_file_id, current)
+    plan = data_preparation_service.get_plan(plan_id, requesting_user_id=_requesting_user_id(current))
     return plan
 
 
@@ -97,10 +88,9 @@ def update_data_preparation_plan(
     payload: DataPreparationPlanUpdate,
     current: AccountRead = Depends(account_service.require_current_account),
 ) -> DataPreparationPlanRead:
-    plan = data_preparation_service.get_plan(plan_id)
-    _assert_file_access(plan.input_file_id, current)
+    plan = data_preparation_service.get_plan(plan_id, requesting_user_id=_requesting_user_id(current))
     owned_payload = payload.model_copy(update={"owner_user_id": plan.owner_user_id, "updated_by": current.id})
-    return data_preparation_service.update_plan(plan_id, owned_payload)
+    return data_preparation_service.update_plan(plan_id, owned_payload, requesting_user_id=_requesting_user_id(current))
 
 
 @router.post("/data-preparation/plans/{plan_id}/task-reference", response_model=DataPreparationTaskReferenceRead)
@@ -109,9 +99,8 @@ def create_data_preparation_task_reference(
     payload: DataPreparationTaskReferenceCreate,
     current: AccountRead = Depends(account_service.require_current_account),
 ) -> DataPreparationTaskReferenceRead:
-    plan = data_preparation_service.get_plan(plan_id)
-    _assert_file_access(plan.input_file_id, current)
-    return data_preparation_service.create_task_reference(plan_id, payload)
+    data_preparation_service.get_plan(plan_id, requesting_user_id=_requesting_user_id(current))
+    return data_preparation_service.create_task_reference(plan_id, payload, requesting_user_id=_requesting_user_id(current))
 
 
 @router.get("/eeg/files/{file_id}/data-preparation-plan", response_model=DataPreparationPlanRead)
@@ -120,7 +109,7 @@ def get_current_data_preparation_plan_for_file(
     current: AccountRead = Depends(account_service.require_current_account),
 ) -> DataPreparationPlanRead:
     _assert_file_access(file_id, current)
-    return data_preparation_service.get_current_plan_for_file(file_id)
+    return data_preparation_service.get_current_plan_for_file(file_id, requesting_user_id=_requesting_user_id(current))
 
 
 @router.post("/eeg/files/{file_id}/data-preparation-plan", response_model=DataPreparationPlanRead)
@@ -139,7 +128,11 @@ def save_current_data_preparation_plan_for_file(
             "updated_by": current.id,
         }
     )
-    return data_preparation_service.save_current_plan_for_file(file_id, owned_payload)
+    return data_preparation_service.save_current_plan_for_file(
+        file_id,
+        owned_payload,
+        requesting_user_id=_requesting_user_id(current),
+    )
 
 
 @router.get("/eeg/files/{file_id}/data-preparation-plans", response_model=list[DataPreparationPlanRead])
@@ -148,7 +141,10 @@ def list_data_preparation_plans_for_file(
     current: AccountRead = Depends(account_service.require_current_account),
 ) -> list[DataPreparationPlanRead]:
     _assert_file_access(file_id, current)
-    return data_preparation_service.list_plans(input_file_id=file_id)
+    return data_preparation_service.list_plans(
+        input_file_id=file_id,
+        owner_user_id=_requesting_user_id(current),
+    )
 
 
 @router.post("/eeg/files/{file_id}/epoch-sets", response_model=EpochSetRead)
@@ -167,7 +163,11 @@ def create_epoch_set_for_file(
             "created_by": current.id,
         }
     )
-    return data_preparation_service.save_epoch_set_for_file(file_id, owned_payload)
+    return data_preparation_service.save_epoch_set_for_file(
+        file_id,
+        owned_payload,
+        requesting_user_id=_requesting_user_id(current),
+    )
 
 
 @router.get("/eeg/files/{file_id}/epoch-sets", response_model=list[EpochSetRead])
@@ -176,7 +176,10 @@ def list_epoch_sets_for_file(
     current: AccountRead = Depends(account_service.require_current_account),
 ) -> list[EpochSetRead]:
     _assert_file_access(file_id, current)
-    return data_preparation_service.list_epoch_sets(input_file_id=file_id)
+    return data_preparation_service.list_epoch_sets(
+        input_file_id=file_id,
+        owner_user_id=_requesting_user_id(current),
+    )
 
 
 @router.get("/epoch-sets/{epoch_set_id}", response_model=EpochSetRead)
@@ -184,7 +187,7 @@ def get_epoch_set(
     epoch_set_id: str,
     current: AccountRead = Depends(account_service.require_current_account),
 ) -> EpochSetRead:
-    epoch_set = data_preparation_service.get_epoch_set(epoch_set_id)
+    epoch_set = data_preparation_service.get_epoch_set(epoch_set_id, requesting_user_id=_requesting_user_id(current))
     _assert_file_access(epoch_set.input_file_id, current)
     return epoch_set
 
@@ -195,10 +198,14 @@ def update_epoch_set(
     payload: EpochSetUpdate,
     current: AccountRead = Depends(account_service.require_current_account),
 ) -> EpochSetRead:
-    epoch_set = data_preparation_service.get_epoch_set(epoch_set_id)
+    epoch_set = data_preparation_service.get_epoch_set(epoch_set_id, requesting_user_id=_requesting_user_id(current))
     _assert_file_access(epoch_set.input_file_id, current)
     owned_payload = payload.model_copy(update={"updated_by": current.id})
-    return data_preparation_service.update_epoch_set(epoch_set_id, owned_payload)
+    return data_preparation_service.update_epoch_set(
+        epoch_set_id,
+        owned_payload,
+        requesting_user_id=_requesting_user_id(current),
+    )
 
 
 @router.post("/eeg/files/{file_id}/bad-channel-audit", response_model=BadChannelAuditRead)
@@ -216,4 +223,8 @@ def save_bad_channel_audit_for_file(
             "actor_user_id": current.id,
         }
     )
-    return data_preparation_service.save_bad_channel_audit_for_file(file_id, owned_payload)
+    return data_preparation_service.save_bad_channel_audit_for_file(
+        file_id,
+        owned_payload,
+        requesting_user_id=_requesting_user_id(current),
+    )

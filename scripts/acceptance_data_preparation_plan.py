@@ -23,6 +23,7 @@ def main() -> None:
         import backend.services.data_preparation_service as data_preparation_service
         import backend.services.task_service as task_service
         import backend.models.eeg_file as eeg_model
+        import backend.models.project as project_model
         import backend.models.data_preparation as prep_model
         import backend.models.analysis_task as task_model
 
@@ -42,11 +43,19 @@ def main() -> None:
             channel_count=32,
             duration_sec=60.0,
         )
+        state_store.upsert_item(
+            "projects",
+            project_model.ProjectRead(
+                id="proj_acceptance",
+                name="Data preparation acceptance",
+            ),
+        )
         state_store.upsert_item("eeg_files", eeg_file)
 
         created = data_preparation_service.save_plan(prep_model.DataPreparationPlanCreate(
             project_id="proj_acceptance",
             input_file_id="eeg_acceptance",
+            status="confirmed",
             preprocessing_json={"reference": "average", "notch_hz": 50},
             qc_json={"min_duration_sec": 30},
             psd_json={"bands": {"alpha": [8, 12]}, "fmin": 2, "fmax": 35},
@@ -90,11 +99,20 @@ def main() -> None:
         default_plan.module_scope = ["qc", "psd", "erp", "tfr", "pac", "reference_csd"]
         state_store.upsert_item("data_preparation_plans", default_plan)
         migrated_plan = data_preparation_service.get_plan(created.id)
-        assert "multitaper_psd_tfr" in migrated_plan.module_scope
-        assert "connectivity" in migrated_plan.module_scope
+        assert migrated_plan.module_scope == ["qc", "psd", "erp"]
         migrated_contract = json.loads((migrated_plan.artifact_root / "reproducibility" / "data_preparation_artifact_contract.json").read_text(encoding="utf-8"))
-        assert "multitaper_psd_tfr" in migrated_contract["allowed_modules"]
-        assert "connectivity" in migrated_contract["allowed_modules"]
+        assert "multitaper_psd_tfr" not in migrated_contract["allowed_modules"]
+        assert "connectivity" not in migrated_contract["allowed_modules"]
+
+        lab_plan = data_preparation_service.save_plan(prep_model.DataPreparationPlanCreate(
+            project_id="proj_acceptance",
+            input_file_id="eeg_acceptance",
+            status="confirmed",
+            module_scope=["qc", "psd", "erp", "multitaper_psd_tfr", "connectivity"],
+            bad_channels=[{"name": "Oz", "reason": "flat"}],
+            bad_segments=[{"start_sec": 1.0, "end_sec": 2.5, "reason": "motion"}],
+            annotation_actions=[{"action": "exclude", "description": "BAD_manual"}],
+        ))
 
         eeg_default = eeg_model.EEGFileRead(
             id="eeg_default",
@@ -228,10 +246,10 @@ def main() -> None:
         assert "fmin" not in captured_erp_parameters
         assert "fmax" not in captured_erp_parameters
 
-        multitaper_ref = data_preparation_service.create_task_reference(created.id, prep_model.DataPreparationTaskReferenceCreate(
+        multitaper_ref = data_preparation_service.create_task_reference(lab_plan.id, prep_model.DataPreparationTaskReferenceCreate(
             module_name="multitaper_psd_tfr",
             workflow_id="multitaper_psd_tfr",
-            expected_revision=2,
+            expected_revision=lab_plan.revision,
             task_id="task_multitaper_acceptance",
         ))
         assert multitaper_ref.module_name == "multitaper_psd_tfr"
@@ -253,23 +271,23 @@ def main() -> None:
             input_file_id="eeg_acceptance",
             parameters_json={
                 "analysis_family": "psd",
-                "data_preparation_plan_id": created.id,
-                "data_preparation_revision": 2,
+                "data_preparation_plan_id": lab_plan.id,
+                "data_preparation_revision": lab_plan.revision,
             },
         ))
         multitaper_artifacts = task_service.list_task_artifacts(multitaper_task.id)
         multitaper_labels = {artifact.label for artifact in multitaper_artifacts}
         assert "Data preparation task reference" in multitaper_labels
-        assert captured_multitaper_parameters["data_preparation_plan_id"] == created.id
-        assert captured_multitaper_parameters["data_preparation_revision"] == 2
+        assert captured_multitaper_parameters["data_preparation_plan_id"] == lab_plan.id
+        assert captured_multitaper_parameters["data_preparation_revision"] == lab_plan.revision
         assert captured_multitaper_parameters["bad_channels"] == ["Oz"]
         assert captured_multitaper_parameters["bad_segments"] == [{"onset": 1.0, "duration": 1.5, "description": "motion"}]
         assert captured_multitaper_parameters["annotation_actions"] == [{"action": "exclude", "description": "BAD_manual"}]
 
-        connectivity_ref = data_preparation_service.create_task_reference(created.id, prep_model.DataPreparationTaskReferenceCreate(
+        connectivity_ref = data_preparation_service.create_task_reference(lab_plan.id, prep_model.DataPreparationTaskReferenceCreate(
             module_name="connectivity",
             workflow_id="connectivity",
-            expected_revision=2,
+            expected_revision=lab_plan.revision,
             task_id="task_connectivity_acceptance",
         ))
         assert connectivity_ref.module_name == "connectivity"
@@ -291,15 +309,15 @@ def main() -> None:
             input_file_id="eeg_acceptance",
             parameters_json={
                 "method": "correlation",
-                "data_preparation_plan_id": created.id,
-                "data_preparation_revision": 2,
+                "data_preparation_plan_id": lab_plan.id,
+                "data_preparation_revision": lab_plan.revision,
             },
         ))
         connectivity_artifacts = task_service.list_task_artifacts(connectivity_task.id)
         connectivity_labels = {artifact.label for artifact in connectivity_artifacts}
         assert "Data preparation task reference" in connectivity_labels
-        assert captured_connectivity_parameters["data_preparation_plan_id"] == created.id
-        assert captured_connectivity_parameters["data_preparation_revision"] == 2
+        assert captured_connectivity_parameters["data_preparation_plan_id"] == lab_plan.id
+        assert captured_connectivity_parameters["data_preparation_revision"] == lab_plan.revision
         assert captured_connectivity_parameters["bad_channels"] == ["Oz"]
         assert captured_connectivity_parameters["bad_segments"] == [{"onset": 1.0, "duration": 1.5, "description": "motion"}]
         assert captured_connectivity_parameters["annotation_actions"] == [{"action": "exclude", "description": "BAD_manual"}]

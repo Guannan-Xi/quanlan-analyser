@@ -4,9 +4,9 @@
   const CONTRACT_VERSION = "qlanalyser.epilepsy.manual_correction_preview.v1";
   const REVIEW_SESSION_VERSION = "epilepsy_review_session.v1";
   const STATUS_LABEL = {
-    unreviewed: "未审",
-    kept: "保留",
-    excluded: "排除",
+    unreviewed: "未复核",
+    kept: "纳入草稿候选",
+    excluded: "不纳入草稿",
     uncertain: "存疑",
   };
   const STATUS_TO_BACKEND = {
@@ -16,10 +16,11 @@
     uncertain: "needs_review",
   };
   const TYPE_LABEL = {
-    ied: "IED / 尖慢波",
-    seizure_like: "发作样节律",
-    rhythmic: "节律性放电",
+    ied: "棘波样候选",
+    seizure_like: "疑似节律性候选",
+    rhythmic: "疑似节律性候选",
     artifact_suspect: "伪迹疑似",
+    candidate_window: "候选窗口 / 未分类",
   };
   const PRIORITY_WEIGHT = { high: 0, medium: 1, low: 2 };
 
@@ -45,7 +46,7 @@
         makeCandidate("HE105-E005", 11 * 3600 + 2 * 60 + 28.4, 11 * 3600 + 2 * 60 + 32.2, "low", "rhythmic", ["EEG1", "EEG2"], 0.61, "边界节律事件"),
         makeCandidate("HE105-E006", 20 * 3600 + 17 * 60 + 9.1, 20 * 3600 + 17 * 60 + 11.8, "high", "ied", ["EEG2"], 0.84, "高幅尖慢波"),
         makeCandidate("HE105-E007", 36 * 3600 + 3 * 60 + 4.6, 36 * 3600 + 3 * 60 + 7.4, "medium", "artifact_suspect", ["EEG1", "EEG2"], 0.69, "体动同步疑似"),
-        makeCandidate("HE105-E008", 61 * 3600 + 22 * 60 + 39.3, 61 * 3600 + 22 * 60 + 40.4, "low", "ied", ["EEG1"], 0.58, "低置信单发"),
+        makeCandidate("HE105-E008", 61 * 3600 + 22 * 60 + 39.3, 61 * 3600 + 22 * 60 + 40.4, "low", "ied", ["EEG1"], 0.58, "展示证据较弱的单发候选"),
       ],
     },
     {
@@ -66,7 +67,7 @@
         makeCandidate("HE106-E002", 1 * 3600 + 6 * 60 + 12.0, 1 * 3600 + 6 * 60 + 13.2, "medium", "ied", ["EEG1"], 0.7, "单发尖慢波"),
         makeCandidate("HE106-E003", 4 * 3600 + 44 * 60 + 4.5, 4 * 3600 + 44 * 60 + 6.9, "high", "artifact_suspect", ["EEG2"], 0.81, "EMG 同步突增"),
         makeCandidate("HE106-E004", 13 * 3600 + 28 * 60 + 51.3, 13 * 3600 + 28 * 60 + 53.0, "medium", "ied", ["EEG1", "EEG2"], 0.74, "双导短暂异常"),
-        makeCandidate("HE106-E005", 49 * 3600 + 10 * 60 + 2.2, 49 * 3600 + 10 * 60 + 4.4, "low", "rhythmic", ["EEG2"], 0.6, "低置信节律"),
+        makeCandidate("HE106-E005", 49 * 3600 + 10 * 60 + 2.2, 49 * 3600 + 10 * 60 + 4.4, "low", "rhythmic", ["EEG2"], 0.6, "展示证据较弱的节律候选"),
       ],
     },
     {
@@ -131,7 +132,7 @@
         adjusted_end_sec: null,
         include_in_report: false,
         representative: false,
-        reviewer: "local-user",
+        reviewer: "未记录复核人",
         reviewed_at: null,
       },
     };
@@ -139,12 +140,141 @@
 
   function init() {
     cacheDom();
+    hydrateFromFullFlowSession();
     populateRecords();
     selectRecord(0);
     bindEvents();
     resizeCanvases();
     window.addEventListener("resize", resizeCanvases);
     syncIcons();
+  }
+
+  function hydrateFromFullFlowSession() {
+    try {
+      const raw = window.sessionStorage.getItem("qlanalyser.epilepsy.review_preview.latest");
+      if (!raw) return;
+      const payload = JSON.parse(raw);
+      if (!Array.isArray(payload?.reviewed_events) || !payload.reviewed_events.length) return;
+      const statusMap = {
+        confirmed: "kept",
+        kept: "kept",
+        rejected: "excluded",
+        excluded: "excluded",
+        needs_review: "uncertain",
+        uncertain: "uncertain",
+        unreviewed: "unreviewed",
+      };
+      const record = payload.record || {};
+      const candidates = payload.reviewed_events.map((event, index) => {
+        const evidenceStart = Number(event.original_start_sec ?? event.candidate_start_sec ?? event.start_sec ?? event.adjusted_start_sec ?? 0);
+        const evidenceEnd = Math.max(evidenceStart + 0.1, Number(event.original_end_sec ?? event.candidate_end_sec ?? event.end_sec ?? event.adjusted_end_sec ?? evidenceStart + 1));
+        const reviewedStart = Number(event.adjusted_start_sec ?? event.reviewed_start_sec ?? event.start_sec ?? evidenceStart);
+        const reviewedEnd = Math.max(reviewedStart + 0.1, Number(event.adjusted_end_sec ?? event.reviewed_end_sec ?? event.end_sec ?? evidenceEnd));
+        const aiType = normalizeHydratedEventType(event.event_type || event.reviewed_type || event.ai_type);
+        const status = statusMap[event.status] || statusMap[event.review_status] || statusMap[event.backend_status] || "unreviewed";
+        return {
+          id: event.event_id || `review-event-${index + 1}`,
+          start_sec: round1(evidenceStart),
+          end_sec: round1(evidenceEnd),
+          peak_sec: round1((evidenceStart + evidenceEnd) / 2),
+          priority: event.priority || "medium",
+          ai_type: aiType,
+          channels: Array.isArray(event.channels) ? event.channels : [],
+          preview_rms_ptp_rank_score: Number(event.preview_rms_ptp_rank_score ?? 0.5),
+          score_kind: event.score_kind || "preview_rank_not_probability",
+          score_note: event.score_note || "预览排序值不是概率。",
+          qc_hint: event.qc_hint || "来自全流程复核草稿。",
+          emg_sync: aiType === "artifact_suspect" ? "present" : "absent",
+          acc_motion: aiType === "artifact_suspect" ? "possible" : "absent",
+          review: {
+            status,
+            grade: event.evidence_grade || event.grade || "C",
+            artifact_reason: event.artifact_reason || "",
+            event_type: aiType,
+            adjusted_start_sec: round1(reviewedStart),
+            adjusted_end_sec: round1(reviewedEnd),
+            note: event.review_note || event.note || "",
+          include_in_report: status === "kept",
+            representative: index === 0,
+            reviewer: event.reviewer || "未记录复核人",
+            reviewed_at: event.reviewed_at || null,
+          },
+        };
+      });
+      const model = payload.model || {};
+      const metadata = normalizeReviewMetadata(payload, candidates.length);
+      records.splice(0, records.length, {
+        id: record.id || record.file_id || "full-flow-review",
+        file_id: record.file_id || record.id || "full-flow-review",
+        filename: record.filename || "full-flow-review.edf",
+        duration_sec: Number(record.duration_sec || 0),
+        sfreq: Number(record.sfreq || 0),
+        channels: Array.isArray(record.channels) ? record.channels : [],
+        safe_source_path: record.safe_source_path || "work/sample_data/epilepsy/",
+        model: {
+          workflow_id: payload.context?.workflow_id || "epilepsy_full_flow_preview",
+          detector_version: model.detector_version || payload.context?.detector_version || "review_preview_from_full_flow",
+          threshold: model.threshold ?? payload.context?.threshold ?? null,
+        },
+        context: payload.context || {},
+        metadata,
+        candidates,
+      });
+    } catch (error) {
+      console.warn("Full-flow review session hydrate skipped", error);
+    }
+  }
+
+  function normalizeHydratedEventType(type) {
+    const value = String(type || "candidate_window");
+    if (value === "unknown" || !TYPE_LABEL[value]) return "candidate_window";
+    return value;
+  }
+
+  function normalizeReviewMetadata(payload, visibleCandidateCount) {
+    const preserved = payload?.metadata || {};
+    const explicitDenominator = explicitCandidateDenominator(payload);
+    const hasExplicitCandidateDenominator = typeof preserved.has_explicit_candidate_denominator === "boolean"
+      ? preserved.has_explicit_candidate_denominator
+      : Number.isFinite(explicitDenominator);
+    const preservedDenominator = Number(preserved.candidate_denominator);
+    const candidateDenominator = Math.max(
+      visibleCandidateCount,
+      Number.isFinite(preservedDenominator) ? preservedDenominator : visibleCandidateCount,
+      hasExplicitCandidateDenominator ? explicitDenominator : visibleCandidateCount,
+    );
+    const hasFullCandidateSet = typeof preserved.has_full_candidate_set === "boolean"
+      ? preserved.has_full_candidate_set
+      : false;
+    return {
+      ...preserved,
+      review_event_source: preserved.review_event_source || "reviewed_events",
+      has_full_candidate_set: hasFullCandidateSet,
+      has_explicit_candidate_denominator: hasExplicitCandidateDenominator,
+      candidate_denominator: candidateDenominator,
+      candidate_set_scope: preserved.candidate_set_scope || (hasFullCandidateSet ? "current_preview_candidate_package" : "unknown"),
+      denominator_note: preserved.denominator_note || (hasFullCandidateSet
+        ? "复核记录包含当前已载入的预览候选包；这不是全记录完整检测器的事件负荷估计。"
+        : hasExplicitCandidateDenominator
+          ? "复核记录提供了候选总数，但事件明细可能不是完整列表。"
+          : "候选总数未知，当前记录不能作为可下载复核草稿。"),
+    };
+  }
+
+  function explicitCandidateDenominator(payload) {
+    const values = [
+      payload?.candidate_denominator,
+      payload?.total_candidates,
+      payload?.candidate_count,
+      payload?.summary?.auto_candidates,
+      payload?.summary?.candidate_count,
+      payload?.metadata?.candidate_denominator,
+    ];
+    for (const value of values) {
+      const number = Number(value);
+      if (Number.isFinite(number) && number >= 0) return number;
+    }
+    return NaN;
   }
 
   function cacheDom() {
@@ -157,6 +287,9 @@
       "candidateMetric",
       "reviewedMetric",
       "keptMetric",
+      "flowStateTitle",
+      "flowStateText",
+      "focusQueueBtn",
       "candidateList",
       "eventTitle",
       "waveformCanvas",
@@ -196,6 +329,7 @@
     dom.copyJsonBtn.addEventListener("click", copyJson);
     dom.reportPreviewBtn.addEventListener("click", openReportPreview);
     dom.exportJsonBtn.addEventListener("click", exportJson);
+    dom.focusQueueBtn.addEventListener("click", focusNextReviewTarget);
     dom.prevEventBtn.addEventListener("click", () => stepCandidate(-1));
     dom.nextEventBtn.addEventListener("click", () => stepCandidate(1));
     dom.zoomInBtn.addEventListener("click", () => setViewDuration(Math.max(12, state.viewDuration * 0.65)));
@@ -227,6 +361,7 @@
     dom.applyNextBtn.addEventListener("click", saveAndNext);
     dom.startHandle.addEventListener("pointerdown", (event) => startDrag(event, "start"));
     dom.endHandle.addEventListener("pointerdown", (event) => startDrag(event, "end"));
+    dom.eventBand.addEventListener("pointerdown", (event) => startDrag(event, "move"));
     window.addEventListener("pointermove", onDragMove);
     window.addEventListener("pointerup", endDrag);
   }
@@ -294,7 +429,30 @@
     dom.candidateMetric.textContent = String(candidates.length);
     dom.reviewedMetric.textContent = `${reviewed}/${candidates.length}`;
     dom.keptMetric.textContent = String(kept);
-    dom.contractName.textContent = CONTRACT_VERSION;
+    dom.contractName.textContent = "复核记录 v1";
+    const remaining = Math.max(0, candidates.length - reviewed);
+    dom.flowStateTitle.textContent = reviewed === 0
+      ? "先复核至少一个候选"
+      : remaining
+        ? `还有 ${remaining} 个候选未复核`
+        : "复核已覆盖当前预览候选包";
+    dom.flowStateText.textContent = reviewed === 0
+      ? "请先把当前候选标记为纳入草稿、存疑或不纳入；未复核的算法候选不能直接进入复核草稿。"
+      : remaining
+        ? "已复核部分可以进入事件结果表；复核草稿会标记为部分复核。"
+        : "现在可以查看事件结果表，再生成带边界说明的复核草稿。";
+    dom.focusQueueBtn.querySelector("span").textContent = remaining ? "继续未复核候选" : "查看已复核候选";
+    dom.reportPreviewBtn.disabled = reviewed === 0;
+    dom.reportPreviewBtn.querySelector("span").textContent = reviewed === 0
+      ? "先完成一次复核"
+      : remaining
+        ? "查看部分事件结果"
+        : "查看事件结果与复核草稿";
+    dom.reportPreviewBtn.title = reviewed === 0
+      ? "至少标记一个候选后，才能进入事件结果和复核草稿。"
+      : remaining
+        ? "当前仍有未复核候选，复核草稿会标记为部分复核。"
+        : "查看事件结果表与复核草稿。";
   }
 
   function renderQueue() {
@@ -353,12 +511,16 @@
     document.querySelectorAll("[data-status]").forEach((button) => {
       button.classList.toggle("is-active", button.dataset.status === review.status);
     });
+    dom.applyNextBtn.querySelector("span").textContent = review.status === "unreviewed" ? "跳过并下一个" : "应用并下一个";
+    dom.applyNextBtn.title = review.status === "unreviewed"
+      ? "当前候选还没有判定；点击只会跳到下一个候选。"
+      : "保存当前字段并进入下一个候选。";
   }
 
   function renderAudit() {
     const items = state.audit.slice(-4).reverse();
     if (!items.length) {
-      dom.auditList.innerHTML = `<li><strong>等待操作</strong>尚未产生人工矫正记录。</li>`;
+      dom.auditList.innerHTML = `<li><strong>等待操作</strong>尚未产生人工复核记录。</li>`;
       return;
     }
     dom.auditList.innerHTML = items
@@ -373,12 +535,13 @@
       candidate.review.status = status;
       candidate.review.include_in_report = status === "kept";
       candidate.review.reviewed_at = new Date().toISOString();
-      candidate.review.reviewer = "local-user";
+      candidate.review.reviewer = "未记录复核人";
       if (status === "excluded" && !candidate.review.artifact_reason && candidate.ai_type === "artifact_suspect") {
         candidate.review.artifact_reason = "motion_acc";
       }
     });
     addAudit("event_review", STATUS_LABEL[status] || status, `${candidate.id} · ${STATUS_TO_BACKEND[status] || status}`);
+    persistLatestReviewPayload();
     renderAll();
   }
 
@@ -393,6 +556,7 @@
       candidate.review.reviewed_at = candidate.review.status === "unreviewed" ? candidate.review.reviewed_at : new Date().toISOString();
     });
     addAudit("review_fields", "更新字段", `${candidate.id} · 等级 ${candidate.review.grade}`);
+    persistLatestReviewPayload();
     renderAll();
   }
 
@@ -411,7 +575,8 @@
       candidate.review.adjusted_end_sec = round1(end);
     });
     addAudit("adjust_event_interval", "调整边界", `${candidate.id} · ${round1(start)}-${round1(end)}s`);
-    fitViewToCandidate(false);
+    keepAdjustedIntervalVisible(candidate);
+    persistLatestReviewPayload();
     renderAll();
   }
 
@@ -424,12 +589,31 @@
       dom.noteInput.value = candidate.review.note;
     });
     addAudit("note_template", "添加备注", candidate.id);
+    persistLatestReviewPayload();
     renderAll();
   }
 
   function saveAndNext() {
-    syncFormToCandidate();
+    const candidate = selectedCandidate();
+    if (candidate?.review.status === "unreviewed") {
+      addAudit("skip_candidate", "跳过候选", `${candidate.id} · 尚未形成复核状态`);
+    } else {
+      syncFormToCandidate();
+    }
+    persistLatestReviewPayload();
     stepCandidate(1);
+  }
+
+  function focusNextReviewTarget() {
+    const next = sortedCandidates().find((item) => item.review.status === "unreviewed");
+    state.selectedId = (next || selectedCandidate() || sortedCandidates()[0])?.id || "";
+    state.filter = next ? "unreviewed" : "all";
+    document.querySelectorAll("[data-filter]").forEach((item) => {
+      item.classList.toggle("is-active", item.dataset.filter === state.filter);
+    });
+    fitViewToCandidate();
+    renderAll();
+    document.querySelector(".er-workspace")?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   function stepCandidate(delta) {
@@ -457,6 +641,22 @@
     const center = (start + end) / 2;
     const record = currentRecord();
     state.viewStart = clamp(center - state.viewDuration * 0.38, 0, Math.max(0, record.duration_sec - state.viewDuration));
+  }
+
+  function keepAdjustedIntervalVisible(candidate) {
+    const start = candidate.review.adjusted_start_sec ?? candidate.start_sec;
+    const end = candidate.review.adjusted_end_sec ?? candidate.end_sec;
+    const viewEnd = state.viewStart + state.viewDuration;
+    if (start >= state.viewStart && end <= viewEnd) return;
+    const record = currentRecord();
+    const padding = Math.min(3, state.viewDuration * 0.12);
+    if (start < state.viewStart) {
+      state.viewStart = clamp(start - padding, 0, Math.max(0, record.duration_sec - state.viewDuration));
+      return;
+    }
+    if (end > viewEnd) {
+      state.viewStart = clamp(end + padding - state.viewDuration, 0, Math.max(0, record.duration_sec - state.viewDuration));
+    }
   }
 
   function resizeCanvases() {
@@ -658,6 +858,8 @@
     const right = canvasOffsetLeft + x2;
     dom.eventBand.style.left = `${left}px`;
     dom.eventBand.style.width = `${Math.max(4, right - left)}px`;
+    dom.eventBand.setAttribute("aria-label", `拖动整段候选窗口，当前时长 ${round1(end - start)} 秒`);
+    dom.eventBand.title = `拖动整段候选窗口，时长保持 ${round1(end - start)} 秒`;
     dom.startHandle.style.left = `${left}px`;
     dom.endHandle.style.left = `${right}px`;
   }
@@ -669,6 +871,9 @@
     state.drag = {
       handle,
       candidateId: candidate.id,
+      start: candidate.review.adjusted_start_sec ?? candidate.start_sec,
+      end: candidate.review.adjusted_end_sec ?? candidate.end_sec,
+      pointerTime: pointerTimeFromEvent(event),
       before: snapshotCandidates(),
     };
     event.currentTarget.setPointerCapture?.(event.pointerId);
@@ -686,13 +891,29 @@
     const currentEnd = candidate.review.adjusted_end_sec ?? candidate.end_sec;
     if (state.drag.handle === "start") {
       candidate.review.adjusted_start_sec = round1(Math.min(t, currentEnd - 0.2));
-    } else {
+    } else if (state.drag.handle === "end") {
       candidate.review.adjusted_end_sec = round1(Math.max(t, currentStart + 0.2));
+    } else if (state.drag.handle === "move") {
+      const delta = t - state.drag.pointerTime;
+      const duration = Math.max(0.2, state.drag.end - state.drag.start);
+      const record = currentRecord();
+      const minStart = 0;
+      const maxStart = Math.max(0, record.duration_sec - duration);
+      const nextStart = clamp(state.drag.start + delta, minStart, maxStart);
+      candidate.review.adjusted_start_sec = round1(nextStart);
+      candidate.review.adjusted_end_sec = round1(nextStart + duration);
     }
     renderReviewPanel();
     drawWaveform();
     drawTimeline();
     updateHandles();
+  }
+
+  function pointerTimeFromEvent(event) {
+    const rect = dom.waveformCanvas.getBoundingClientRect();
+    const layout = waveformLayout(rect.width, rect.height);
+    const x = event.clientX - rect.left;
+    return clamp(timeFromX(x, layout), state.viewStart, state.viewStart + state.viewDuration);
   }
 
   function endDrag() {
@@ -702,7 +923,13 @@
       state.history.push({ label: "adjust_event_interval", before: state.drag.before });
       const start = candidate.review.adjusted_start_sec ?? candidate.start_sec;
       const end = candidate.review.adjusted_end_sec ?? candidate.end_sec;
-      addAudit("adjust_event_interval", "拖动边界", `${candidate.id} · ${round1(start)}-${round1(end)}s`);
+      const actionLabel = state.drag.handle === "move"
+        ? "移动事件窗口"
+        : state.drag.handle === "start"
+          ? "调整候选起点"
+          : "调整候选终点";
+      const durationText = state.drag.handle === "move" ? `，时长保持 ${round1(end - start)}s` : "";
+      addAudit("adjust_event_interval", actionLabel, `${candidate.id} · ${round1(start)}-${round1(end)}s${durationText}`);
     }
     state.drag = null;
     renderAll();
@@ -746,6 +973,8 @@
 
   function reviewPayload() {
     const record = currentRecord();
+    const metadata = reviewMetadata(record);
+    const context = reviewContext(record);
     return {
       schema_version: CONTRACT_VERSION,
       review_session_schema_version: REVIEW_SESSION_VERSION,
@@ -761,15 +990,8 @@
         safe_source_path: record.safe_source_path,
         path_visibility: "safe_relative",
       },
-      context: {
-        workflow_id: record.model.workflow_id,
-        task_id: "preview_local_task",
-        input_file_id: record.file_id,
-        data_preparation_plan_id: "preview_he_plan",
-        data_preparation_revision: 1,
-        data_preparation_contract_version: "preview.v1",
-        source: "standalone_review_page",
-      },
+      metadata,
+      context,
       model: record.model,
       summary: {
         auto_candidates: record.candidates.length,
@@ -785,7 +1007,7 @@
             event_id: candidate.id,
             status: STATUS_TO_BACKEND[candidate.review.status] || "unreviewed",
             note: candidate.review.note || "",
-            reviewer: candidate.review.reviewer || "local-user",
+            reviewer: candidate.review.reviewer || "未记录复核人",
             reviewed_at: candidate.review.reviewed_at,
             ui_review: candidate.review,
           },
@@ -819,30 +1041,128 @@
     };
   }
 
+  function customerReviewPackage() {
+    const record = currentRecord();
+    const reviewed = record.candidates.filter((item) => item.review.status !== "unreviewed").length;
+    return {
+      草稿类型: "癫痫样候选事件人工复核记录",
+      生成时间: new Date().toISOString(),
+      使用边界: "仅用于科研筛查和人工复核支持；不作为临床诊断、治疗或用药依据。",
+      记录: {
+        文件名: record.filename,
+        记录时长秒: round1(record.duration_sec || 0),
+        采样率Hz: record.sfreq || "",
+        通道: record.channels,
+        数据路径显示: record.safe_source_path || "",
+      },
+      复核摘要: {
+        候选总数: record.candidates.length,
+        已复核: reviewed,
+        纳入草稿候选: record.candidates.filter((item) => item.review.status === "kept").length,
+        不纳入草稿候选: record.candidates.filter((item) => item.review.status === "excluded").length,
+        存疑: record.candidates.filter((item) => item.review.status === "uncertain").length,
+        未复核: record.candidates.filter((item) => item.review.status === "unreviewed").length,
+      },
+      候选复核表: record.candidates.map(customerCandidateRow),
+      操作记录: state.audit.map((item) => ({
+        操作: item.label || actionLabel(item.type),
+        详情: item.detail || "",
+        时间: item.created_at || "",
+      })),
+    };
+  }
+
+  function customerCandidateRow(candidate) {
+    const review = candidate.review;
+    const start = review.adjusted_start_sec ?? candidate.start_sec;
+    const end = review.adjusted_end_sec ?? candidate.end_sec;
+    return {
+      候选编号: candidate.id,
+      复核状态: STATUS_LABEL[review.status] || review.status,
+      起始秒: round1(start),
+      结束秒: round1(end),
+      时长秒: round1(end - start),
+      候选类型: TYPE_LABEL[review.event_type] || TYPE_LABEL[candidate.ai_type] || "候选窗口",
+      通道: candidate.channels,
+      复核优先级: priorityLabel(candidate.priority),
+      排序值: candidate.preview_rms_ptp_rank_score,
+      排序值说明: candidate.score_note || "排序值只用于复核优先级，不是临床概率。",
+      展示证据等级: review.grade || "",
+      伪迹原因: artifactLabel(review.artifact_reason || ""),
+      复核备注: review.note || "",
+      复核人: review.reviewer || "未记录复核人",
+      复核时间: review.reviewed_at || "",
+    };
+  }
+
+  function reviewMetadata(record) {
+    if (record.metadata) return { ...record.metadata };
+    const count = record.candidates.length;
+    return {
+      review_event_source: "local_preview_candidates",
+      has_full_candidate_set: true,
+      has_explicit_candidate_denominator: true,
+      candidate_denominator: count,
+      candidate_set_scope: "current_preview_candidate_package",
+      denominator_note: "当前复核记录包含已载入的预览候选包；这不是全记录完整检测器的事件负荷估计。",
+    };
+  }
+
+  function reviewContext(record) {
+    const source = record.context || {};
+    return {
+      ...source,
+      workflow_id: source.workflow_id || record.model.workflow_id || "epilepsy_full_flow_preview",
+      task_id: source.task_id || "preview_local_task",
+      input_file_id: source.input_file_id || record.file_id || "preview_unknown",
+      data_preparation_plan_id: source.data_preparation_plan_id || "preview_unknown",
+      data_preparation_revision: source.data_preparation_revision ?? null,
+      data_preparation_contract_version: source.data_preparation_contract_version || "preview_unknown",
+      review_session_id: source.review_session_id || "",
+      source_algorithm_artifact_id: source.source_algorithm_artifact_id || "",
+      source: source.source || "standalone_review_page",
+    };
+  }
+
   async function copyJson() {
-    const text = JSON.stringify(reviewPayload(), null, 2);
+    const text = JSON.stringify(customerReviewPackage(), null, 2);
     try {
       await navigator.clipboard.writeText(text);
-      showToast("复核 JSON 已复制");
+      showToast("复核记录已复制");
     } catch (error) {
       showToast("浏览器未允许复制，已改为下载");
-      saveBlob(text, `${currentRecord().id}_epilepsy_review_preview.json`, "application/json;charset=utf-8");
+      saveBlob(text, `${currentRecord().id}_复核记录.json`, "application/json;charset=utf-8");
     }
   }
 
   function exportJson() {
-    const text = JSON.stringify(reviewPayload(), null, 2);
-    saveBlob(text, `${currentRecord().id}_epilepsy_review_preview.json`, "application/json;charset=utf-8");
-    showToast("复核 JSON 已导出");
+    const text = JSON.stringify(customerReviewPackage(), null, 2);
+    saveBlob(text, `${currentRecord().id}_复核记录.json`, "application/json;charset=utf-8");
+    showToast("复核记录已下载");
   }
 
   function openReportPreview() {
+    if (!currentRecord().candidates.some((item) => item.review.status !== "unreviewed")) {
+      showToast("请先完成至少一个候选的人工复核。");
+      return;
+    }
+    try {
+      window.sessionStorage.setItem("qlanalyser.epilepsy.review_preview.latest", JSON.stringify(reviewPayload()));
+    } catch (error) {
+      showToast("无法临时保存复核草稿，已下载客户可读复核记录。");
+      saveBlob(JSON.stringify(customerReviewPackage(), null, 2), `${currentRecord().id}_复核记录.json`, "application/json;charset=utf-8");
+      console.warn("Review draft handoff failed", error);
+      return;
+    }
+    window.location.href = "./epilepsy-report-preview.html?source=review-preview";
+  }
+
+  function persistLatestReviewPayload() {
     try {
       window.sessionStorage.setItem("qlanalyser.epilepsy.review_preview.latest", JSON.stringify(reviewPayload()));
     } catch {
-      // The report page still has its sample fallback if sessionStorage is unavailable.
+      // The explicit "查看事件结果与复核草稿" path reports storage failure before navigation.
     }
-    window.location.href = "./epilepsy-report-preview.html?source=review-preview";
   }
 
   function saveBlob(text, filename, type) {
@@ -896,11 +1216,11 @@
     const seed = hash(`${candidate.id}:${channel}`);
     const base = Math.sin(t * 2.2 + seed) * 0.22 + Math.sin(t * 7.7 + seed * 0.21) * 0.08;
     const noise = Math.sin(t * 31.1 + seed * 1.7) * 0.035 + Math.sin(t * 53.3 + seed * 0.41) * 0.018;
-    const start = candidate.review.adjusted_start_sec ?? candidate.start_sec;
-    const end = candidate.review.adjusted_end_sec ?? candidate.end_sec;
-    const center = (start + end) / 2;
-    const inEvent = t >= start && t <= end;
-    const envelope = Math.exp(-Math.pow((t - center) / Math.max(0.18, (end - start) / 2.4), 2));
+    const evidenceStart = candidate.start_sec;
+    const evidenceEnd = candidate.end_sec;
+    const evidenceCenter = candidate.peak_sec ?? (evidenceStart + evidenceEnd) / 2;
+    const inEvent = t >= evidenceStart && t <= evidenceEnd;
+    const envelope = Math.exp(-Math.pow((t - evidenceCenter) / Math.max(0.18, (evidenceEnd - evidenceStart) / 2.4), 2));
     const isEvidenceChannel = candidate.channels.includes(channel);
 
     if (channel === "EMG") {
@@ -914,15 +1234,15 @@
     if (!isEvidenceChannel) return base + noise;
 
     if (candidate.ai_type === "seizure_like" || candidate.ai_type === "rhythmic") {
-      const rhythm = inEvent ? Math.sin((t - start) * Math.PI * 7.5) * 0.88 * envelope : 0;
+      const rhythm = inEvent ? Math.sin((t - evidenceStart) * Math.PI * 7.5) * 0.88 * envelope : 0;
       const slow = envelope * 0.28;
       return base + noise + rhythm + slow;
     }
     if (candidate.ai_type === "artifact_suspect") {
       return base + noise + envelope * 0.45 + Math.sin(t * 45) * envelope * 0.18;
     }
-    const spike = Math.exp(-Math.pow((t - center) / 0.045, 2)) * 1.45;
-    const slowWave = -Math.exp(-Math.pow((t - (center + 0.22)) / 0.22, 2)) * 0.7;
+    const spike = Math.exp(-Math.pow((t - evidenceCenter) / 0.045, 2)) * 1.45;
+    const slowWave = -Math.exp(-Math.pow((t - (evidenceCenter + 0.22)) / 0.22, 2)) * 0.7;
     return base + noise + spike + slowWave;
   }
 
@@ -950,6 +1270,28 @@
     if (priority === "high") return "高";
     if (priority === "medium") return "中";
     return "低";
+  }
+
+  function artifactLabel(reason) {
+    return {
+      emg: "肌电增高",
+      motion_acc: "体动 / ACC 同步",
+      electrode: "电极接触不良",
+      saturation: "饱和 / 截幅",
+      unreadable: "不可判读",
+    }[reason] || reason || "";
+  }
+
+  function actionLabel(action) {
+    return {
+      open_record: "打开记录",
+      event_review: "设置候选复核状态",
+      review_fields: "更新复核字段",
+      adjust_event_interval: "调整候选时间边界",
+      note_template: "添加备注模板",
+      skip_candidate: "跳过候选",
+      undo: "撤销",
+    }[action] || "复核操作";
   }
 
   function formatDuration(seconds) {

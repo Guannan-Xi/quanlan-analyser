@@ -127,6 +127,13 @@ h1 {
   transform: scale(0.97);
 }
 
+.ep-btn:disabled,
+.ep-icon-btn:disabled {
+  opacity: 0.52;
+  cursor: not-allowed;
+  transform: none;
+}
+
 .ep-btn,
 .ep-file-btn {
   display: inline-flex;
@@ -209,6 +216,16 @@ h1 {
 .ep-report-banner span {
   color: #3d5872;
   font-size: 13px;
+}
+
+.ep-report-banner.is-blocked {
+  border-color: rgba(178, 65, 61, 0.28);
+  background: var(--red-soft);
+  color: #7e2f2b;
+}
+
+.ep-report-banner.is-blocked span {
+  color: #7e403b;
 }
 
 .ep-summary-grid {
@@ -426,6 +443,13 @@ th {
 
 td {
   color: #253029;
+}
+
+td small {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .ep-status {

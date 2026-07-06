@@ -80,6 +80,15 @@ def main() -> None:
             raise AssertionError(f"Report manifest does not match current task_id: {report_manifest}")
         if not report_manifest.get("artifact_count"):
             raise AssertionError(f"Report manifest has no registered artifacts: {report_manifest}")
+        policy = report_manifest.get("included_analysis_policy") or {}
+        if policy.get("default_lifecycle") != "stable_modules_only":
+            raise AssertionError(f"Report manifest missing stable-only delivery policy: {policy}")
+        if set(policy.get("stable_sibling_modules") or []) != {"psd", "erp"}:
+            raise AssertionError(f"Report manifest stable sibling modules mismatch: {policy}")
+        blocked_prefixes = ("analyses/tfr_", "analyses/pac_", "analyses/connectivity_", "analyses/reference_csd_", "analyses/epilepsy_")
+        blocked_entries = [name for name in sorted(normalized) if name.startswith(blocked_prefixes)]
+        if blocked_entries:
+            raise AssertionError(f"Report ZIP includes advanced/lab modules in default package: {blocked_entries[:20]}")
 
     print(json.dumps({
         "status": "passed",

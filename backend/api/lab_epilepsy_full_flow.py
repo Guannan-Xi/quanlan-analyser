@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import csv
+import io
 import math
 import os
 import re
@@ -97,6 +99,21 @@ HE_CANDIDATE_SEEDS: dict[str, list[dict[str, Any]]] = {
 }
 
 LAB_REVIEW_SESSIONS: OrderedDict[str, dict[str, Any]] = OrderedDict()
+
+EVENT_TYPE_EXPORT_LABELS = {
+    "ied": "棘波样候选",
+    "seizure_like": "发作样节律候选",
+    "rhythmic": "节律性候选",
+    "artifact_suspect": "伪迹疑似",
+    "candidate_window": "候选窗口",
+}
+
+STATUS_EXPORT_LABELS = {
+    "confirmed": "纳入草稿候选",
+    "rejected": "不纳入草稿",
+    "needs_review": "存疑复核",
+    "unreviewed": "未复核",
+}
 
 
 def _env_flag(name: str) -> bool:
@@ -197,6 +214,202 @@ def _require_object_list(value: Any, field_name: str, max_items: int) -> list[di
     if not all(isinstance(item, dict) for item in value):
         raise HTTPException(status_code=422, detail=f"{field_name} items must be objects")
     return value
+
+
+def _csv_text(rows: list[dict[str, Any]], headers: list[str]) -> str:
+    buffer = io.StringIO()
+    writer = csv.DictWriter(buffer, fieldnames=headers, extrasaction="ignore", lineterminator="\n")
+    writer.writeheader()
+    for row in rows:
+        writer.writerow({key: row.get(key, "") for key in headers})
+    return buffer.getvalue()
+
+
+def _review_status_counts(events: list[dict[str, Any]]) -> dict[str, int]:
+    counts = {"auto_candidates": len(events), "reviewed": 0, "confirmed": 0, "rejected": 0, "needs_review": 0, "unreviewed": 0}
+    for event in events:
+        status = str(event.get("status") or "unreviewed")
+        if status not in {"confirmed", "rejected", "needs_review", "unreviewed"}:
+            status = "needs_review"
+        counts[status] += 1
+        if status != "unreviewed":
+            counts["reviewed"] += 1
+    return counts
+
+
+def _event_type_label(value: Any) -> str:
+    text = str(value or "")
+    return EVENT_TYPE_EXPORT_LABELS.get(text, text or "未标注候选类型")
+
+
+def _review_status_label(value: Any) -> str:
+    text = str(value or "unreviewed")
+    return STATUS_EXPORT_LABELS.get(text, "存疑复核")
+
+
+def _customer_event_rows(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    rows = []
+    for event in events:
+        channels = event.get("channels", "")
+        if isinstance(channels, list):
+            channels = "|".join(str(item) for item in channels)
+        rows.append({
+            "事件编号": event.get("event_id", ""),
+            "人工状态": _review_status_label(event.get("status")),
+            "候选类型": _event_type_label(event.get("event_type")),
+            "起始秒": event.get("start_sec", ""),
+            "结束秒": event.get("end_sec", ""),
+            "时长秒": event.get("duration_sec", ""),
+            "原始起始秒": event.get("original_start_sec", ""),
+            "原始结束秒": event.get("original_end_sec", ""),
+            "通道": channels,
+            "展示证据等级": event.get("evidence_grade", ""),
+            "复核备注": event.get("review_note") or event.get("note") or "",
+            "复核人": event.get("reviewer", ""),
+            "复核时间": event.get("reviewed_at", ""),
+            "预览排序值": event.get("preview_rms_ptp_rank_score", ""),
+            "排序值说明": event.get("score_note", ""),
+            "候选来源": event.get("event_source") or event.get("source", ""),
+        })
+    return rows
+
+
+def _lab_review_export(session: dict[str, Any]) -> dict[str, Any]:
+    events = list(session.get("reviewed_events") or [])
+    actions = list(session.get("actions") or [])
+    record = dict(session.get("record") or {})
+    context = dict(session.get("context") or {})
+    model = dict(session.get("model") or {})
+    counts = _review_status_counts(events)
+    final_events = [event for event in events if str(event.get("status") or "unreviewed") != "unreviewed"]
+    review_status = "partial_review_draft" if counts["needs_review"] + counts["unreviewed"] else "review_draft_ready"
+    review_status_label = "部分复核草稿" if review_status == "partial_review_draft" else "复核草稿已就绪"
+    event_headers = [
+        "事件编号",
+        "人工状态",
+        "候选类型",
+        "起始秒",
+        "结束秒",
+        "时长秒",
+        "原始起始秒",
+        "原始结束秒",
+        "通道",
+        "展示证据等级",
+        "复核备注",
+        "复核人",
+        "复核时间",
+        "预览排序值",
+        "排序值说明",
+        "候选来源",
+    ]
+    event_rows = _customer_event_rows(events)
+    action_rows = []
+    for index, action in enumerate(actions, start=1):
+        action_rows.append({
+            "index": index,
+            "action": action.get("action") or action.get("type") or "",
+            "detail": action.get("detail") or action.get("note") or "",
+            "created_at": action.get("at") or action.get("created_at") or "",
+            "source": action.get("source") or "",
+        })
+    return {
+        "schema_version": "qlanalyser.epilepsy.lab_review_export.v1",
+        "session_id": session.get("session_id"),
+        "saved_at": session.get("saved_at"),
+        "non_medical_scope": "research_screening_support_only",
+        "download_class": "复核草稿记录",
+        "正式交付就绪": False,
+        "reviewed_candidate_events_csv": _csv_text(event_rows, event_headers),
+        "review_actions_csv": _csv_text(action_rows, ["index", "action", "detail", "created_at", "source"]),
+        "draft_included_events_csv": _csv_text(_customer_event_rows(final_events), event_headers),
+        "epoch_predictions_csv": _csv_text(event_rows, event_headers),
+        "candidate_events_csv": _csv_text(event_rows, event_headers),
+        "manual_corrections_csv": _csv_text(action_rows, ["index", "action", "detail", "created_at", "source"]),
+        "final_review_events_csv": _csv_text(_customer_event_rows(final_events), event_headers),
+        "summary_json": {
+            **counts,
+            "record_filename": record.get("filename"),
+            "review_status": review_status,
+            "review_status_label": review_status_label,
+            "scope": "research_screening_support_only",
+        },
+        "parameters_json": {
+            "workflow_id": context.get("workflow_id"),
+            "候选来源记录": context.get("source_algorithm_artifact_id"),
+            "detector_version": model.get("detector_version"),
+            "threshold": model.get("threshold"),
+        },
+        "model_manifest_json": {
+            "detector_version": model.get("detector_version") or "lab_preview_detector",
+            "algorithm_status": "local_lab_preview_not_clinically_validated",
+            "score_policy": "ranking_metric_not_probability",
+        },
+        "review_revision_json": {
+            "session_id": session.get("session_id"),
+            "saved_at": session.get("saved_at"),
+            "review_session_schema_version": session.get("review_session_schema_version"),
+            "source_artifacts_readonly": True,
+            "review_layer_only": True,
+        },
+        "scope_contract_json": {
+            "scope_contract": "research_screening_support_only",
+            "clinical_use_allowed": False,
+            "diagnosis_or_treatment_allowed": False,
+            "notes": [
+                "本数据包是本地科研筛查复核草稿。",
+                "未复核或存疑候选不能写成结论。",
+            ],
+        },
+    }
+
+
+def _lab_review_report(session: dict[str, Any]) -> dict[str, Any]:
+    export = _lab_review_export(session)
+    summary = export["summary_json"]
+    record = dict(session.get("record") or {})
+    events = list(session.get("reviewed_events") or [])
+    context = dict(session.get("context") or {})
+    model = dict(session.get("model") or {})
+    channels = record.get("channels") or []
+    channels_text = "、".join(str(channel) for channel in channels) if isinstance(channels, list) else str(channels or "未记录")
+    duration_hours = float(record.get("duration_sec") or 0) / 3600
+    sfreq_text = f"{record.get('sfreq')} Hz" if record.get("sfreq") else "未记录"
+    candidate_source = context.get("source_algorithm_artifact_id") or model.get("detector_version") or "当前预览候选包"
+    return {
+        "schema_version": "qlanalyser.epilepsy.report_preview.v1",
+        "source_review_schema_version": session.get("schema_version"),
+        "non_medical_scope": "research_screening_support_only",
+        "report_status": summary["review_status"],
+        "report_status_label": summary["review_status_label"],
+        "record": record,
+        "summary": summary,
+        "interpretation": (
+            f"{record.get('filename', 'EEG 记录')} 当前预览候选包包含 {summary['auto_candidates']} 个候选片段；"
+            f"其中 {summary['confirmed']} 个被纳入草稿候选，{summary['rejected']} 个暂不纳入草稿，"
+            f"{summary['needs_review'] + summary['unreviewed']} 个仍为存疑或未复核。"
+            "该分母仅代表当前已载入的预览候选包，不代表全记录完整检测器的事件负荷估计；这不是临床结论。"
+        ),
+        "methods": (
+            f"输入记录为 {record.get('filename', 'EEG 记录')}，记录时长约 {duration_hours:.1f} 小时，"
+            f"采样率 {sfreq_text}，通道为 {channels_text}。"
+            f"候选来源为 {candidate_source}；当前本地预览读取有限真实 EDF 波形窗口，并保存候选复核层。"
+            "复核状态映射为：纳入草稿候选、暂不纳入草稿、存疑、未复核。"
+            "排序指标来自 RMS/PTP 预览值，不是概率、置信度、敏感性、特异性或诊断结论。"
+            "正式报告仍需补齐滤波/参考设置、候选生成参数、真实证据图、复核人和可追溯清单。"
+        ),
+        "figure_manifest": [
+            {
+                "id": "eventTimeline",
+                "title": "候选事件时间轴",
+                "source": "manual_review_layer",
+                "provenance": "local_lab_review_session",
+            }
+        ],
+        "provenance": export["review_revision_json"],
+        "confirmed_events": [event for event in events if event.get("status") == "confirmed"],
+        "all_reviewed_events": events,
+        "actions": session.get("actions") or [],
+    }
 
 
 def _sanitized_record(record: dict[str, Any]) -> dict[str, Any]:
@@ -544,14 +757,14 @@ def generate_he_candidates(
         },
         "fallback_reason": fallback_reason,
         "limitations": [
-            "Bounded scan candidates are ranked by real EDF window RMS/PTP preview metrics, not model probability.",
-            "Bounded scan is not an exhaustive detector and cannot estimate sensitivity, specificity, or miss rate.",
-            "Formal delivery still requires evidence package, traceable manual review, and export manifest.",
+            "候选片段按真实 EDF 波形窗口的 RMS/PTP 预览指标排序，不是模型概率。",
+            "当前有限窗口扫描不是完整检测器，不能估计敏感性、特异性或漏检率。",
+            "正式交付仍需要真实图表材料、可追溯复核记录和导出清单。",
         ],
         "candidate_boundary_notes": [
-            "Backend reads real EDF windows across the full record by uniform bounded sampling and ranks by RMS/PTP.",
-            "This is not the epilepsy_ml_xgboost long task and is not an externally validated detector.",
-            "Formal delivery must replace this preview with a real evidence package and review manifest.",
+            "系统按有限均匀采样读取全记录中的真实 EDF 窗口，并按 RMS/PTP 排序。",
+            "当前流程不是经外部验证的完整检测器。",
+            "正式交付必须补齐真实图表材料和可追溯复核清单。",
         ],
         "non_medical_scope": "research_screening_support_only",
     }
@@ -625,3 +838,19 @@ def get_lab_review_session(session_id: str) -> dict[str, Any]:
     if not session:
         raise HTTPException(status_code=404, detail="Lab review session not found")
     return session
+
+
+@router.post("/lab/epilepsy-full-flow/review-sessions/{session_id}/exports")
+def export_lab_review_session(session_id: str) -> dict[str, Any]:
+    session = LAB_REVIEW_SESSIONS.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Lab review session not found")
+    return _lab_review_export(session)
+
+
+@router.get("/lab/epilepsy-full-flow/review-sessions/{session_id}/report")
+def report_lab_review_session(session_id: str) -> dict[str, Any]:
+    session = LAB_REVIEW_SESSIONS.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Lab review session not found")
+    return _lab_review_report(session)

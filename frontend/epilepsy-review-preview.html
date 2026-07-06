@@ -4,8 +4,8 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>癫痫样事件人工复核预览 - QLanalyser</title>
-    <meta name="description" content="QLanalyser 癫痫样事件筛查后的人工矫正与复核预览页。" />
-    <link rel="stylesheet" href="./epilepsy-review-preview.css?v=20260706-preview" />
+    <meta name="description" content="QLanalyser 癫痫样候选事件筛查后的人工复核预览页。" />
+    <link rel="stylesheet" href="./epilepsy-review-preview.css?v=20260706-segment-drag-v7" />
     <script src="./vendor/lucide.min.js"></script>
   </head>
   <body>
@@ -16,24 +16,20 @@
             <i data-lucide="activity" aria-hidden="true"></i>
             <span>癫痫样事件筛查复核</span>
           </div>
-          <h1>人工矫正工作台</h1>
+          <h1>候选复核工作台</h1>
         </div>
         <div class="er-header-actions">
           <label class="er-field er-record-field" for="recordSelect">
             <span>记录</span>
             <select id="recordSelect"></select>
           </label>
-          <button class="er-btn er-btn-secondary" type="button" id="copyJsonBtn" title="复制当前复核 JSON">
+          <button class="er-btn er-btn-secondary" type="button" id="copyJsonBtn" title="复制当前复核记录">
             <i data-lucide="copy" aria-hidden="true"></i>
-            <span>复制 JSON</span>
+            <span>复制复核记录</span>
           </button>
-          <button class="er-btn er-btn-secondary" type="button" id="reportPreviewBtn" title="生成报告预览">
-            <i data-lucide="file-chart-column" aria-hidden="true"></i>
-            <span>报告预览</span>
-          </button>
-          <button class="er-btn er-btn-primary" type="button" id="exportJsonBtn" title="下载当前复核 JSON">
+          <button class="er-btn er-btn-primary" type="button" id="exportJsonBtn" title="下载当前复核记录">
             <i data-lucide="download" aria-hidden="true"></i>
-            <span>导出复核</span>
+            <span>下载复核记录</span>
           </button>
         </div>
       </header>
@@ -44,7 +40,7 @@
           <strong id="durationMetric">-</strong>
         </article>
         <article>
-          <span>AI 候选</span>
+          <span>疑似事件</span>
           <strong id="candidateMetric">-</strong>
         </article>
         <article>
@@ -52,7 +48,7 @@
           <strong id="reviewedMetric">-</strong>
         </article>
         <article>
-          <span>保留事件</span>
+          <span>纳入草稿候选</span>
           <strong id="keptMetric">-</strong>
         </article>
         <article class="er-boundary">
@@ -61,12 +57,30 @@
         </article>
       </section>
 
+      <section class="er-flowbar" aria-label="复核后下一步">
+        <div>
+          <span class="er-section-label">下一步</span>
+          <strong id="flowStateTitle">先完成候选复核</strong>
+          <p id="flowStateText">将每个候选标记为纳入草稿、存疑或不纳入后，再查看事件结果表和复核草稿。</p>
+        </div>
+        <div class="er-flow-actions">
+          <button class="er-btn er-btn-secondary" type="button" id="focusQueueBtn">
+            <i data-lucide="list-checks" aria-hidden="true"></i>
+            <span>继续复核</span>
+          </button>
+          <button class="er-btn er-btn-primary" type="button" id="reportPreviewBtn" title="查看事件结果表与复核草稿">
+            <i data-lucide="file-chart-column" aria-hidden="true"></i>
+            <span>查看事件结果与复核草稿</span>
+          </button>
+        </div>
+      </section>
+
       <section class="er-workspace">
         <aside class="er-queue" aria-label="候选事件队列">
           <div class="er-panel-head">
             <div>
               <span class="er-section-label">队列</span>
-              <h2>待审候选</h2>
+              <h2>候选列表</h2>
             </div>
             <button class="er-icon-btn" type="button" id="sortBtn" title="按优先级排序">
               <i data-lucide="arrow-down-wide-narrow" aria-hidden="true"></i>
@@ -74,7 +88,7 @@
           </div>
           <div class="er-filter-row" role="group" aria-label="候选筛选">
             <button class="er-chip is-active" type="button" data-filter="all">全部</button>
-            <button class="er-chip" type="button" data-filter="unreviewed">未审</button>
+            <button class="er-chip" type="button" data-filter="unreviewed">未复核</button>
             <button class="er-chip" type="button" data-filter="high">高优先</button>
             <button class="er-chip" type="button" data-filter="artifact_suspect">伪迹疑似</button>
           </div>
@@ -105,9 +119,9 @@
 
           <div class="er-waveform-shell">
             <canvas id="waveformCanvas" width="1400" height="520" aria-label="EEG1 EEG2 EMG ACC 波形证据"></canvas>
-            <div class="er-event-band" id="eventBand" aria-hidden="true"></div>
-            <button class="er-handle er-handle-start" type="button" id="startHandle" title="拖动事件起点"></button>
-            <button class="er-handle er-handle-end" type="button" id="endHandle" title="拖动事件终点"></button>
+            <div class="er-event-band" id="eventBand" role="button" tabindex="0" aria-label="拖动整段候选窗口，时长保持不变" title="拖动整段候选窗口，时长保持不变"></div>
+            <button class="er-handle er-handle-start" type="button" id="startHandle" title="拖动候选起点，只调整左边界" aria-label="拖动候选起点，只调整左边界"></button>
+            <button class="er-handle er-handle-end" type="button" id="endHandle" title="拖动候选终点，只调整右边界" aria-label="拖动候选终点，只调整右边界"></button>
           </div>
 
           <div class="er-timeline" aria-label="长程记录概览">
@@ -119,19 +133,20 @@
           <div class="er-panel-head">
             <div>
               <span class="er-section-label">判定</span>
-              <h2>复核结论</h2>
+              <h2>复核状态</h2>
             </div>
-            <span class="er-status-pill" id="statusPill">未审</span>
+            <span class="er-status-pill" id="statusPill">未复核</span>
           </div>
 
           <div class="er-review-grid">
             <label class="er-field" for="eventTypeSelect">
               <span>事件类型</span>
               <select id="eventTypeSelect">
-                <option value="ied">IED / 尖慢波</option>
-                <option value="seizure_like">发作样节律</option>
-                <option value="rhythmic">节律性放电</option>
+                <option value="ied">棘波样候选</option>
+                <option value="seizure_like">疑似节律性候选</option>
+                <option value="rhythmic">疑似节律性候选</option>
                 <option value="artifact_suspect">伪迹疑似</option>
+                <option value="candidate_window">候选窗口 / 未分类</option>
               </select>
             </label>
             <label class="er-field" for="gradeSelect">
@@ -139,7 +154,7 @@
               <select id="gradeSelect">
                 <option value="A">A 明确</option>
                 <option value="B">B 较可信</option>
-                <option value="C">C 低可信</option>
+                <option value="C">C 展示证据较弱</option>
                 <option value="X">X 不可判读</option>
               </select>
             </label>
@@ -148,7 +163,7 @@
           <div class="er-action-stack" role="group" aria-label="复核状态">
             <button class="er-decision keep" type="button" data-status="kept">
               <i data-lucide="check" aria-hidden="true"></i>
-              <span>保留</span>
+              <span>纳入草稿</span>
             </button>
             <button class="er-decision uncertain" type="button" data-status="uncertain">
               <i data-lucide="circle-help" aria-hidden="true"></i>
@@ -156,7 +171,7 @@
             </button>
             <button class="er-decision exclude" type="button" data-status="excluded">
               <i data-lucide="x" aria-hidden="true"></i>
-              <span>排除</span>
+              <span>不纳入</span>
             </button>
           </div>
 
@@ -185,7 +200,7 @@
 
           <label class="er-field" for="noteInput">
             <span>复核备注</span>
-            <textarea id="noteInput" rows="5" placeholder="记录关键证据或排除理由"></textarea>
+            <textarea id="noteInput" rows="5" placeholder="记录关键证据，或说明不纳入草稿的理由"></textarea>
           </label>
 
           <div class="er-template-row" role="group" aria-label="备注模板">
@@ -201,24 +216,24 @@
             </button>
             <button class="er-btn er-btn-primary" type="button" id="applyNextBtn">
               <i data-lucide="arrow-right" aria-hidden="true"></i>
-              <span>保存并下一个</span>
+              <span>应用并下一个</span>
             </button>
           </div>
         </aside>
       </section>
 
-      <section class="er-audit" aria-label="审计记录">
+      <section class="er-audit" aria-label="操作记录">
         <div class="er-panel-head">
           <div>
-            <span class="er-section-label">审计</span>
+            <span class="er-section-label">记录</span>
             <h2>最近操作</h2>
           </div>
-          <span id="contractName">qlanalyser.epilepsy_review_preview.v1</span>
+          <span id="contractName">复核记录 v1</span>
         </div>
         <ol id="auditList"></ol>
       </section>
     </main>
 
-    <script src="./epilepsy-review-preview.js?v=20260706-preview"></script>
+    <script src="./epilepsy-review-preview.js?v=20260706-segment-drag-v7"></script>
   </body>
 </html>

@@ -145,10 +145,22 @@ def confirm_recharge_order(order_id: str, payload: PaymentConfirm | None = None)
 
 def charge_analysis_task(*, account_id: str, task_id: str, module_name: str, quantity_credits: float, metadata_json: dict | None = None) -> BillingTransactionRead:
     with state_store.atomic_cross_registry_lock([TRANSACTIONS, "accounts"]):
-        account = account_service.get_account(normalize_account_id(account_id))
+        normalized_account_id = normalize_account_id(account_id)
         amount = round(max(float(quantity_credits), 0.0), 2)
         if amount <= 0:
             amount = 1.0
+        for tx in _load_transactions().values():
+            if (
+                tx.source_type == "analysis_task"
+                and tx.source_id == task_id
+                and tx.direction == "debit"
+                and tx.status == "posted"
+                and tx.account_id == normalized_account_id
+                and round(float(tx.amount_credits or 0), 2) == amount
+                and (str(module_name).upper() in tx.description.upper() or tx.metadata_json.get("module_name") == module_name)
+            ):
+                return tx
+        account = account_service.get_account(normalized_account_id)
         if account.balance_credits < amount:
             raise HTTPException(status_code=402, detail={"message": "Insufficient balance", "required_credits": amount, "balance_credits": account.balance_credits})
         account.balance_credits = round(account.balance_credits - amount, 2)
@@ -162,7 +174,7 @@ def charge_analysis_task(*, account_id: str, task_id: str, module_name: str, qua
             source_type="analysis_task",
             source_id=task_id,
             description=f"{module_name.upper()} analysis task",
-            metadata_json=metadata_json or {},
+            metadata_json={**(metadata_json or {}), "module_name": module_name},
         )
         state_store.upsert_item(TRANSACTIONS, tx)
         audit_service.record_event(
@@ -174,6 +186,29 @@ def charge_analysis_task(*, account_id: str, task_id: str, module_name: str, qua
             metadata_json={"amount_credits": amount, "module_name": module_name},
         )
         return tx
+
+
+def has_posted_analysis_task_charge(
+    task_id: str,
+    transaction_id: str | None = None,
+    *,
+    account_id: str | None = None,
+    module_name: str | None = None,
+    expected_credits: float | None = None,
+) -> bool:
+    normalized_account_id = normalize_account_id(account_id) if account_id else None
+    expected_amount = round(float(expected_credits), 2) if expected_credits is not None else None
+    return any(
+        tx.source_type == "analysis_task"
+        and tx.source_id == task_id
+        and tx.direction == "debit"
+        and tx.status == "posted"
+        and (transaction_id is None or tx.id == transaction_id)
+        and (normalized_account_id is None or tx.account_id == normalized_account_id)
+        and (module_name is None or str(module_name).upper() in tx.description.upper() or tx.metadata_json.get("module_name") == module_name)
+        and (expected_amount is None or round(float(tx.amount_credits or 0), 2) == expected_amount)
+        for tx in _load_transactions().values()
+    )
 
 
 def list_recharge_orders() -> list[dict]:

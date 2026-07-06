@@ -235,18 +235,41 @@ def delete_project(project_id: str, actor_user_id: str = "local-user") -> Projec
     return project
 
 
-def create_subject(project_id: str, payload: SubjectCreate) -> SubjectRead:
-    get_project(project_id)
+def create_subject(
+    project_id: str,
+    payload: SubjectCreate,
+    *,
+    requesting_user_id: str | None = None,
+) -> SubjectRead:
+    project = get_project(project_id, requesting_user_id=requesting_user_id)
+    if _is_protected_teaching_project(project):
+        _raise_teaching_protected("project", project.id)
     subject = SubjectRead(project_id=project_id, **payload.model_dump())
     _subjects[subject.id] = subject
     state_store.upsert_item("subjects", subject)
     return subject
 
 
-def list_subjects(project_id: str) -> list[SubjectRead]:
-    get_project(project_id)
+def list_subjects(project_id: str, *, requesting_user_id: str | None = None) -> list[SubjectRead]:
+    get_project(project_id, requesting_user_id=requesting_user_id)
     _refresh_subjects()
     return [subject for subject in _subjects.values() if subject.project_id == project_id]
+
+
+def assert_subject_belongs_to_project(subject_id: str, project_id: str) -> SubjectRead:
+    _refresh_subjects()
+    subject = _subjects.get(subject_id)
+    if not subject:
+        raise HTTPException(status_code=404, detail="Subject not found")
+    if subject.project_id != project_id:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code": "SUBJECT_PROJECT_MISMATCH",
+                "message": "Subject does not belong to the upload project",
+            },
+        )
+    return subject
 
 
 async def create_eeg_file(
@@ -261,8 +284,8 @@ async def create_eeg_file(
     if _is_protected_teaching_project(project):
         _raise_teaching_protected("project", project.id)
     _refresh_subjects()
-    if subject_id and subject_id not in _subjects:
-        raise HTTPException(status_code=404, detail="Subject not found")
+    if subject_id:
+        assert_subject_belongs_to_project(subject_id, project_id)
     if upload is None or not upload.filename:
         raise HTTPException(status_code=422, detail="A real EEG file upload is required")
 

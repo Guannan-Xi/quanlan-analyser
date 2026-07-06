@@ -76,6 +76,8 @@ def run_command(command: list[str], env: dict[str, str] | None = None, timeout: 
         cwd=ROOT,
         env=env,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         timeout=timeout,
@@ -102,9 +104,13 @@ def start_backend(evidence: dict) -> subprocess.Popen | None:
         }
         return None
 
+    env = os.environ.copy()
+    env.setdefault("QLANALYSER_ENV", "test")
+    env.setdefault("QLANALYSER_SANDBOX_MODE", "true")
     proc = subprocess.Popen(
         [sys.executable, "-m", "uvicorn", "backend.main:app", "--host", "127.0.0.1", "--port", "8001"],
         cwd=ROOT,
+        env=env,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,

@@ -6,6 +6,7 @@ No authentication required, no persistent storage.
 """
 
 import json
+import os
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException
 
 from backend.services import lab_edf_reviewer_service
@@ -15,6 +16,29 @@ router = APIRouter()
 
 # Max file size: 100MB (typical EDF limit)
 MAX_FILE_SIZE = 100 * 1024 * 1024
+_TRUE_ENV_VALUES = {"1", "true", "yes", "on", "y"}
+_LOCAL_LAB_EDF_REVIEWER_ENVS = {"local", "dev", "development", "test", "ci", "sandbox"}
+
+
+def _env_flag(name: str, default: bool = False) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in _TRUE_ENV_VALUES
+
+
+def _public_lab_edf_reviewer_enabled() -> bool:
+    if _env_flag("QLANALYSER_PUBLIC_LAB_EDF_REVIEWER_ENABLED"):
+        return True
+    if _env_flag("QLANALYSER_SANDBOX_MODE"):
+        return True
+    app_env = os.getenv("QLANALYSER_ENV", "").strip().lower()
+    return app_env in _LOCAL_LAB_EDF_REVIEWER_ENVS
+
+
+def _assert_public_lab_edf_reviewer_enabled() -> None:
+    if not _public_lab_edf_reviewer_enabled():
+        raise HTTPException(status_code=404, detail="Public EDF reviewer lab is disabled")
 
 
 @router.post("/lab/edf-reviewer/inspect")
@@ -40,6 +64,7 @@ async def inspect_edf(file: UploadFile = File(...)) -> dict:
     Raises:
         400: If file too large or EDF parsing fails
     """
+    _assert_public_lab_edf_reviewer_enabled()
     if not file.filename or not file.filename.lower().endswith((".edf", ".fif", ".bdf")):
         raise HTTPException(400, "Only .edf / .fif / .bdf files are supported")
     
@@ -55,7 +80,7 @@ async def inspect_edf(file: UploadFile = File(...)) -> dict:
         result = lab_edf_reviewer_service.inspect_edf_bytes(raw_bytes, filename=file.filename or "")
         return result
     except Exception as exc:
-        raise HTTPException(400, f"EDF parse failed: {str(exc)}") from exc
+        raise HTTPException(400, "EDF parse failed") from exc
 
 
 @router.post("/lab/edf-reviewer/waveform")
@@ -97,6 +122,7 @@ async def render_waveform(
     Raises:
         400: If file too large, channel selection invalid, or processing fails
     """
+    _assert_public_lab_edf_reviewer_enabled()
     if not file.filename or not file.filename.lower().endswith((".edf", ".fif", ".bdf")):
         raise HTTPException(400, "Only .edf / .fif / .bdf files are supported")
     
@@ -137,7 +163,7 @@ async def render_waveform(
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(400, f"Waveform processing failed: {str(exc)}") from exc
+        raise HTTPException(400, "Waveform processing failed") from exc
 
 
 @router.get("/lab/edf-reviewer/status")
@@ -148,6 +174,7 @@ def get_status() -> dict:
     Returns:
         {"status": "ready", "service": "edf_reviewer_lab"}
     """
+    _assert_public_lab_edf_reviewer_enabled()
     return {
         "status": "ready",
         "service": "edf_reviewer_lab",

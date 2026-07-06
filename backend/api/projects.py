@@ -105,6 +105,7 @@ def batch_download_project_task_artifacts(
     
     # Get task to verify it exists and user has access
     task = task_service.get_task(task_id, requesting_user_id=current.id)
+    task_service.assert_task_artifacts_deliverable(task)
     
     # Verify task belongs to the specified project
     if task.project_id != project_id:
@@ -122,6 +123,8 @@ def batch_download_project_task_artifacts(
     with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
         for artifact in artifacts:
             try:
+                if not task_service.is_artifact_download_allowed(artifact, task):
+                    continue
                 # Validate and resolve path
                 artifact_path = _assert_path_within_derivatives(Path(artifact.path))
                 

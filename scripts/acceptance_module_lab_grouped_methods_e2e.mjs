@@ -4,6 +4,10 @@ import { chromium, chromiumLaunchOptions } from "./lib/playwright_runtime.mjs";
 
 
 const FRONTEND_URL = process.env.QLANALYSER_FRONTEND_URL || "http://127.0.0.1:4174/module-lab.html?api=http://127.0.0.1:8001/api&acceptance=grouped-methods-e2e";
+const API_BASE = process.env.QLANALYSER_API_URL || process.env.QLANALYSER_API_BASE_URL || new URL(FRONTEND_URL).searchParams.get("api") || "http://127.0.0.1:8001/api";
+const AUTH_KEY = "qlanalyser_auth_session";
+const E2E_EMAIL = process.env.QLANALYSER_E2E_EMAIL || "ops@quanlan.cn";
+const E2E_PASSWORD = process.env.QLANALYSER_E2E_PASSWORD || "ops-demo-2026";
 const SAMPLE_EDF = process.env.QLANALYSER_GROUPED_METHODS_EDF || path.resolve("work/release_evidence/20260625-module-lab-grouped-methods-e2e/module_lab_grouped_methods_local.edf");
 const EVIDENCE_DIR = path.resolve("work/release_evidence/20260625-module-lab-grouped-methods-e2e");
 const EVIDENCE_PATH = process.env.QLANALYSER_GROUPED_METHODS_EVIDENCE || path.join(EVIDENCE_DIR, "module_lab_grouped_methods_e2e.json");
@@ -73,15 +77,15 @@ const MODULE_RUNS = [
     artifactWaitMs: 180000,
     setParameters: async (page) => {
       await page.locator('[data-runner-form="multitaper_psd"] input[name="fmin"]').fill("1");
-      await page.locator('[data-runner-form="multitaper_psd"] input[name="fmax"]').fill("40");
-      await page.locator('[data-runner-form="multitaper_psd"] input[name="bandwidth"]').fill("4");
+      await page.locator('[data-runner-form="multitaper_psd"] input[name="fmax"]').fill("30");
+      await page.locator('[data-runner-form="multitaper_psd"] input[name="bandwidth"]').fill("1");
       await page.locator('[data-runner-form="multitaper_psd"] input[name="low_bias"]').check();
       await page.locator('[data-runner-form="multitaper_psd"] select[name="normalization"]').selectOption("length");
       await page.locator('[data-runner-form="multitaper_psd"] input[name="remove_dc"]').check();
       await page.locator('[data-runner-form="multitaper_psd"] input[name="bad_channels"]').fill("Oz");
       await page.locator('[data-runner-form="multitaper_psd"] input[name="picks"]').fill("Cz,Pz");
     },
-    expectParameters: ['"analysis_family":"psd"', '"fmin":1', '"fmax":40', '"bandwidth":4', '"remove_dc":true', '"bad_channels":["Oz"]', '"picks":["Cz","Pz"]'],
+    expectParameters: ['"analysis_family":"psd"', '"fmin":1', '"fmax":30', '"bandwidth":1', '"remove_dc":true', '"bad_channels":["Oz"]', '"picks":["Cz","Pz"]'],
   },
   {
     id: "multitaper_tfr",
@@ -97,17 +101,17 @@ const MODULE_RUNS = [
       await page.locator('[data-runner-form="multitaper_tfr"] input[name="tmax"]').fill("0.8");
       await page.locator('[data-runner-form="multitaper_tfr"] input[name="baseline"]').fill("-0.2,0");
       await page.locator('[data-runner-form="multitaper_tfr"] select[name="baseline_mode"]').selectOption("logratio");
-      await page.locator('[data-runner-form="multitaper_tfr"] input[name="freqs"]').fill("8,13,30");
-      await page.locator('[data-runner-form="multitaper_tfr"] input[name="n_cycles"]').fill("7");
-      await page.locator('[data-runner-form="multitaper_tfr"] input[name="time_bandwidth"]').fill("4");
-      await page.locator('[data-runner-form="multitaper_tfr"] input[name="decim"]').fill("1");
+      await page.locator('[data-runner-form="multitaper_tfr"] input[name="freqs"]').fill("8,13");
+      await page.locator('[data-runner-form="multitaper_tfr"] input[name="n_cycles"]').fill("3");
+      await page.locator('[data-runner-form="multitaper_tfr"] input[name="time_bandwidth"]').fill("2");
+      await page.locator('[data-runner-form="multitaper_tfr"] input[name="decim"]').fill("2");
       await page.locator('[data-runner-form="multitaper_tfr"] input[name="return_itc"]').check();
       await page.locator('[data-runner-form="multitaper_tfr"] input[name="use_fft"]').check();
       await page.locator('[data-runner-form="multitaper_tfr"] input[name="zero_mean"]').check();
       await page.locator('[data-runner-form="multitaper_tfr"] input[name="bad_channels"]').fill("Oz");
       await page.locator('[data-runner-form="multitaper_tfr"] input[name="picks"]').fill("Cz,Pz");
     },
-    expectParameters: ['"analysis_family":"tfr"', '"freqs":[8,13,30]', '"n_cycles":7', '"time_bandwidth":4', '"bad_channels":["Oz"]', '"picks":["Cz","Pz"]', '"baseline_mode":"logratio"', '"use_fft":true', '"zero_mean":true'],
+    expectParameters: ['"analysis_family":"tfr"', '"freqs":[8,13]', '"n_cycles":3', '"time_bandwidth":2', '"decim":2', '"bad_channels":["Oz"]', '"picks":["Cz","Pz"]', '"baseline_mode":"logratio"', '"use_fft":true', '"zero_mean":true'],
   },
   {
     id: "erp",
@@ -237,6 +241,69 @@ function localBrowserExecutable() {
   return candidates.find((item) => fs.existsSync(item)) || "";
 }
 
+async function loginE2EAccount() {
+  const response = await fetch(`${API_BASE.replace(/\/$/, "")}/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email: E2E_EMAIL, password: E2E_PASSWORD }),
+  });
+  if (!response.ok) {
+    throw new Error(`Module Lab E2E account login failed: ${response.status} ${response.statusText}`);
+  }
+  const payload = await response.json();
+  if (!payload?.token) throw new Error("Module Lab E2E account login did not return a token.");
+  return {
+    token: payload.token,
+    account: payload.account,
+    expires_at: payload.expires_at,
+  };
+}
+
+async function apiFetch(pathname, authSession, options = {}) {
+  const headers = {
+    ...(options.headers || {}),
+    Authorization: `Bearer ${authSession.token}`,
+  };
+  const response = await fetch(`${API_BASE.replace(/\/$/, "")}${pathname}`, { ...options, headers });
+  if (!response.ok) {
+    throw new Error(`${pathname} failed: ${response.status} ${response.statusText}`);
+  }
+  return response.json();
+}
+
+async function ensureE2ECredits(authSession, minimumCredits = 200) {
+  const accountId = authSession.account?.id;
+  if (!accountId) throw new Error("Module Lab E2E account is missing account id.");
+  const wallet = await apiFetch(`/billing/wallet?account_id=${encodeURIComponent(accountId)}`, authSession);
+  const balance = Number(wallet.balance_credits || 0);
+  if (balance >= minimumCredits) return { before: balance, after: balance, recharged: false };
+  if (authSession.account?.role !== "admin") {
+    throw new Error(`Module Lab grouped E2E requires ${minimumCredits} credits or an admin account that can create a sandbox recharge.`);
+  }
+  const order = await apiFetch("/billing/recharge", authSession, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      account_id: accountId,
+      amount_credits: minimumCredits - balance,
+      payment_method: "manual_offline",
+      note: "Module Lab grouped-method E2E sandbox recharge",
+    }),
+  });
+  await apiFetch(`/billing/recharge/${encodeURIComponent(order.id)}/confirm`, authSession, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ status: "paid", provider_trade_no: `module-lab-e2e-${Date.now()}` }),
+  });
+  const refreshed = await apiFetch(`/billing/wallet?account_id=${encodeURIComponent(accountId)}`, authSession);
+  return {
+    before: balance,
+    after: Number(refreshed.balance_credits || 0),
+    recharged: true,
+    orderId: order.id,
+  };
+}
+
 async function selectMethod(page, moduleSpec) {
   const switchButton = page.locator(`[data-method-switch="${moduleSpec.group}"][data-target-method="${moduleSpec.id}"]`);
   if (await switchButton.count()) {
@@ -300,12 +367,27 @@ async function runModule(page, moduleSpec, selectedFileId) {
 
 async function run() {
   if (!fs.existsSync(SAMPLE_EDF)) throw new Error(`Missing generated EDF: ${SAMPLE_EDF}`);
+  const authSession = await loginE2EAccount();
+  const wallet = await ensureE2ECredits(authSession);
+  evidence.auth = {
+    status: "logged_in",
+    accountId: authSession.account?.id || "",
+    role: authSession.account?.role || "",
+    wallet,
+  };
+  writeEvidence(evidence);
   const executablePath = localBrowserExecutable();
   const browser = await chromium.launch(executablePath ? { executablePath } : {});
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+  await page.addInitScript(
+    ({ authKey, session }) => {
+      window.localStorage.setItem(authKey, JSON.stringify(session));
+    },
+    { authKey: AUTH_KEY, session: authSession },
+  );
   page.on("request", (request) => {
     const url = request.url();
-    if (url.includes("/api/eeg/upload") || url.includes("/api/tasks") || url.includes("/api/artifacts/")) {
+    if (url.includes("/api/eeg/upload") || url.includes("/api/tasks") || url.includes("/api/artifacts/") || url.includes("/data-preparation-plan")) {
       evidence.requests.push({ method: request.method(), url });
     }
   });
@@ -344,6 +426,15 @@ async function run() {
     const uploaded = await (await uploadPromise).json();
     const selectedFileId = uploaded.id;
     await page.waitForFunction((fileId) => Array.from(document.querySelectorAll("[data-file-select]")).every((select) => select.value === fileId), selectedFileId, { timeout: 30000 });
+    await page.waitForFunction(
+      () => /prep_[a-z0-9]+/i.test(document.querySelector("#labDataSourceStatus")?.textContent || ""),
+      null,
+      { timeout: 30000 },
+    );
+    const dataPreparationStatus = await page.locator("#labDataSourceStatus").innerText().catch(() => "");
+    if (/standard:\s*24\s*\/\s*target:\s*12/.test(dataPreparationStatus)) {
+      throw new Error("uploaded_file_status_leaked_demo_event_counts");
+    }
     evidence.uploadedFile = {
       id: selectedFileId,
       original_filename: uploaded.original_filename,
@@ -351,6 +442,7 @@ async function run() {
       sampling_rate: uploaded.sampling_rate,
       channel_count: uploaded.channel_count,
       duration_sec: uploaded.duration_sec,
+      dataPreparationStatus,
     };
     evidence.steps.push({ action: "upload-generated-edf", status: "passed", selectedFileId });
     writeEvidence(evidence);

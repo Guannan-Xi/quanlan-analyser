@@ -24,6 +24,20 @@ const EXPECTED_TEXT = [
   "事件筛查 / 癫痫样事件",
 ];
 
+const CURRENT_EXPECTED_TEXT = [
+  "科研分析底座",
+  "数据准备与 QC",
+  "按科学目的归类的稳定分析",
+  "实验室预览分析方法",
+];
+
+const ASCII_EXPECTED_TEXT = [
+  "\u5206\u6790\u65b9\u6cd5\u5e93",
+  "\u6570\u636e\u51c6\u5907\u4e0e QC",
+  "\u6309\u79d1\u5b66\u76ee\u7684\u5f52\u7c7b\u7684\u7a33\u5b9a\u5206\u6790",
+  "\u5b9e\u9a8c\u5ba4\u9884\u89c8\u5206\u6790\u65b9\u6cd5",
+];
+
 const FORBIDDEN_TEXT = [
   "预览方法，需复核",
   "交付前需要复核参数、统计口径和解释边界",
@@ -89,7 +103,7 @@ async function inspectViewport(browser, viewport) {
         missingText,
         forbiddenHits,
       };
-    }, { expectedText: EXPECTED_TEXT, forbiddenText: FORBIDDEN_TEXT });
+    }, { expectedText: ASCII_EXPECTED_TEXT, forbiddenText: FORBIDDEN_TEXT });
     result.checks = checks;
     if (checks.groupCount !== 10) result.issues.push({ type: "group_count", message: `expected 10 groups, got ${checks.groupCount}` });
     if (checks.pickerCount !== 0) result.issues.push({ type: "method_picker", message: `expected 0 method pickers, got ${checks.pickerCount}` });

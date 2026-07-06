@@ -3,11 +3,12 @@
 
   const REPORT_SCHEMA = "qlanalyser.epilepsy.report_preview.v1";
   const REVIEW_SCHEMA = "qlanalyser.epilepsy.manual_correction_preview.v1";
+  const REVIEW_STORAGE_KEY = "qlanalyser.epilepsy.review_preview.latest";
   const STATUS_LABEL = {
-    confirmed: "人工保留",
-    kept: "人工保留",
-    rejected: "排除",
-    excluded: "排除",
+    confirmed: "纳入草稿候选",
+    kept: "纳入草稿候选",
+    rejected: "不纳入草稿",
+    excluded: "不纳入草稿",
     needs_review: "存疑",
     uncertain: "存疑",
     unreviewed: "未复核",
@@ -22,14 +23,16 @@
     excluded: 3,
   };
   const TYPE_LABEL = {
-    ied: "IED / 尖慢波",
-    seizure_like: "发作样节律",
-    rhythmic: "节律性放电",
+    ied: "棘波样候选",
+    seizure_like: "疑似节律性候选",
+    rhythmic: "节律性放电候选",
     artifact_suspect: "伪迹疑似",
+    candidate_window: "候选窗口 / 未分类",
+    unknown: "未分类候选",
   };
 
   const state = {
-    payload: sampleReviewPayload(),
+    payload: emptyReviewPayload(),
   };
 
   const dom = {};
@@ -45,16 +48,20 @@
   }
 
   function hydrateFromReviewPreview() {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("demo") === "1") {
+      state.payload = sampleReviewPayload();
+      return;
+    }
     try {
-      const storageKey = "qlanalyser.epilepsy.review_preview.latest";
-      const raw = window.sessionStorage.getItem(storageKey) || window.localStorage.getItem(storageKey);
+      const raw = window.sessionStorage.getItem(REVIEW_STORAGE_KEY) || window.localStorage.getItem(REVIEW_STORAGE_KEY);
       if (!raw) return;
       const parsed = JSON.parse(raw);
       if (parsed && (parsed.schema_version === REVIEW_SCHEMA || parsed.reviewed_events || parsed.all_reviewed_events || parsed.confirmed_events || parsed.event_reviews)) {
         state.payload = parsed;
       }
-    } catch {
-      // Keep the built-in sample report when browser storage is blocked or the saved draft is malformed.
+    } catch (error) {
+      state.payload = emptyReviewPayload("复核记录无法自动读取。请重新从候选复核工作台打开，或手动载入复核记录。");
     }
   }
 
@@ -88,6 +95,7 @@
     ].forEach((id) => {
       dom[id] = document.getElementById(id);
     });
+    dom.reportBanner = document.querySelector(".ep-report-banner");
   }
 
   function bindEvents() {
@@ -110,12 +118,16 @@
     try {
       const text = await file.text();
       const raw = JSON.parse(text);
-      state.payload = normalizePayload(raw);
+      const normalized = normalizePayload(raw);
+      const validation = validatePayloadForStandaloneLoad(normalized);
+      if (!validation.accepted) throw new Error(validation.reason);
+      state.payload = normalized;
+      persistReviewPayload(normalized);
       renderReport();
       resizeFigures();
       showToast(`已载入 ${file.name}`);
     } catch (error) {
-      showToast(`JSON 无法读取：${error.message || error}`);
+      showToast("复核记录无法读取，请确认文件是本工作台导出的复核记录。");
     } finally {
       event.target.value = "";
     }
@@ -123,41 +135,73 @@
 
   function normalizePayload(raw) {
     const record = raw.record || {};
+    const preservedMetadata = raw.metadata || {};
+    const eventSource = preservedMetadata.review_event_source || reviewEventSource(raw);
     const reviewedEvents = Array.isArray(raw.reviewed_events)
       ? raw.reviewed_events
-      : Array.isArray(raw.all_reviewed_events)
-        ? raw.all_reviewed_events
-        : Array.isArray(raw.confirmed_events)
-          ? raw.confirmed_events
-          : [];
+      : eventSource ? raw[eventSource] : [];
     const eventReviews = raw.event_reviews || {};
     const events = reviewedEvents.map((item, index) => {
       const id = String(item.event_id || item.id || `event_${index + 1}`);
       const review = eventReviews[id] || {};
       const uiReview = review.ui_review || {};
       const status = normalizeStatus(item.backend_status || item.review_status || item.status || review.status || uiReview.status || "unreviewed");
+      const originalStart = numberOr(item.original_start_sec, item.candidate_start_sec, item.start_sec, item.reviewed_start_sec, 0);
+      const originalEnd = numberOr(item.original_end_sec, item.candidate_end_sec, item.end_sec, item.reviewed_end_sec, originalStart + numberOr(item.duration_sec, 1));
       const start = numberOr(item.reviewed_start_sec, item.start_sec, item.original_start_sec, 0);
       const end = numberOr(item.reviewed_end_sec, item.end_sec, item.original_end_sec, start + numberOr(item.duration_sec, 1));
       return {
         event_id: id,
+        original_start_sec: round1(originalStart),
+        original_end_sec: round1(Math.max(originalEnd, originalStart + 0.1)),
         start_sec: round1(start),
         end_sec: round1(Math.max(end, start + 0.1)),
         duration_sec: round1(Math.max(0.1, end - start)),
-        event_type: item.reviewed_type || item.event_type || uiReview.event_type || item.ai_type || "ied",
+        event_type: normalizeEventType(item.reviewed_type || item.event_type || uiReview.event_type || item.ai_type),
         channels: Array.isArray(item.channels) ? item.channels : splitChannels(item.channels),
         evidence_grade: item.evidence_grade || uiReview.grade || "C",
         artifact_reason: item.artifact_reason || uiReview.artifact_reason || "",
         status,
-        preview_rms_ptp_rank_score: Number(item.preview_rms_ptp_rank_score || item.score || item.probability || 0),
+        preview_rms_ptp_rank_score: Number(item.preview_rms_ptp_rank_score || item.score || 0),
         score_kind: item.score_kind || "preview_rank_not_probability",
         score_note: item.score_note || "预览排序值不是临床概率、检测置信度或诊断结论。",
         note: item.note || review.note || uiReview.note || "",
+        reviewer: item.reviewer || review.reviewer || uiReview.reviewer || "",
+        reviewed_at: item.reviewed_at || review.reviewed_at || uiReview.reviewed_at || "",
+        source_artifact_id: item.source_artifact_id || item.source_algorithm_artifact_id || "",
+        window_id: item.window_id || item.evidence_window_id || "",
       };
     });
+    const explicitDenominator = explicitCandidateDenominator(raw);
+    const hasFullCandidateSet = typeof preservedMetadata.has_full_candidate_set === "boolean"
+      ? preservedMetadata.has_full_candidate_set
+      : false;
+    const hasExplicitCandidateDenominator = typeof preservedMetadata.has_explicit_candidate_denominator === "boolean"
+      ? preservedMetadata.has_explicit_candidate_denominator
+      : Number.isFinite(explicitDenominator);
+    const preservedDenominator = Number(preservedMetadata.candidate_denominator);
+    const candidateDenominator = Math.max(
+      events.length,
+      Number.isFinite(preservedDenominator) ? preservedDenominator : events.length,
+      hasExplicitCandidateDenominator ? explicitDenominator : events.length,
+    );
     return {
       schema_version: raw.schema_version || REVIEW_SCHEMA,
       generated_at: raw.generated_at || new Date().toISOString(),
       non_medical_scope: raw.non_medical_scope || "research_screening_support_only",
+      metadata: {
+        ...preservedMetadata,
+        review_event_source: eventSource || "none",
+        has_full_candidate_set: hasFullCandidateSet,
+        has_explicit_candidate_denominator: hasExplicitCandidateDenominator,
+        candidate_denominator: candidateDenominator,
+        candidate_set_scope: preservedMetadata.candidate_set_scope || (hasFullCandidateSet ? "current_preview_candidate_package" : "unknown"),
+        denominator_note: hasFullCandidateSet
+          ? "复核记录包含当前已载入的预览候选包；这不是全记录完整检测器的事件负荷估计。"
+          : hasExplicitCandidateDenominator
+            ? "复核记录提供了候选总数，但事件明细可能不是完整列表。"
+            : "候选总数未知，当前记录不能作为可下载复核草稿。",
+      },
       record: {
         id: record.id || record.file_id || "unknown_record",
         file_id: record.file_id || "",
@@ -173,12 +217,57 @@
     };
   }
 
+  function reviewEventSource(raw) {
+    if (Array.isArray(raw.reviewed_events)) return "reviewed_events";
+    if (Array.isArray(raw.all_reviewed_events)) return "all_reviewed_events";
+    if (Array.isArray(raw.confirmed_events)) return "confirmed_events";
+    return "";
+  }
+
+  function explicitCandidateDenominator(raw) {
+    const candidates = [
+      raw.candidate_denominator,
+      raw.total_candidates,
+      raw.candidate_count,
+      raw.summary?.auto_candidates,
+      raw.summary?.total,
+      raw.summary?.candidate_count,
+    ];
+    for (const value of candidates) {
+      const number = Number(value);
+      if (Number.isFinite(number) && number >= 0) return number;
+    }
+    return NaN;
+  }
+
+  function normalizeEventType(type) {
+    const value = String(type || "candidate_window");
+    if (value === "candidate_window" || value === "unknown" || !TYPE_LABEL[value]) return "candidate_window";
+    return value;
+  }
+
+  function validatePayloadForStandaloneLoad(payload) {
+    if (!payload.reviewed_events.length) {
+      return { accepted: false, reason: "复核记录为空，不能生成复核草稿。" };
+    }
+    return { accepted: true, reason: "" };
+  }
+
+  function persistReviewPayload(payload) {
+    try {
+      window.sessionStorage.setItem(REVIEW_STORAGE_KEY, JSON.stringify(payload));
+    } catch {
+      // Returning to the review page may fall back to its built-in sample if storage is blocked.
+    }
+  }
+
   function renderReport() {
     state.payload = normalizePayload(state.payload);
     renderSummary();
     renderTexts();
     renderEventTable();
     renderAudit();
+    renderExportState();
     syncIcons();
   }
 
@@ -186,19 +275,42 @@
     const payload = state.payload;
     const record = payload.record;
     const events = payload.reviewed_events;
-    const stats = eventStats(events);
+    const stats = eventStats(events, payload);
     const hours = Math.max(0.01, record.duration_sec / 3600);
     dom.recordName.textContent = record.filename || "-";
     dom.recordMeta.textContent = `${hours.toFixed(1)} h · ${record.sfreq || "-"} Hz · ${record.channels.join(" / ")}`;
     dom.confirmedMetric.textContent = String(stats.confirmed);
-    dom.eventRateMetric.textContent = `${(stats.confirmed / hours).toFixed(3)} / h`;
+    dom.eventRateMetric.textContent = `${(stats.confirmed / hours).toFixed(3)} 纳入草稿候选/小时（预览，非发作频率）`;
     dom.pendingMetric.textContent = `${stats.needsReview + stats.unreviewed}`;
-    dom.coverageMetric.textContent = `${Math.round((stats.reviewed / Math.max(1, events.length)) * 100)}%`;
-    dom.coverageHint.textContent = `${stats.reviewed}/${events.length} 候选已复核`;
-    dom.overallStatement.textContent = reportStatus() === "complete_review_preview"
-      ? "人工复核已覆盖全部候选。"
-      : "部分复核草稿，仍含待确认候选。";
-    dom.contractLabel.textContent = REPORT_SCHEMA;
+    dom.coverageMetric.textContent = `${Math.round((stats.reviewed / Math.max(1, stats.total)) * 100)}%`;
+    dom.coverageHint.textContent = stats.implicitUnreviewed > 0
+      ? `${stats.reviewed}/${stats.total} 候选已复核，另有 ${stats.implicitUnreviewed} 个候选未载入`
+      : `${stats.reviewed}/${stats.total} 候选已复核`;
+    const status = reportStatus();
+    const candidateSetKnown = Boolean(payload.metadata?.has_full_candidate_set || payload.metadata?.has_explicit_candidate_denominator);
+    dom.overallStatement.textContent = status === "complete_review_preview"
+      ? "候选复核已覆盖当前预览候选包；当前图表仍为预览示意。"
+      : status === "not_ready"
+        ? (events.length
+          ? "已显示事件结果表，但缺少当前候选包分母，不能下载复核草稿数据。"
+          : (payload.metadata?.empty_reason || "复核记录为空，不能输出草稿数据。"))
+        : candidateSetKnown
+          ? "部分复核草稿，仍含待确认或未复核候选。"
+          : "部分复核草稿，且当前候选包分母仍需确认。";
+    dom.contractLabel.textContent = "草稿版本 v1";
+  }
+
+  function renderExportState() {
+    const canExport = canExportReportDraft();
+    dom.exportReportBtn.disabled = !canExport;
+    dom.exportCsvBtn.disabled = !state.payload.reviewed_events.length;
+    dom.exportReportBtn.querySelector("span").textContent = canExport ? "下载复核草稿数据" : "草稿数据不可下载";
+    dom.exportReportBtn.title = canExport
+      ? "下载当前复核草稿数据；正式报告仍需真实 EEG 证据图。"
+      : "复核记录为空，或缺少当前候选包分母，不能下载草稿数据。";
+    dom.exportCsvBtn.querySelector("span").textContent = canExport ? "导出事件表" : "导出当前事件表";
+    dom.exportCsvBtn.title = dom.exportCsvBtn.disabled ? "复核记录为空，不能导出事件表。" : "导出当前事件表；文件头会标注草稿边界和候选包分母。";
+    dom.reportBanner?.classList.toggle("is-blocked", !canExport);
   }
 
   function renderTexts() {
@@ -213,23 +325,48 @@
       if (status !== 0) return status;
       return a.start_sec - b.start_sec;
     });
+    if (!rows.length) {
+      dom.eventTableBody.innerHTML = `<tr><td colspan="8">尚未载入复核记录。请从复核工作台进入，或手动载入复核记录。</td></tr>`;
+      return;
+    }
     dom.eventTableBody.innerHTML = rows.map((event) => `
       <tr>
         <td><strong>${h(event.event_id)}</strong></td>
-        <td>${h(formatClock(event.start_sec))}</td>
-        <td>${h(event.duration_sec.toFixed(1))} s</td>
+        <td>${h(timeRangeText(event.start_sec, event.end_sec))}<small>${h(event.duration_sec.toFixed(1))} s</small></td>
+        <td>${h(timeRangeText(event.original_start_sec, event.original_end_sec))}</td>
         <td>${h(TYPE_LABEL[event.event_type] || event.event_type)}</td>
         <td>${h(event.channels.join(" / ") || "-")}</td>
-        <td>${h(event.evidence_grade || "-")}${event.artifact_reason ? ` · ${h(artifactLabel(event.artifact_reason))}` : ""}</td>
+        <td>${h(evidenceSummary(event))}</td>
         <td><span class="ep-status ${h(event.status)}">${h(STATUS_LABEL[event.status] || event.status)}</span></td>
+        <td>${h(reviewTraceText(event))}</td>
       </tr>
     `).join("");
+  }
+
+  function timeRangeText(start, end) {
+    if (!Number.isFinite(Number(start)) || !Number.isFinite(Number(end))) return "-";
+    return `${formatClock(start)} - ${formatClock(end)}`;
+  }
+
+  function evidenceSummary(event) {
+    const parts = [`证据 ${event.evidence_grade || "-"}`];
+    if (event.artifact_reason) parts.push(artifactLabel(event.artifact_reason));
+    if (event.note) parts.push(event.note);
+    if (event.source_artifact_id) parts.push(`证据来源编号 ${event.source_artifact_id}`);
+    if (event.window_id) parts.push(`窗口 ${event.window_id}`);
+    return parts.join(" · ");
+  }
+
+  function reviewTraceText(event) {
+    const reviewer = event.reviewer || "未记录复核人";
+    const reviewedAt = event.reviewed_at ? formatAuditTime(event.reviewed_at) : "未记录时间";
+    return `${reviewer} · ${reviewedAt}`;
   }
 
   function renderAudit() {
     const actions = state.payload.actions.slice(-6).reverse();
     if (!actions.length) {
-      dom.auditList.innerHTML = `<article><strong>暂无操作记录</strong><span>载入正式复核 JSON 后会显示审计链。</span></article>`;
+      dom.auditList.innerHTML = `<article><strong>暂无操作记录</strong><span>载入正式复核记录后会显示追溯信息。</span></article>`;
       return;
     }
     dom.auditList.innerHTML = actions.map((item) => `
@@ -275,8 +412,8 @@
     const rowGap = 38;
     const plotW = w - left - right;
     const rows = [
-      ["confirmed", "人工保留"],
-      ["rejected", "排除"],
+      ["confirmed", "纳入草稿"],
+      ["rejected", "不纳入"],
       ["needs_review", "存疑"],
       ["unreviewed", "未复核"],
     ];
@@ -321,7 +458,7 @@
     clearFigure(ctx, w, height);
     const event = representativeEvent();
     if (!event) {
-      centerText(ctx, w, height, "暂无人工保留事件");
+      centerText(ctx, w, height, "暂无纳入草稿候选");
       return;
     }
     const channels = state.payload.record.channels.slice(0, 4);
@@ -377,13 +514,13 @@
   function drawFunnel(canvas) {
     const ctx = context(canvas);
     const { w, h: height } = canvasSize(canvas);
-    const stats = eventStats(state.payload.reviewed_events);
+    const stats = eventStats(state.payload.reviewed_events, state.payload);
     clearFigure(ctx, w, height);
     const rows = [
-      ["AI 候选", stats.total, "#2f659f"],
+      ["疑似片段", stats.total, "#2f659f"],
       ["已复核", stats.reviewed, "#6f5aa8"],
-      ["人工保留", stats.confirmed, "#2f7d55"],
-      ["排除", stats.rejected, "#b2413d"],
+      ["纳入草稿", stats.confirmed, "#2f7d55"],
+      ["不纳入", stats.rejected, "#b2413d"],
       ["存疑", stats.needsReview, "#a86513"],
     ];
     const max = Math.max(1, ...rows.map((item) => item[1]));
@@ -434,7 +571,7 @@
     const plotH = height - top - bottom;
     ctx.fillStyle = "#17201b";
     ctx.font = "700 13px Inter, Microsoft YaHei, sans-serif";
-    ctx.fillText("人工保留事件密度", left, 23);
+    ctx.fillText("纳入草稿候选密度", left, 23);
     ctx.strokeStyle = "#dce4df";
     ctx.beginPath();
     ctx.moveTo(left, top);
@@ -469,7 +606,7 @@
     const gap = 22;
     ctx.fillStyle = "#17201b";
     ctx.font = "700 13px Inter, Microsoft YaHei, sans-serif";
-    ctx.fillText("通道证据参与", left, 23);
+    ctx.fillText("通道参与概览", left, 23);
     channels.forEach((channel, index) => {
       const y = top + index * (barH + gap);
       const width = ((w - left - right) * counts[index]) / max;
@@ -490,7 +627,7 @@
 
   function reportPayload() {
     const payload = state.payload;
-    const stats = eventStats(payload.reviewed_events);
+    const stats = eventStats(payload.reviewed_events, payload);
     return {
       schema_version: REPORT_SCHEMA,
       generated_at: new Date().toISOString(),
@@ -504,89 +641,191 @@
         rejected: stats.rejected,
         needs_review: stats.needsReview,
         unreviewed: stats.unreviewed,
-        confirmed_rate_per_hour: Number((stats.confirmed / Math.max(0.01, payload.record.duration_sec / 3600)).toFixed(4)),
+        candidate_denominator: stats.total,
+        confirmed_candidates_per_record_hour_preview: Number((stats.confirmed / Math.max(0.01, payload.record.duration_sec / 3600)).toFixed(4)),
+        report_status: reportStatus(),
       },
       interpretation: summaryText(),
       methods: methodsText(),
+      methods_structured: methodsStructured(),
       figure_manifest: figureManifest(),
+      report_readiness: reportReadiness(),
       provenance: provenanceManifest(),
       confirmed_events: confirmedEvents(),
       all_reviewed_events: payload.reviewed_events,
       actions: payload.actions,
+      research_draft: researchDraft(),
     };
   }
 
+  function customerReportPackage() {
+    const payload = reportPayload();
+    const record = payload.record || {};
+    const summary = payload.summary || {};
+    return {
+      草稿类型: "癫痫样候选事件复核草稿",
+      生成时间: payload.generated_at,
+      使用边界: "仅用于科研筛查和人工复核支持；不作为临床诊断、治疗或用药依据。",
+      记录: {
+        文件名: record.filename || "",
+        记录时长秒: record.duration_sec || 0,
+        采样率Hz: record.sfreq || "",
+        通道: record.channels || [],
+      },
+      摘要: {
+        候选总数: summary.auto_candidates || 0,
+        已复核: summary.reviewed || 0,
+        纳入草稿候选: summary.confirmed || 0,
+        不纳入草稿候选: summary.rejected || 0,
+        存疑: summary.needs_review || 0,
+        未复核: summary.unreviewed || 0,
+        草稿状态: reportStatusLabel(summary.report_status),
+        纳入草稿候选数每记录小时: summary.confirmed_candidates_per_record_hour_preview || 0,
+      },
+      复核摘要: payload.interpretation,
+      方法与限制: payload.methods,
+      事件表: payload.all_reviewed_events.map(customerReportEventRow),
+      图表说明: figureManifest().map((figure) => ({
+        图表: figure.title,
+        来源: figure.source === "合成预览波形" ? "版式示意" : "复核草稿",
+        限制: figure.limitation || figure.provenance || "",
+      })),
+      追溯: {
+        复核草稿状态: reportStatusLabel(summary.report_status),
+        当前候选包说明: state.payload.metadata?.denominator_note || "",
+        正式报告就绪: "否，仍需真实 EDF 波形窗口、图表复核和正式报告审核。",
+      },
+    };
+  }
+
+  function customerReportEventRow(event) {
+    return {
+      事件编号: event.event_id,
+      复核状态: STATUS_LABEL[event.status] || event.status,
+      复核起始秒: event.start_sec,
+      复核结束秒: event.end_sec,
+      原始候选起始秒: event.original_start_sec,
+      原始候选结束秒: event.original_end_sec,
+      候选类型: TYPE_LABEL[event.event_type] || event.event_type,
+      通道: event.channels,
+      展示证据等级: event.evidence_grade,
+      伪迹原因: artifactLabel(event.artifact_reason),
+      排序值: event.preview_rms_ptp_rank_score,
+      排序值说明: event.score_note || "排序值只用于复核优先级，不是临床概率。",
+      复核备注: event.note || "",
+      复核人: event.reviewer || "未记录复核人",
+      复核时间: event.reviewed_at || "",
+    };
+  }
+
+  function reportStatusLabel(status) {
+    return {
+      complete_review_preview: "候选复核已完整，仍为预览草稿",
+      partial_review_draft: "部分复核草稿",
+      review_draft_ready: "复核草稿",
+      not_ready: "尚不能生成草稿",
+    }[status] || status || "未记录";
+  }
+
   function exportReportJson() {
-    saveBlob(JSON.stringify(reportPayload(), null, 2), `${state.payload.record.id || "epilepsy"}_report_preview.json`, "application/json;charset=utf-8");
-    showToast("报告预览 JSON 已导出");
+    if (!canExportReportDraft()) {
+      showToast("缺少当前候选包分母，不能下载草稿数据。");
+      renderExportState();
+      return;
+    }
+    saveBlob(JSON.stringify(customerReportPackage(), null, 2), `${state.payload.record.id || "epilepsy"}_复核草稿记录.json`, "application/json;charset=utf-8");
+    showToast("复核草稿数据已下载");
   }
 
   function exportEventsCsv() {
     const rows = state.payload.reviewed_events;
+    if (!rows.length) {
+      showToast("复核记录为空，不能导出事件表。");
+      renderExportState();
+      return;
+    }
     const columns = [
-      ["event_id", "event_id"],
-      ["reviewed_start_sec", "start_sec"],
-      ["reviewed_end_sec", "end_sec"],
-      ["duration_sec", "duration_sec"],
-      ["event_type", "event_type"],
-      ["channels", "channels"],
-      ["evidence_grade", "evidence_grade"],
-      ["artifact_reason", "artifact_reason"],
-      ["review_status", "status"],
-      ["preview_rms_ptp_rank_score", "preview_rms_ptp_rank_score"],
-      ["score_kind", "score_kind"],
-      ["score_note", "score_note"],
-      ["review_note", "note"],
+      ["事件编号", "event_id"],
+      ["复核起始秒", "start_sec"],
+      ["复核结束秒", "end_sec"],
+      ["原始起始秒", "original_start_sec"],
+      ["原始结束秒", "original_end_sec"],
+      ["时长秒", "duration_sec"],
+      ["候选类型", (row) => TYPE_LABEL[row.event_type] || row.event_type || ""],
+      ["通道", "channels"],
+      ["展示证据等级", "evidence_grade"],
+      ["伪迹原因", (row) => artifactLabel(row.artifact_reason)],
+      ["人工状态", (row) => STATUS_LABEL[row.status] || row.status || ""],
+      ["预览排序值", "preview_rms_ptp_rank_score"],
+      ["排序值说明", "score_note"],
+      ["复核备注", "note"],
+      ["复核人", "reviewer"],
+      ["复核时间", "reviewed_at"],
+      ["证据来源编号", "source_artifact_id"],
+      ["窗口编号", "window_id"],
+    ];
+    const prelude = [
+      ["文件说明", "当前事件表来自癫痫样候选事件复核草稿，不是正式报告或临床诊断结论。"],
+      ["草稿状态", reportStatusLabel(reportStatus())],
+      ["候选包说明", state.payload.metadata?.denominator_note || "当前候选包分母未记录。"],
+      ["候选总数", String(eventStats(rows, state.payload).total)],
+      [],
     ];
     const csv = [
+      ...prelude.map((row) => row.map(csvEscape).join(",")),
       columns.map(([header]) => header).join(","),
       ...rows.map((row) => columns.map(([, key]) => {
         const value = typeof key === "function" ? key(row) : row[key];
         return csvEscape(Array.isArray(value) ? value.join(";") : value);
       }).join(",")),
     ].join("\r\n");
-    saveBlob(`\ufeff${csv}`, `${state.payload.record.id || "epilepsy"}_reviewed_events.csv`, "text/csv;charset=utf-8");
-    showToast("事件 CSV 已导出");
+    saveBlob(`\ufeff${csv}`, `${state.payload.record.id || "epilepsy"}_复核事件表.csv`, "text/csv;charset=utf-8");
+    showToast("事件表已导出");
   }
 
   function summaryText() {
     const payload = state.payload;
-    const stats = eventStats(payload.reviewed_events);
+    const stats = eventStats(payload.reviewed_events, payload);
     const hours = Math.max(0.01, payload.record.duration_sec / 3600);
     const rate = (stats.confirmed / hours).toFixed(3);
     const pending = stats.needsReview + stats.unreviewed;
+    if (!stats.total) return "当前复核记录为空，不能生成复核草稿摘要。";
+    const completenessText = state.payload.metadata.has_full_candidate_set
+      ? "当前预览候选包已随复核记录载入"
+      : state.payload.metadata.has_explicit_candidate_denominator
+        ? "候选总数来自记录中的显式分母，但事件明细可能不完整"
+        : "候选总数未知，不能视为完整复核";
     if (stats.confirmed === 0) {
-      return `在 ${payload.record.filename} 的 ${hours.toFixed(1)} 小时记录中，当前未形成可纳入统计的人工保留癫痫样事件候选。共有 ${pending} 个候选仍需确认或复核，不能代表确认或排除发作的临床结论。`;
+      return `在 ${payload.record.filename} 的 ${hours.toFixed(1)} 小时记录中，当前未形成可纳入统计的癫痫样草稿候选。${completenessText}；共有 ${pending} 个候选仍需确认或复核，不能代表确认或排除发作的临床结论。`;
     }
-    return `在 ${payload.record.filename} 的 ${hours.toFixed(1)} 小时记录中，AI 产生 ${stats.total} 个候选，经人工复核后保留 ${stats.confirmed} 个癫痫样事件候选；已复核人工保留候选负荷约 ${rate} 次/小时。${stats.rejected} 个候选被排除，${pending} 个候选仍需确认或未复核。`;
+    return `在 ${payload.record.filename} 的 ${hours.toFixed(1)} 小时记录中，当前预览候选包包含 ${stats.total} 个疑似片段；经人工复核后，${stats.confirmed} 个癫痫样候选被纳入草稿。纳入草稿候选数按记录小时归一化约 ${rate}/小时，仅作复核草稿索引，不代表发作频率、疾病活动度或完整事件负荷。${stats.rejected} 个候选不纳入草稿，${pending} 个候选仍需确认或未复核。${completenessText}。`;
   }
 
   function dataMethodText() {
     const record = state.payload.record;
     const duration = Math.max(0, record.duration_sec / 3600).toFixed(1);
-    return `输入记录为 ${record.filename}，总时长约 ${duration} 小时，采样率 ${record.sfreq || "-"} Hz，报告通道为 ${record.channels.join("、")}。当前报告预览中的代表波形为合成示意；正式报告必须使用真实 EDF waveform-window 或 evidence package，并在图注中标注窗口、单位、滤波和通道。`;
+    return `输入记录为 ${record.filename}，总时长约 ${duration} 小时，采样率 ${record.sfreq || "-"} Hz，草稿通道为 ${record.channels.join("、")}。当前预览中的代表波形为版式示意；正式复核草稿必须使用真实 EDF 波形窗口，并在图注中标注窗口、单位、滤波和通道。`;
   }
 
   function reviewMethodText() {
-    const context = state.payload.context || {};
-    const workflow = context.workflow_id || state.payload.model?.workflow_id || "epilepsy_ml_xgboost";
     const model = state.payload.model || {};
-    const modelText = model.detector_version ? `检测器版本 ${model.detector_version}` : "检测器版本待记录";
-    const thresholdText = Number.isFinite(Number(model.threshold)) ? `候选阈值 ${model.threshold}` : "候选阈值待记录";
-    return `自动候选来自 ${workflow} 工作流，${modelText}，${thresholdText}。人工复核记录事件状态、边界修正、证据等级、伪迹原因和审计操作；报告只读取复核层，不覆盖算法原始产物。证据等级 A/B/C/X 分别表示明确、较可信、低可信、不可判读；排除规则包括 EMG 增高、ACC 同步体动、电极问题、饱和和不可判读。`;
+    const methodText = model.detector_version || Number.isFinite(Number(model.threshold))
+      ? "候选生成设置已随草稿保存，可用于追溯。"
+      : "候选生成设置待正式记录。";
+    return `疑似片段先形成当前预览候选包，再由人工复核。${methodText} 人工复核记录候选状态、时间边界、展示证据等级、伪迹原因和操作记录。草稿只汇总人工复核后的结果，不把系统原始候选直接写成结论。证据等级 A/B/C/X 分别表示展示证据明确、较充分、较弱、不可判读；不纳入草稿的常见原因包括 EMG 增高、ACC 同步体动、电极问题、饱和和不可判读。`;
   }
 
   function methodsText() {
-    return `${dataMethodText()}\n${reviewMethodText()}\n统计口径：仅人工保留候选进入报告摘要、负荷统计和代表图；排除、存疑、未复核候选保留为追溯记录。算法候选分数仅用于排序或复核优先级，不代表临床置信度。局限性：当前预览无同步视频、无临床标注、无外部验证集指标，不能估计敏感性或特异性，也不能代表确认或排除发作。`;
+    return `${dataMethodText()}\n${reviewMethodText()}\n统计口径：仅纳入草稿候选进入报告摘要、预览候选密度和代表图；不纳入草稿、存疑、未复核候选保留为追溯记录。纳入草稿候选数按记录小时归一化只用于复核草稿索引，不代表发作频率、疾病活动度或完整事件负荷。算法候选分数仅用于排序或复核优先级，不代表临床置信度。局限性：当前预览无同步视频、无临床标注、无外部验证集指标，不能估计敏感性或特异性，也不能代表确认或排除发作。`;
   }
 
   function figureManifest() {
     return [
       { id: "timelineFigure", title: "全记录候选时间轴", source: "reviewed_events", provenance: "derived_from_review_layer" },
-      { id: "waveformFigure", title: "代表事件波形示意", source: "synthetic_preview_waveform", provenance: "demo_only_replace_with_waveform_window" },
+      { id: "waveformFigure", title: "代表候选波形版式示意", source: "合成预览波形", provenance: "正式草稿需替换为真实 EDF 波形窗口", evidence_ready: false },
       { id: "funnelFigure", title: "复核漏斗", source: "reviewed_events", provenance: "derived_from_review_layer" },
-      { id: "densityFigure", title: "已复核人工保留候选负荷", source: "confirmed_reviewed_events", provenance: "derived_from_review_layer" },
-      { id: "qcFigure", title: "通道证据参与", source: "confirmed_reviewed_events", provenance: "derived_from_review_layer" },
+      { id: "densityFigure", title: "已复核纳入草稿候选数（预览，按记录小时归一化）", source: "confirmed_reviewed_events", provenance: "derived_from_review_layer", limitation: "非发作频率，非疾病活动度，非完整事件负荷。" },
+      { id: "qcFigure", title: "通道参与概览", source: "confirmed_reviewed_events", provenance: "derived_from_review_layer" },
     ];
   }
 
@@ -600,26 +839,114 @@
       review_session_id: context.review_session_id || "",
       source_algorithm_artifact_id: context.source_algorithm_artifact_id || "",
       report_status: reportStatus(),
-      waveform_provenance: "synthetic_preview_until_real_waveform_window_is_connected",
+      source_completeness: {
+        event_source: state.payload.metadata.review_event_source,
+        has_full_candidate_set: state.payload.metadata.has_full_candidate_set,
+        has_explicit_candidate_denominator: state.payload.metadata.has_explicit_candidate_denominator,
+        candidate_denominator: state.payload.metadata.candidate_denominator,
+        candidate_set_scope: state.payload.metadata.candidate_set_scope || "",
+        note: state.payload.metadata.denominator_note,
+      },
+      report_readiness: reportReadiness(),
+      waveform_provenance: "当前为合成预览；正式草稿需接入真实 EDF 波形窗口",
     };
   }
 
-  function eventStats(events) {
-    const stats = { total: events.length, confirmed: 0, rejected: 0, needsReview: 0, unreviewed: 0, reviewed: 0 };
+  function reportReadiness() {
+    const metadata = state.payload.metadata || {};
+    return {
+      candidate_set_ready: Boolean(state.payload.reviewed_events.length && (metadata.has_full_candidate_set || metadata.has_explicit_candidate_denominator)),
+      event_review_complete: reportStatus() === "complete_review_preview",
+      figure_evidence_ready: false,
+      正式报告就绪: false,
+      note: "当前导出是复核草稿数据；代表波形仍为版式示意，正式复核草稿需接入真实 EDF 波形窗口。",
+    };
+  }
+
+  function methodsStructured() {
+    const record = state.payload.record;
+    const model = state.payload.model || {};
+    return {
+      input_record: {
+        filename: record.filename,
+        duration_sec: record.duration_sec,
+        sfreq: record.sfreq,
+        channels: record.channels,
+      },
+      preprocessing: {
+        filter_profile: "预览草稿未记录；正式草稿需补充滤波设置。",
+        reference: "预览草稿未记录；正式草稿需补充参考方式。",
+        waveform_window_source: "当前为合成预览；正式草稿需接入真实 EDF 波形窗口",
+      },
+      candidate_generation: {
+        workflow_id: state.payload.context?.workflow_id || model.workflow_id || "预览草稿未记录",
+        detector_version: model.detector_version || "预览草稿未记录",
+        threshold: Number.isFinite(Number(model.threshold)) ? Number(model.threshold) : "预览草稿未记录",
+      },
+      manual_review_mapping: {
+        confirmed: "纳入草稿候选，进入草稿摘要和事件结果表。",
+        rejected: "不纳入草稿候选，仅保留追溯。",
+        needs_review: "存疑候选，不形成结论。",
+        unreviewed: "未复核候选，不形成结论。",
+      },
+      evidence_grade_definition: {
+        A: "明确",
+        B: "较可信",
+        C: "展示证据较弱",
+        X: "不可判读",
+      },
+      statistics_policy: "仅纳入草稿候选进入预览归一化统计；该统计不是发作频率、疾病活动度或完整事件负荷。",
+      limitations: "无同步视频、无临床标注、无外部验证集指标；不能估计敏感性或特异性，也不能代表确认或排除发作。",
+    };
+  }
+
+  function researchDraft() {
+    return {
+      title: `${state.payload.record.filename || "EEG"} 癫痫样候选事件复核草稿`,
+      abstract_like_summary: summaryText(),
+      methods: methodsStructured(),
+      figure_captions: figureManifest().map((figure) => ({
+        id: figure.id,
+        title: figure.title,
+        provenance: figure.provenance,
+        limitation: figure.limitation || (figure.evidence_ready === false ? "合成示意，不能作为正式 EEG 证据。" : ""),
+      })),
+      event_table: state.payload.reviewed_events,
+      limitations: methodsStructured().limitations,
+    };
+  }
+
+  function eventStats(events, payload = state.payload) {
+    const candidateDenominator = Number(payload?.metadata?.candidate_denominator);
+    const total = Math.max(events.length, Number.isFinite(candidateDenominator) ? candidateDenominator : events.length);
+    const stats = { total, confirmed: 0, rejected: 0, needsReview: 0, unreviewed: 0, reviewed: 0, implicitUnreviewed: 0 };
     events.forEach((event) => {
       if (event.status === "confirmed" || event.status === "kept") stats.confirmed += 1;
       else if (event.status === "rejected" || event.status === "excluded") stats.rejected += 1;
       else if (event.status === "needs_review" || event.status === "uncertain") stats.needsReview += 1;
       else stats.unreviewed += 1;
     });
+    stats.implicitUnreviewed = Math.max(0, stats.total - events.length);
+    stats.unreviewed += stats.implicitUnreviewed;
     stats.reviewed = stats.confirmed + stats.rejected + stats.needsReview;
     return stats;
   }
 
   function reportStatus() {
-    const stats = eventStats(state.payload.reviewed_events);
+    const stats = eventStats(state.payload.reviewed_events, state.payload);
+    if (!state.payload.reviewed_events.length || !canExportReportDraft()) return "not_ready";
     if (stats.unreviewed > 0 || stats.needsReview > 0) return "partial_review_draft";
     return "complete_review_preview";
+  }
+
+  function canExportReportDraft() {
+    const metadata = state.payload.metadata || {};
+    const stats = eventStats(state.payload.reviewed_events, state.payload);
+    return Boolean(
+      state.payload.reviewed_events.length
+      && stats.reviewed > 0
+      && (metadata.has_full_candidate_set || metadata.has_explicit_candidate_denominator)
+    );
   }
 
   function confirmedEvents() {
@@ -646,7 +973,7 @@
       sampleEvent("HE105-E002", 2526.2, 2529.7, "needs_review", "seizure_like", ["EEG1"], "B", "", 0.88, "短程节律增强，需要第二复核。"),
       sampleEvent("HE105-E003", 9071.5, 9073.0, "rejected", "artifact_suspect", ["EEG2"], "X", "motion_acc", 0.67, "EMG/ACC 同步，倾向体动伪迹。"),
       sampleEvent("HE105-E004", 18525.0, 18526.8, "confirmed", "ied", ["EEG1"], "B", "", 0.73, "单导尖波候选，形态较清晰。"),
-      sampleEvent("HE105-E005", 39748.4, 39752.2, "needs_review", "rhythmic", ["EEG1", "EEG2"], "C", "", 0.61, "低置信节律片段。"),
+      sampleEvent("HE105-E005", 39748.4, 39752.2, "needs_review", "rhythmic", ["EEG1", "EEG2"], "C", "", 0.61, "展示证据较弱的节律片段。"),
       sampleEvent("HE105-E006", 73029.1, 73031.8, "confirmed", "ied", ["EEG2"], "B", "", 0.84, "高幅尖慢波。"),
       sampleEvent("HE105-E007", 129784.6, 129787.4, "rejected", "artifact_suspect", ["EEG1", "EEG2"], "X", "motion_acc", 0.69, "体动同步疑似。"),
       sampleEvent("HE105-E008", 221559.3, 221560.4, "unreviewed", "ied", ["EEG1"], "C", "", 0.58, ""),
@@ -673,13 +1000,49 @@
         detector_version: "preview-local-he-v1",
         threshold: 0.72,
       },
+      metadata: {
+        review_event_source: "reviewed_events",
+        has_full_candidate_set: true,
+        has_explicit_candidate_denominator: true,
+        candidate_denominator: events.length,
+        candidate_set_scope: "current_preview_candidate_package",
+        denominator_note: "示例记录包含当前已载入的预览候选包；这不是全记录完整检测器的事件负荷估计。",
+      },
       reviewed_events: events,
       actions: [
-        { type: "event_review", label: "保留", detail: "HE105-E001 · confirmed", created_at: new Date(Date.now() - 720000).toISOString() },
+        { type: "event_review", label: "纳入草稿", detail: "HE105-E001", created_at: new Date(Date.now() - 720000).toISOString() },
         { type: "event_review", label: "存疑", detail: "HE105-E002 · needs_review", created_at: new Date(Date.now() - 620000).toISOString() },
         { type: "adjust_event_interval", label: "调整边界", detail: "HE105-E004 · 18525.0-18526.8s", created_at: new Date(Date.now() - 420000).toISOString() },
-        { type: "event_review", label: "排除", detail: "HE105-E007 · motion_acc", created_at: new Date(Date.now() - 180000).toISOString() },
+        { type: "event_review", label: "不纳入草稿", detail: "HE105-E007 · 体动 / ACC 同步", created_at: new Date(Date.now() - 180000).toISOString() },
       ],
+    };
+  }
+
+  function emptyReviewPayload(reason = "尚未载入复核记录。请从复核工作台进入，或手动载入复核记录。") {
+    return {
+      schema_version: REVIEW_SCHEMA,
+      generated_at: new Date().toISOString(),
+      non_medical_scope: "research_screening_support_only",
+      metadata: {
+        review_event_source: "none",
+        has_full_candidate_set: false,
+        has_explicit_candidate_denominator: false,
+        candidate_denominator: 0,
+        denominator_note: "尚未载入复核记录",
+        empty_reason: reason,
+      },
+      record: {
+        id: "empty-review",
+        file_id: "",
+        filename: "未载入复核记录",
+        duration_sec: 0,
+        sfreq: 0,
+        channels: [],
+      },
+      context: {},
+      model: {},
+      reviewed_events: [],
+      actions: [],
     };
   }
 

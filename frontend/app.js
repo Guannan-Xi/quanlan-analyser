@@ -261,6 +261,7 @@ function clearEegPreviewState() {
   eegState.middlePan = null;
   eegState.hoverTimeSec = null;
   eegState.hoverChannelName = "";
+  eegState.selectedSegment = null;
   const canvas = qs("#eegCanvas");
   const ctx = canvas?.getContext?.("2d");
   if (canvas && ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -270,6 +271,9 @@ function clearEegPreviewState() {
   if (events) events.innerHTML = "";
   const strip = qs("#previewStrip");
   if (strip) strip.innerHTML = "";
+  qsa("#segmentStart, #segmentEnd").forEach((input) => {
+    delete input.dataset.manualSegmentEdited;
+  });
 }
 
 const prepEditState = {
@@ -760,6 +764,79 @@ function latestAnalysisTask() {
     || state.real.tasks.erp
     || state.real.tasks.psd
     || null;
+}
+
+function latestAnalysisTaskModule() {
+  const latestKey = state.real.latestTaskModule;
+  if (latestKey && state.real.tasks[latestKey]) return latestKey;
+  return [
+    "connectivity",
+    "pac",
+    "reference_csd",
+    "multitaper_tfr",
+    "multitaper_psd",
+    "tfr",
+    "erp",
+    "psd",
+  ].find((moduleName) => state.real.tasks?.[moduleName]) || "";
+}
+
+function isCompletedAnalysisTask(task) {
+  const status = String(task?.status || "").toLowerCase();
+  const queueStatus = String(task?.queue_status || task?.queueStatus || "").toLowerCase();
+  return Boolean(task?.id && status === "completed" && (!queueStatus || queueStatus === "completed"));
+}
+
+function currentTaskArtifacts(moduleName, task) {
+  if (moduleName && Array.isArray(state.real.artifacts?.[moduleName])) return state.real.artifacts[moduleName];
+  if (!task?.id) return [];
+  return Object.values(state.real.artifacts || {})
+    .flat()
+    .filter((artifact) => (artifact?.task_id || artifact?.taskId) === task.id);
+}
+
+function hasDownloadableResultArtifact(artifacts = []) {
+  return artifactDetailItems(artifacts).length > 0;
+}
+
+function reportReleaseGateSnapshot() {
+  const moduleName = latestAnalysisTaskModule();
+  const task = moduleName ? state.real.tasks[moduleName] : latestAnalysisTask();
+  const completed = isCompletedAnalysisTask(task);
+  const reviewed = Boolean(task?.id && state.real.resultsViewed);
+  const artifacts = currentTaskArtifacts(moduleName, task);
+  const hasArtifacts = hasDownloadableResultArtifact(artifacts);
+  let reason = "可以基于已完成且有结果文件的分析任务生成复核记录。";
+  if (!task?.id) reason = "请先完成一个分析任务，再生成复核记录。";
+  else if (!completed) reason = "当前分析任务尚未完成，不能生成复核记录。";
+  else if (!reviewed) reason = "请先查看分析结果，再生成复核记录。";
+  else if (!hasArtifacts) reason = "缺少可下载结果文件，不能生成复核记录；请刷新结果或重新运行分析。";
+  return {
+    ready: Boolean(task?.id && completed && reviewed && hasArtifacts),
+    task,
+    moduleName,
+    artifacts,
+    completed,
+    reviewed,
+    hasArtifacts,
+    reason,
+  };
+}
+
+async function ensureReportReleaseReady() {
+  let gate = reportReleaseGateSnapshot();
+  if (!gate.task?.id) throw new Error("请先完成至少一个分析任务，再生成复核记录。");
+  if (!gate.completed) throw new Error("当前分析任务尚未完成，不能生成复核记录。");
+  if (!gate.reviewed) throw new Error("请先查看分析结果，再生成复核记录。");
+  if (!gate.hasArtifacts) {
+    const artifacts = await fetchTaskArtifacts(gate.task.id);
+    if (gate.moduleName) state.real.artifacts[gate.moduleName] = artifacts;
+    gate = reportReleaseGateSnapshot();
+  }
+  if (!gate.hasArtifacts) {
+    throw new Error("缺少可下载结果文件，不能生成复核记录；请刷新结果或重新运行分析。");
+  }
+  return gate;
 }
 
 function currentWorkspaceFile() {
@@ -1453,7 +1530,7 @@ const EPILEPSY_V3 = {
     {id:"E-026",index:7,start:"01:39:02.4",duration:"25.3 s",channel:"T4-T6",feature:"右侧颞后区候选节律成分",score:"0.84",statusShort:"保留候选",statusFilter:"keep",statusClass:"ok",focus:["F8-T4","T4-T6","C4-T4","F4-C4","C4-P4","P4-O2"],event_start_sec:5942.4,event_end_sec:5967.7,event_duration_sec:25.3},
     {id:"E-034",index:8,start:"02:01:15.8",duration:"16.5 s",channel:"C3-T3",feature:"疑似节律活动，需排除伪迹",score:"0.77",statusShort:"待复核",statusFilter:"pending",statusClass:"warn",focus:["F7-T3","C3-T3","T3-T5","F3-C3","C3-P3","P3-O1"],event_start_sec:7275.8,event_end_sec:7292.3,event_duration_sec:16.5},
   ],
-  summary: {auto_candidates:38,visible_events:8,kept_candidates:21,pending_review:5,candidate_rate_per_hour:"9.3/h"},
+  summary: {auto_candidates:38,visible_events:8,kept_candidates:21,pending_review:5,candidate_density_per_hour:"9.3/h",candidate_rate_per_hour:"9.3/h"},
   views: {
     focus:{label:"核心通道",suffix:"focus_channels_1_35hz",description:"默认复核视图：显示算法提示相关的核心导联，适合快速核对事件形态。"},
     overview:{label:"全通道概览",suffix:"all_channels_overview_1_35hz",description:"显示所有可视化导联。"},
@@ -1493,7 +1570,7 @@ async function fetchEpilepsyV3LiveEvents(taskId) {
   const events = Array.isArray(dto?.events) ? dto.events : [];
   if (!events.length) {
     // No real events discovered yet — reset summary if backend didn't provide one (GLM-03).
-    EPILEPSY_V3.summary = dto?.summary || {auto_candidates:0, visible_events:0, kept_candidates:0, pending_review:0, candidate_rate_per_hour:"0.0/h"};
+    EPILEPSY_V3.summary = dto?.summary || {auto_candidates:0, visible_events:0, kept_candidates:0, pending_review:0, candidate_density_per_hour:"0.0/h", candidate_rate_per_hour:"0.0/h"};
     EPILEPSY_V3._liveEmpty = true;
     return;
   }
@@ -1530,7 +1607,8 @@ async function fetchEpilepsyV3LiveEvents(taskId) {
       auto_candidates: sIn.auto_candidates ?? EPILEPSY_V3.events.length,
       kept_candidates: sIn.kept_candidates ?? 0,
       pending_review: sIn.pending_review ?? EPILEPSY_V3.events.length,
-      candidate_rate_per_hour: sIn.candidate_rate_per_hour || EPILEPSY_V3.summary.candidate_rate_per_hour,
+      candidate_density_per_hour: sIn.candidate_density_per_hour || sIn.candidate_rate_per_hour || EPILEPSY_V3.summary.candidate_density_per_hour || EPILEPSY_V3.summary.candidate_rate_per_hour,
+      candidate_rate_per_hour: sIn.candidate_rate_per_hour || sIn.candidate_density_per_hour || EPILEPSY_V3.summary.candidate_rate_per_hour,
       visible_events: sIn.visible_events ?? EPILEPSY_V3.events.length,
     };
   }
@@ -1584,25 +1662,30 @@ function renderEpilepsyResultReviewV3Panel() {
     visible_events: Number(s.visible_events || 0),
     kept_candidates: Number(s.kept_candidates || 0),
     pending_review: Number(s.pending_review || 0),
-    candidate_rate_per_hour: String(s.candidate_rate_per_hour || "0.0/h"),
+    candidate_density_per_hour: String(s.candidate_density_per_hour || s.candidate_rate_per_hour || "0.0/h"),
+    candidate_rate_per_hour: String(s.candidate_rate_per_hour || s.candidate_density_per_hour || "0.0/h"),
   };
   const isLive = !!EPILEPSY_V3._liveTaskId;
   const evidenceBase = isLive ? `${state.apiBase}/epilepsy-workbench/${encodeURIComponent(EPILEPSY_V3._liveTaskId)}/events` : EPILEPSY_V3.assetBase;
   const taskArtifacts = state.real.artifacts?.epilepsy_ml || [];
-  const allEventZipArtifact = taskArtifacts.find(a => (a.label || "").includes("all_events_evidence_package"));
+  const allEventZipArtifact = taskArtifacts.find((a) => {
+    const metadata = a.quota_usage_json || a.metadata_json || {};
+    return (a.label || "").includes("all_events_evidence_package")
+      && metadata.evidence_class === "real_waveform_window_package";
+  });
 
   container.innerHTML = `
     <section class="panel epilepsy-v3-workspace" data-testid="epilepsy-v3-review-workspace">
       <div class="panel-head">
         <div>
           <h2>候选事件复核工作区</h2>
-          <p>选择候选事件 → 查看 1-35 Hz 证据图 → 记录复核结论 → 到交付中心导出证据包。科研筛查辅助工具，仅供研究参考。</p>
+          <p>选择候选事件 → 查看 1-35 Hz 合成示意预览 → 记录复核结论。正式证据包需接入真实 EDF 波形窗；科研筛查辅助工具，仅供研究参考。</p>
         </div>
         <div class="epilepsy-v3-summary-pills">
               <span class="epilepsy-v3-pill info">自动候选 ${safeSummary.auto_candidates}</span>
-              <span class="epilepsy-v3-pill ok">保留 ${safeSummary.kept_candidates}</span>
+              <span class="epilepsy-v3-pill ok">保留候选 ${safeSummary.kept_candidates}</span>
               <span class="epilepsy-v3-pill warn">待复核 ${safeSummary.pending_review}</span>
-              <span class="epilepsy-v3-pill soft">${escapeHtml(safeSummary.candidate_rate_per_hour)}</span>
+              <span class="epilepsy-v3-pill soft">候选密度 ${escapeHtml(safeSummary.candidate_density_per_hour)}，不是发作频率或疾病负担</span>
         </div>
       </div>
       <div class="epilepsy-v3-layout">
@@ -1637,7 +1720,7 @@ function renderEpilepsyResultReviewV3Panel() {
           </div>
           <div class="epilepsy-v3-viewer-header">
             <h3 id="epilepsyV3ViewerTitle">${escapeHtml(ev.id)} — ${escapeHtml(meta.label)}</h3>
-            <p id="epilepsyV3ViewerSubtitle" class="epilepsy-v3-viewer-sub">原始波形预览（1-35 Hz 滤波） — ${escapeHtml(ev.start)} — ${escapeHtml(ev.channel)} — ${escapeHtml(ev.feature)}</p>
+            <p id="epilepsyV3ViewerSubtitle" class="epilepsy-v3-viewer-sub">${isLive ? "合成示意预览（非原始 EDF 波形证据）" : "静态示例预览（非临床证据）"} — ${escapeHtml(ev.start)} — ${escapeHtml(ev.channel)} — ${escapeHtml(ev.feature)}</p>
             <p id="epilepsyV3ViewerHint" class="epilepsy-v3-viewer-hint">${escapeHtml(meta.description)}</p>
           </div>
           <div class="epilepsy-v3-detail-grid">
@@ -1651,8 +1734,8 @@ function renderEpilepsyResultReviewV3Panel() {
           </div>
           <div class="epilepsy-v3-download-row">
             ${isLive
-              ? `<button id="epilepsyV3DlPng" type="button" class="epilepsy-v3-dl-btn" data-auth-download-url="${escapeHtml(`${evidenceBase}/${encodeURIComponent(ev.id)}/evidence`)}" data-auth-download-filename="${escapeHtml(`${ev.id}_${epilepsyV3SelectedView}_evidence.png`)}">导出当前视图 PNG</button>`
-              : `<a id="epilepsyV3DlPng" class="epilepsy-v3-dl-btn" href="${EPILEPSY_V3.assetBase}event_previews/${ev.id}_${meta.suffix}.png" download="${ev.id}_${epilepsyV3SelectedView}_evidence.png">导出当前视图 PNG</a>`}
+              ? `<button id="epilepsyV3DlPng" type="button" class="epilepsy-v3-dl-btn" data-auth-download-url="${escapeHtml(`${evidenceBase}/${encodeURIComponent(ev.id)}/evidence`)}" data-auth-download-filename="${escapeHtml(`${ev.id}_${epilepsyV3SelectedView}_synthetic_preview.png`)}">下载合成示意 PNG</button>`
+              : `<a id="epilepsyV3DlPng" class="epilepsy-v3-dl-btn" href="${EPILEPSY_V3.assetBase}event_previews/${ev.id}_${meta.suffix}.png" download="${ev.id}_${epilepsyV3SelectedView}_synthetic_preview.png">导出当前视图 PNG</a>`}
             ${isLive
               ? ""
               : `<a id="epilepsyV3DlSvg" class="epilepsy-v3-dl-btn" href="${EPILEPSY_V3.assetBase}event_previews/${ev.id}_${meta.suffix}.svg" download="${ev.id}_${epilepsyV3SelectedView}_1_35hz.svg">导出当前视图 SVG</a>`}
@@ -1677,17 +1760,19 @@ function renderEpilepsyResultReviewV3Panel() {
           </div>
           <div class="epilepsy-v3-current-zip">
             ${isLive
-              ? `<button id="epilepsyV3CurrentZip" type="button" class="epilepsy-v3-dl-btn primary" data-auth-download-url="${escapeHtml(`${evidenceBase}/${encodeURIComponent(ev.id)}/evidence`)}" data-auth-download-filename="${escapeHtml(`${ev.id}_evidence.png`)}">导出 ${escapeHtml(ev.id)} 事件证据图 PNG</button>`
-              : `<a id="epilepsyV3CurrentZip" class="epilepsy-v3-dl-btn primary" href="${EPILEPSY_V3.assetBase}event_previews/qlanalyser_epilepsy_event_${ev.id}_evidence_package.zip" download="qlanalyser_epilepsy_event_${ev.id}_evidence_package.zip">导出 ${ev.id} 事件证据包 ZIP</a>`}
+              ? `<button id="epilepsyV3CurrentZip" type="button" class="epilepsy-v3-dl-btn primary" data-auth-download-url="${escapeHtml(`${evidenceBase}/${encodeURIComponent(ev.id)}/evidence`)}" data-auth-download-filename="${escapeHtml(`${ev.id}_synthetic_preview.png`)}">下载 ${escapeHtml(ev.id)} 合成示意 PNG</button>`
+              : `<button id="epilepsyV3CurrentZip" type="button" class="epilepsy-v3-dl-btn primary" disabled title="静态演示素材不提供正式证据包。">${escapeHtml(ev.id)} 演示预览 ZIP 暂不可用</button>`}
           </div>
         </aside>
       </div>
       <section class="epilepsy-v3-delivery-center" data-testid="v3-delivery-center">
-        <div class="panel-head compact"><h3>交付中心</h3><p>全量证据包下载，含所有候选事件的证据图、数据文件和校验信息。</p></div>
-        ${isLive && allEventZipArtifact
-          ? `<button id="epilepsyV3AllZip" type="button" class="epilepsy-v3-dl-btn" data-artifact-download="${escapeHtml(allEventZipArtifact.id)}">导出全部事件证据包 ZIP</button>`
-          : `<a id="epilepsyV3AllZip" class="epilepsy-v3-dl-btn" href="${EPILEPSY_V3.assetBase}event_previews/qlanalyser_epilepsy_all_events_evidence_package.zip" download="qlanalyser_epilepsy_all_events_evidence_package.zip">导出全部事件证据包 ZIP</a>`}
-        <p class="epilepsy-v3-delivery-note">包含 ${safeSummary.visible_events} 个候选事件的 PNG/SVG 证据图、manifest.json、manifest.csv 和 checksums.sha256。科研证据包，仅供研究参考。</p>
+        <div class="panel-head compact"><h3>交付中心</h3><p>${isLive ? "正式全量证据包需真实 EDF 波形窗；当前 live 任务只提供合成示意预览。" : "静态演示素材仅用于界面预览，不作为正式证据包。"}</p></div>
+        ${isLive
+          ? (allEventZipArtifact
+            ? `<button id="epilepsyV3AllZip" type="button" class="epilepsy-v3-dl-btn" data-artifact-download="${escapeHtml(allEventZipArtifact.id)}">下载真实波形证据包 ZIP</button>`
+            : `<button id="epilepsyV3AllZip" type="button" class="epilepsy-v3-dl-btn" disabled title="正式证据包需要接入真实 EDF 波形窗后生成。">正式全量证据包暂不可用</button>`)
+          : `<button id="epilepsyV3AllZip" type="button" class="epilepsy-v3-dl-btn" disabled title="静态演示素材不提供正式证据包。">演示预览 ZIP 暂不可用</button>`}
+        <p class="epilepsy-v3-delivery-note">${isLive ? "当前合成示意 PNG 不包含原始 EDF 波形窗、校验清单或正式交付 manifest，不能作为来源证据。" : `演示包可展示 ${safeSummary.visible_events} 个候选事件的预览结构；正式交付需由后端真实证据包生成。`}</p>
       </section>
     </section>
   `;
@@ -2228,7 +2313,7 @@ function hasSavedEpochSetForCurrentFile() {
 }
 
 function moduleAvailability(moduleName) {
-  const customerVisibleModules = new Set(["erp"]);
+  const customerVisibleModules = new Set(["psd", "erp"]);
   if (state.role !== "admin" && !customerVisibleModules.has(moduleName)) {
     return { enabled: false, reason: "该方法属于进阶/内部流程，客户工作区暂不开放。" };
   }
@@ -2315,8 +2400,8 @@ function updateRealActionGate() {
     setRealActionEnabled(action, false, "该方法属于进阶/内部流程，客户工作区暂不开放。");
   });
   const task = latestAnalysisTask();
-  const canCreateReport = Boolean(task && state.real.resultsViewed);
-  setRealActionEnabled("create-report", canCreateReport, canCreateReport ? "基于已查看的分析结果生成复核记录" : task ? "请先查看分析结果，再生成复核记录" : "请先完成一个分析任务");
+  const reportGate = reportReleaseGateSnapshot();
+  setRealActionEnabled("create-report", reportGate.ready, reportGate.reason);
   const gate = qs('[data-testid="analysis-preparation-gate"]');
   if (gate) {
     gate.hidden = planReady;
@@ -2336,7 +2421,7 @@ function updateRealActionGate() {
   if (planReady && !state.real.epochSet) nextActions = ["save-epoch-set"];
   if (planReady && !task) nextActions = ["run-psd"];
   if (task && !state.real.resultsViewed) nextActions = [];
-  if (task && state.real.resultsViewed && !state.real.report) nextActions = ["create-report"];
+  if (task && state.real.resultsViewed && !state.real.report) nextActions = reportGate.ready ? ["create-report"] : [];
   if (state.real.report) nextActions = [];
   markRealNextActions(nextActions);
   renderDisabledReason("confirm-plan-inline", "#prepPrimaryReason");
@@ -2819,6 +2904,30 @@ function normalizeSegmentRange(start, end) {
   const minDuration = Math.max(0.05, displaySampleRate > 0 ? 2 / displaySampleRate : 0.05);
   const endSec = Math.max(startSec + minDuration, Math.max(a, b));
   return { start_sec: startSec, end_sec: endSec };
+}
+
+function markSegmentInputEdited(input) {
+  if (input?.matches?.("#segmentStart, #segmentEnd")) input.dataset.manualSegmentEdited = "true";
+}
+
+function manualSegmentRangeFromInputs() {
+  const startInput = qs("#segmentStart");
+  const endInput = qs("#segmentEnd");
+  const startEdited = startInput?.dataset.manualSegmentEdited === "true";
+  const endEdited = endInput?.dataset.manualSegmentEdited === "true";
+  if (!startEdited || !endEdited) return null;
+  const startRaw = String(startInput?.value || "").trim();
+  const endRaw = String(endInput?.value || "").trim();
+  if (!startRaw || !endRaw) return null;
+  const start = Number(startRaw);
+  const end = Number(endRaw);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return null;
+  return normalizeSegmentRange(start, end);
+}
+
+function selectedOrManualPrepSegmentRange() {
+  return normalizeSegmentRange(eegState.selectedSegment?.start_sec, eegState.selectedSegment?.end_sec)
+    || manualSegmentRangeFromInputs();
 }
 
 function clampNumber(value, min, max) {
@@ -4330,9 +4439,7 @@ async function runRealTask(moduleName, workflowId) {
   return task;
 }
 async function createRealReport() {
-  const task = latestAnalysisTask();
-  if (!task) throw new Error("请先完成至少一个分析任务，再生成复核记录。");
-  if (!state.real.resultsViewed) throw new Error("请先查看分析结果，再生成复核记录。");
+  const { task } = await ensureReportReleaseReady();
   const project = await ensureRealProject();
   const title = qs("#realReportTitle")?.value.trim() || "Single-record EEG analysis report";
   const report = await apiJson("/reports", {
@@ -4413,14 +4520,14 @@ function applyResultSurfaceCopy() {
   const delivery = qs("#realDeliveryLinks");
   if (delivery && !delivery.querySelector("[data-report-id]")) {
     const task = latestAnalysisTask();
-    const viewedResults = Boolean(task?.id && state.real.resultsViewed);
+    const reportGate = reportReleaseGateSnapshot();
     const action = task?.id ? null : getRecoveryActionForAnalysisFlow();
     delivery.innerHTML = `
       <article class="result-item result-empty-state" data-report-state="empty" data-testid="customer-empty-reports">
-        <strong>${viewedResults ? "生成复核记录" : task?.id ? "请先查看结果，再生成复核记录" : "请先完成分析并查看结果"}</strong>
-        <span>${viewedResults ? "已查看分析结果，可以整理图表、表格、方法记录和复现信息。" : task?.id ? "先到结果页确认图表、表格和质量提示。" : "完成一次分析任务后，先到结果页查看结果。"}</span>
+        <strong>${reportGate.ready ? "生成复核记录" : task?.id ? "复核记录暂不可生成" : "请先完成分析并查看结果"}</strong>
+        <span>${reportGate.ready ? "已查看分析结果，且已有可下载结果文件，可以整理图表、表格、方法记录和复现信息。" : task?.id ? reportGate.reason : "完成一次分析任务后，先到结果页查看结果。"}</span>
         <div class="real-actions compact-actions">
-          ${viewedResults
+          ${reportGate.ready
             ? `<button class="primary-btn" type="button" data-real-action="create-report"><i data-lucide="file-output"></i><span>生成复核记录</span></button>`
             : task?.id
               ? `<button class="primary-btn" type="button" data-view-jump="statistics"><i data-lucide="chart-line"></i><span>查看分析结果</span></button>`
@@ -4434,7 +4541,7 @@ function applyResultSurfaceCopy() {
 
 async function markLatestResultsReviewed() {
   const task = latestAnalysisTask();
-  if (!task?.id || task.status !== "completed") return null;
+  if (!task?.id || !isCompletedAnalysisTask(task)) return null;
   if (task.result_reviewed_at || task.resultReviewRecorded) {
     state.real.resultsViewed = true;
     return task;
@@ -4812,13 +4919,16 @@ function renderRealResultReview() {
   }).join("");
   
   const task = latestAnalysisTask();
+  const reportGate = reportReleaseGateSnapshot();
   const reportAction = task && !state.real.report
     ? `
       <article class="result-item" data-result-action="report">
-        <strong>下一步：生成复核记录</strong>
-        <span>确认结果图表、表格和参数记录后，再生成科研交付材料。</span>
+        <strong>${reportGate.ready ? "下一步：生成复核记录" : "复核记录暂不可生成"}</strong>
+        <span>${reportGate.ready ? "确认结果图表、表格和参数记录后，再生成科研交付材料。" : escapeHtml(reportGate.reason)}</span>
         <div class="real-actions compact-actions">
-          <button class="primary-btn" type="button" data-real-action="create-report"><i data-lucide="file-output"></i><span>生成复核记录</span></button>
+          ${reportGate.ready
+            ? `<button class="primary-btn" type="button" data-real-action="create-report"><i data-lucide="file-output"></i><span>生成复核记录</span></button>`
+            : `<button class="ghost-btn" type="button" disabled title="${escapeHtml(reportGate.reason)}"><i data-lucide="file-output"></i><span>生成复核记录</span></button>`}
         </div>
       </article>
     `
@@ -5078,18 +5188,49 @@ function addReportDownload(report) {
   if (!target || !report?.id) return;
   qsa('[data-testid="report-package-contract"]').forEach((node) => { node.hidden = false; });
   qsa('[data-testid="report-delivery-workbench"] [data-real-action="create-report"]').forEach((node) => { node.hidden = true; });
-  const packageUrl = `${state.apiBase}/reports/${encodeURIComponent(report.id)}/package`;
-  const htmlUrl = `${state.apiBase}/reports/${encodeURIComponent(report.id)}/html`;
   target.innerHTML = `
     <article class="result-item" data-report-id="${escapeHtml(report.id)}">
       <strong>复核记录已生成</strong>
       <span>下载完整交付材料，包含图表、表格、方法记录和复现信息。</span>
       <div class="real-actions compact-actions">
-        <a class="primary-btn" data-report-download="package" data-report-id="${escapeHtml(report.id)}" href="${escapeHtml(packageUrl)}">下载复核记录包</a>
-        <a class="ghost-btn" data-report-download="html" data-report-id="${escapeHtml(report.id)}" href="${escapeHtml(htmlUrl)}">在线预览</a>
+        <button class="primary-btn" type="button" data-report-download="package" data-report-id="${escapeHtml(report.id)}">下载复核记录包</button>
+        <button class="ghost-btn" type="button" data-report-download="html" data-report-id="${escapeHtml(report.id)}">在线预览</button>
       </div>
     </article>
   `;
+  target.querySelectorAll("[data-report-download]").forEach((button) => {
+    button.addEventListener("click", async (event) => {
+      const node = event.currentTarget;
+      await downloadReportFile(node.dataset.reportId || report.id, node.dataset.reportDownload || "package");
+    });
+  });
+}
+
+async function downloadReportFile(reportId, kind = "package") {
+  try {
+    if (!reportId) throw new Error("报告不存在");
+    const safeKind = kind === "html" ? "html" : "package";
+    const url = `${state.apiBase}/reports/${encodeURIComponent(reportId)}/${safeKind}`;
+    if (safeKind === "html") {
+      if (!isAllowedAuthenticatedDownloadUrl(url)) throw new Error("下载地址不在当前 API 范围内");
+      const blob = await fetchAuthorizedBlobUrl(url, "text/html");
+      const objectUrl = URL.createObjectURL(blob);
+      const preview = window.open(objectUrl, "_blank", "noopener,noreferrer");
+      if (!preview) {
+        const link = document.createElement("a");
+        link.href = objectUrl;
+        link.target = "_blank";
+        link.rel = "noreferrer";
+        link.click();
+      }
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+      return;
+    }
+    await downloadAuthorizedUrl(url, `${reportId}.zip`, "application/zip,application/octet-stream");
+    showToast("复核记录包已下载");
+  } catch (error) {
+    showToast(`报告下载失败: ${error.message || error}`);
+  }
 }
 
 function renderRealDelivery() {
@@ -5100,22 +5241,22 @@ function renderRealDelivery() {
     return;
   }
   const task = latestAnalysisTask();
+  const reportGate = reportReleaseGateSnapshot();
   qsa('[data-testid="report-delivery-workbench"] [data-real-action="create-report"]').forEach((node) => { node.hidden = true; });
   qsa('[data-testid="report-package-contract"]').forEach((node) => { node.hidden = !task?.id; });
   if (isCustomerTrialP0Mode()) {
-    const viewedResults = Boolean(task?.id && state.real.resultsViewed);
     const action = task?.id ? null : getRecoveryActionForAnalysisFlow();
     target.innerHTML = `
       <article class="result-item result-empty-state" data-report-state="empty" data-testid="customer-empty-reports">
-        <strong>${viewedResults ? "生成复核记录" : task?.id ? "请先查看结果，再生成复核记录" : "请先完成分析并查看结果"}</strong>
-        <span>${viewedResults
-          ? "已查看分析结果，可以整理图表、表格、方法记录和复现信息。"
+        <strong>${reportGate.ready ? "生成复核记录" : task?.id ? "复核记录暂不可生成" : "请先完成分析并查看结果"}</strong>
+        <span>${reportGate.ready
+          ? "已查看分析结果，且已有可下载结果文件，可以整理图表、表格、方法记录和复现信息。"
           : task?.id
-            ? "先到结果页确认图表、表格和质量提示。"
+            ? reportGate.reason
             : "完成一次分析任务后，先到结果页查看结果。"}
         </span>
         <div class="real-actions compact-actions">
-          ${viewedResults
+          ${reportGate.ready
             ? `<button class="primary-btn" type="button" data-real-action="create-report"><i data-lucide="file-output"></i><span>生成复核记录</span></button>`
             : task?.id
               ? `<button class="primary-btn" type="button" data-view-jump="statistics"><i data-lucide="chart-line"></i><span>查看分析结果</span></button>`
@@ -5130,7 +5271,7 @@ function renderRealDelivery() {
     <article class="result-item" data-report-state="empty">
       <strong>\u6682\u65e0\u53ef\u4e0b\u8f7d\u62a5\u544a</strong>
       <span>${task?.id
-        ? "请先查看分析结果，再生成复核记录。"
+        ? reportGate.reason
         : "请先确认数据准备并运行推荐分析，然后查看结果。"}</span>
       <div class="real-actions compact-actions">
         <button class="${task?.id ? "primary-btn" : "ghost-btn"}" type="button" ${task?.id ? 'data-view-jump="statistics"' : 'data-view-jump="analysis"'}>
@@ -5472,17 +5613,32 @@ async function handleIaAction(action) {
   }
 
   let message = "\u9875\u9762\u52a8\u4f5c\u5df2\u8bb0\u5f55\u3002";
-  const selectedSegment = normalizeSegmentRange(eegState.selectedSegment?.start_sec, eegState.selectedSegment?.end_sec);
-  const start = Number(selectedSegment?.start_sec ?? qs("#segmentStart")?.value ?? 30);
-  const end = Number(selectedSegment?.end_sec ?? qs("#segmentEnd")?.value ?? 35);
+  const selectedSegment = selectedOrManualPrepSegmentRange();
+  const requiresSegmentDraft = action === "exclude-segment" || action === "add-label";
+  if (requiresSegmentDraft && !file?.id) {
+    message = noFileMessage;
+    recordUiAction(`ia:${action}`, "blocked", message, { persistence: "not_mutated" });
+    renderPreparationEditSummary(message);
+    showToast(message);
+    return;
+  }
+  if (requiresSegmentDraft && !selectedSegment) {
+    message = "请先在波形上框选片段，或手动输入有效开始/结束时间后再生成片段或标签草稿。";
+    recordUiAction(`ia:${action}`, "blocked", message, { currentFileName, persistence: "not_mutated" });
+    renderPreparationEditSummary(message);
+    showToast(message);
+    return;
+  }
+  const start = Number(selectedSegment?.start_sec);
+  const end = Number(selectedSegment?.end_sec);
   if (action === "select-prep-data") {
     message = `已选择 ${currentFileName}，预览会自动刷新。`;
   } else if (action === "exclude-segment") {
     const segment = {
       id: `segment_${Date.now()}`,
-      file_id: file?.id || "",
-      start_sec: Number.isFinite(start) ? start : 30,
-      end_sec: Number.isFinite(end) && end > start ? end : (Number.isFinite(start) ? start + 5 : 35),
+      file_id: file.id,
+      start_sec: start,
+      end_sec: end,
       reason: "人工标记为伪迹或需剔除片段",
       status: "excluded",
     };
@@ -5503,10 +5659,10 @@ async function handleIaAction(action) {
   } else if (action === "add-label") {
     const label = {
       id: `label_${Date.now()}`,
-      file_id: file?.id || "",
+      file_id: file.id,
       previous_text: null,
       text: "运动伪迹 / 需要复核",
-      target: `${Number.isFinite(start) ? start.toFixed(1) : "30.0"} s`,
+      target: `${start.toFixed(1)} s`,
       status: "active",
       reversible: true,
     };
@@ -5521,16 +5677,11 @@ async function handleIaAction(action) {
       label.reversible = true;
       message = `已更新标签：${label.previous_text} → ${label.text}，可恢复。`;
     } else {
-      message = "当前没有可编辑的标签，已先记录一条复核标签。";
-      prepEditState.labels.push({
-        id: `label_${Date.now()}`,
-        file_id: file?.id || "",
-        previous_text: null,
-        text: "需要复核",
-        target: `${Number.isFinite(start) ? start.toFixed(1) : "30.0"} s`,
-        status: "active",
-        reversible: true,
-      });
+      message = "当前没有可编辑的标签，请先选择片段并添加标签。";
+      recordUiAction(`ia:${action}`, "blocked", message, { currentFileName, persistence: "not_mutated" });
+      renderPreparationEditSummary(message);
+      showToast(message);
+      return;
     }
   } else if (action === "restore-label") {
     const label = prepEditState.labels[prepEditState.labels.length - 1];
@@ -6849,8 +7000,8 @@ function renderInlineEpilepsyWorkbench() {
       <label class="real-field"><span>复核会话</span><input value="${escapeHtml(reviewSessionLabel)}" readonly /></label>
       <div class="inline-review-status"><strong>${selectedEvent ? escapeHtml(selectedEvent.label) : "请选择候选事件"}</strong><span>${correction ? escapeHtml(correction.displayLabel || correction.label) : "人工复核标注只写入复核草稿：保留候选会保留该候选，排除候选会把对应 epoch 改为 0，需复核只写复核状态。"}</span></div>
       <div class="inline-correction-actions">
-        <button class="ghost-btn danger-soft" type="button" data-epilepsy-action="set-correction" data-correction="Seizure" data-correction-label="保留候选" data-event-id="${escapeHtml(selectedEventId)}" title="${escapeHtml(canCorrect ? "把当前候选保留在复核版本中。" : correctionDisabledReason)}" data-disabled-reason="${escapeHtml(canCorrect ? "" : correctionDisabledReason)}" ${canCorrect ? "" : "disabled"}>保留候选</button>
-        <button class="ghost-btn" type="button" data-epilepsy-action="set-correction" data-correction="Normal" data-correction-label="排除候选" data-event-id="${escapeHtml(selectedEventId)}" title="${escapeHtml(canCorrect ? "把当前候选排除，并把对应 epoch 写为 0。" : correctionDisabledReason)}" data-disabled-reason="${escapeHtml(canCorrect ? "" : correctionDisabledReason)}" ${canCorrect ? "" : "disabled"}>排除候选</button>
+        <button class="ghost-btn danger-soft" type="button" data-epilepsy-action="set-correction" data-correction="keep_candidate" data-correction-label="保留候选" data-event-id="${escapeHtml(selectedEventId)}" title="${escapeHtml(canCorrect ? "把当前候选保留在复核版本中。" : correctionDisabledReason)}" data-disabled-reason="${escapeHtml(canCorrect ? "" : correctionDisabledReason)}" ${canCorrect ? "" : "disabled"}>保留候选</button>
+        <button class="ghost-btn" type="button" data-epilepsy-action="set-correction" data-correction="exclude_candidate" data-correction-label="排除候选" data-event-id="${escapeHtml(selectedEventId)}" title="${escapeHtml(canCorrect ? "把当前候选排除，并把对应 epoch 写为 0。" : correctionDisabledReason)}" data-disabled-reason="${escapeHtml(canCorrect ? "" : correctionDisabledReason)}" ${canCorrect ? "" : "disabled"}>排除候选</button>
         <button class="ghost-btn" type="button" data-epilepsy-action="set-correction" data-correction="Artifact" data-correction-label="标为伪迹" data-event-id="${escapeHtml(selectedEventId)}" title="${escapeHtml(canCorrect ? "把当前候选标为伪迹，复核导出中保留审计原因。" : correctionDisabledReason)}" data-disabled-reason="${escapeHtml(canCorrect ? "" : correctionDisabledReason)}" ${canCorrect ? "" : "disabled"}>标为伪迹</button>
         <button class="ghost-btn" type="button" data-epilepsy-action="set-correction" data-correction="Needs review" data-correction-label="需复核" data-event-id="${escapeHtml(selectedEventId)}" title="${escapeHtml(canCorrect ? "把当前候选标记为需要后续复核。" : correctionDisabledReason)}" data-disabled-reason="${escapeHtml(canCorrect ? "" : correctionDisabledReason)}" ${canCorrect ? "" : "disabled"}>需复核</button>
       </div>
@@ -7411,7 +7562,7 @@ function resolvePageRoute(viewName, role = state.role) {
 }
 
 function getWorkspaceProgressState() {
-  const hasCompletedTask = Boolean(latestAnalysisTask()?.id);
+  const hasCompletedTask = isCompletedAnalysisTask(latestAnalysisTask());
   return {
     hasProject: Boolean(state.real.project?.id),
     hasFile: Boolean(state.real.eegFile?.id),
@@ -8620,7 +8771,7 @@ function applyLegacyVisibleCopyCleanup() {
     if (eventLabels[index]) eventLabels[index].textContent = text;
   });
   const editCards = [
-    ["\u5220\u9664\u7247\u6bb5", "\u6392\u9664 30.0-35.0 s \u6570\u636e\u6bb5", "\u5220\u9664"],
+    ["\u5220\u9664\u7247\u6bb5", "\u6392\u9664\u5f53\u524d\u9009\u4e2d\u7684\u6570\u636e\u6bb5", "\u5220\u9664"],
     ["\u6062\u590d\u7247\u6bb5", "\u6062\u590d\u4e0a\u4e00\u6b21\u6392\u9664\u7684\u6570\u636e\u6bb5", "\u6062\u590d"],
     ["\u6dfb\u52a0\u6807\u7b7e", "\u6807\u7b7e\uff1a\u8fd0\u52a8\u4f2a\u8ff9 / \u9700\u8981\u590d\u6838", "\u6dfb\u52a0"],
     ["\u7f16\u8f91\u6807\u7b7e", "\u8bb0\u5f55 before/after \u4fee\u8ba2", "\u7f16\u8f91"],
@@ -10050,7 +10201,7 @@ function handleInlineEpilepsyReaderKeydown(event) {
     event.preventDefault();
     var selId = state.epilepsyInline && state.epilepsyInline.selectedEventId;
     if (selId) {
-      state.epilepsyInline.draftCommands.push({ eventId: selId, label: "Seizure", displayLabel: "保留候选", at: new Date().toISOString() });
+      state.epilepsyInline.draftCommands.push({ eventId: selId, label: "keep_candidate", displayLabel: "保留候选", at: new Date().toISOString() });
       state.epilepsyInline.redoCommands = [];
       state.epilepsyInline.draftSaved = false;
       showToast("候选事件 " + selId + " → 保留候选");
@@ -10397,7 +10548,16 @@ document.addEventListener("click", (event) => {
   });
 });
 
+document.addEventListener("input", (event) => {
+  if (event.target?.matches?.("#segmentStart, #segmentEnd")) {
+    markSegmentInputEdited(event.target);
+  }
+});
+
 document.addEventListener("change", (event) => {
+  if (event.target?.matches?.("#segmentStart, #segmentEnd")) {
+    markSegmentInputEdited(event.target);
+  }
   if (event.target?.matches?.("#real-eeg-file")) {
     handlePendingEegFileSelection();
   }

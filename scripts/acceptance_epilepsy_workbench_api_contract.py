@@ -65,29 +65,43 @@ def main() -> int:
             assert_ok("/api/eeg/files/{file_id}/waveform-window" in openapi.get("paths", {}), "OPENAPI_WAVEFORM_ROUTE_MISSING", list(openapi.get("paths", {}).keys())[-10:])
             record("openapi_waveform_route", "passed", {"path_count": len(openapi.get("paths", {}))})
 
+            auth, auth_ms, _ = request_json(
+                client,
+                "POST",
+                "/api/auth/login",
+                json={"email": "demo.customer@quanlan.cn", "password": "demo123456"},
+            )
+            result["timings_ms"]["customer_login"] = round(auth_ms, 2)
+            token = auth.get("token") or ""
+            assert_ok(bool(token), "CUSTOMER_AUTH_TOKEN_MISSING", auth)
+            auth_headers = {"Authorization": f"Bearer {token}"}
+            record("customer_auth_ready", "passed", {"account": auth.get("account", {}).get("email")})
+
             dataset, dataset_ms, _ = request_json(client, "GET", "/api/lab/demo/epilepsy")
             result["timings_ms"]["ensure_epilepsy_edf_fixture"] = round(dataset_ms, 2)
             file_info = dataset.get("file") or {}
             file_id = file_info.get("id")
             assert_ok(bool(file_id), "FIXTURE_FILE_ID_MISSING", dataset)
-            assert_ok(str(file_info.get("detected_format", "")).lower() == "edf", "FIXTURE_NOT_EDF", file_info)
-            record("edf_fixture_ready", "passed", {"file_id": file_id, "filename": file_info.get("original_filename"), "format": file_info.get("detected_format")})
+            detected_format = str(file_info.get("detected_format", "")).lower()
+            assert_ok(detected_format in {"edf", "fif"}, "FIXTURE_NOT_SUPPORTED_EEG_FORMAT", file_info)
+            record("research_eeg_fixture_ready", "passed", {"file_id": file_id, "filename": file_info.get("original_filename"), "format": file_info.get("detected_format")})
 
             task, task_ms, _ = request_json(
                 client,
                 "POST",
                 "/api/lab/demo/run/epilepsy_ml/configured",
-                json={"parameters_json": {"method": "ml_epoch_classifier", "unit_mode": "source_compatible", "probability_threshold": 0.5}},
+                json={"parameters_json": {"method": "ml_epoch_classifier", "unit_mode": "source_compatible", "probability_threshold": 0.5, "__acceptance_run_id": run_id}},
             )
             result["timings_ms"]["run_epilepsy_ml_task"] = round(task_ms, 2)
             assert_ok(task.get("status") == "completed", "TASK_NOT_COMPLETED", task)
             task_id = task.get("id")
             record("epilepsy_ml_task_completed", "passed", {"task_id": task_id, "workflow_id": task.get("workflow_id")})
 
-            artifacts, artifacts_ms, _ = request_json(client, "GET", f"/api/tasks/{task_id}/artifacts")
+            artifacts, artifacts_ms, _ = request_json(client, "GET", f"/api/tasks/{task_id}/artifacts", headers=auth_headers)
             result["timings_ms"]["list_artifacts"] = round(artifacts_ms, 2)
             labels = {item.get("label") for item in artifacts}
-            assert_ok("epilepsy_epoch_scores" in labels and "epilepsy_events" in labels and "epilepsy_summary" in labels, "REQUIRED_ARTIFACTS_MISSING", sorted(labels))
+            required_source_labels = {"epilepsy_ml_epoch_predictions", "epilepsy_ml_events", "epilepsy_ml_summary"}
+            assert_ok(required_source_labels.issubset(labels), "REQUIRED_ARTIFACTS_MISSING", sorted(labels))
             record("source_artifacts_present", "passed", {"labels": sorted(labels)})
 
             session, session_ms, _ = request_json(
@@ -95,6 +109,7 @@ def main() -> int:
                 "POST",
                 f"/api/tasks/{task_id}/epilepsy-review-sessions",
                 json={"input_file_id": file_id, "workflow_id": task.get("workflow_id"), "epoch_length_sec": 5, "current_epoch": 0},
+                headers=auth_headers,
             )
             result["timings_ms"]["create_review_session"] = round(session_ms, 2)
             session_id = session.get("id")
@@ -114,12 +129,12 @@ def main() -> int:
                 ],
                 "ui_state": {"visible_epoch_count": "All", "selected_event_id": "1", "active_waveform_label": "raw_preview_figure"},
             }
-            patched, patch_ms, _ = request_json(client, "PATCH", f"/api/epilepsy-review-sessions/{session_id}", json=patch_payload)
+            patched, patch_ms, _ = request_json(client, "PATCH", f"/api/epilepsy-review-sessions/{session_id}", json=patch_payload, headers=auth_headers)
             result["timings_ms"]["patch_review_session"] = round(patch_ms, 2)
             assert_ok(patched.get("epoch_overrides", {}).get("2") == 1, "PATCH_OVERRIDE_MISSING", patched)
             record("review_session_patch", "passed", {"override_count": len(patched.get("epoch_overrides", {}))})
 
-            manifest, manifest_ms, _ = request_json(client, "GET", f"/api/eeg/files/{file_id}/waveform-pyramid/manifest")
+            manifest, manifest_ms, _ = request_json(client, "GET", f"/api/eeg/files/{file_id}/waveform-pyramid/manifest", headers=auth_headers)
             result["timings_ms"]["waveform_manifest"] = round(manifest_ms, 2)
             assert_ok(manifest.get("unit") == "uV", "MANIFEST_UNIT_NOT_UV", manifest.get("unit_policy"))
             record("waveform_manifest", "passed", {"duration_sec": manifest.get("duration_sec"), "unit": manifest.get("unit")})
@@ -128,6 +143,7 @@ def main() -> int:
                 client,
                 "GET",
                 f"/api/eeg/files/{file_id}/waveform-window?start_sec=2&duration_sec=8&max_points=1200&filter_profile_id=raw&include_events=true",
+                headers=auth_headers,
             )
             result["timings_ms"]["waveform_raw_window"] = round(raw_ms, 2)
             first_time = raw_window.get("channels", [{}])[0].get("times_sec", [None])[0]
@@ -140,12 +156,13 @@ def main() -> int:
                 client,
                 "GET",
                 f"/api/eeg/files/{file_id}/waveform-window?start_sec=2&duration_sec=8&max_points=1200&filter_profile_id=preview_0p5_45_notch50&include_events=true",
+                headers=auth_headers,
             )
             result["timings_ms"]["waveform_filter_window"] = round(filter_ms, 2)
             assert_ok(filter_window.get("filter_profile", {}).get("applied") is True, "FILTER_NOT_APPLIED", filter_window.get("filter_profile"))
             record("waveform_filter_window", "passed", {"profile": filter_window.get("filter_profile_id"), "channel_count": len(filter_window.get("channels", []))})
 
-            export, export_ms, _ = request_json(client, "POST", f"/api/epilepsy-review-sessions/{session_id}/exports")
+            export, export_ms, _ = request_json(client, "POST", f"/api/epilepsy-review-sessions/{session_id}/exports", headers=auth_headers)
             result["timings_ms"]["export_review_session"] = round(export_ms, 2)
             required_export_keys = {"reviewed_epoch_scores_csv", "reviewed_events_csv", "review_actions_jsonl", "review_session_manifest", "source_artifacts", "non_medical_scope"}
             assert_ok(required_export_keys.issubset(export.keys()), "EXPORT_KEYS_MISSING", sorted(set(export.keys())))
@@ -174,11 +191,17 @@ def main() -> int:
                 "scope_contract.json",
             }
             assert_ok(expected_v01_labels.issubset(registered_labels), "V01_EXPORT_ARTIFACTS_MISSING", sorted(registered_labels))
-            assert_ok("Stage_Code" in export.get("epoch_predictions_csv", ""), "V01_EPOCH_PREDICTIONS_INVALID", export.get("epoch_predictions_csv", "")[:160])
+            epoch_predictions_csv = export.get("epoch_predictions_csv", "")
+            reviewed_epoch_scores_csv = export.get("reviewed_epoch_scores_csv", "")
+            assert_ok("Stage_Code" in epoch_predictions_csv, "V01_EPOCH_PREDICTIONS_INVALID", epoch_predictions_csv[:160])
+            assert_ok("screening_label" in epoch_predictions_csv and "Candidate_Label" in epoch_predictions_csv, "V01_SCREENING_LABELS_MISSING", epoch_predictions_csv[:160])
+            assert_ok("review_decision" in reviewed_epoch_scores_csv, "V01_REVIEW_DECISION_MISSING", reviewed_epoch_scores_csv[:160])
+            assert_ok("Seizure" not in epoch_predictions_csv and "Normal" not in epoch_predictions_csv, "V01_EPOCH_EXPORT_USES_DIAGNOSTIC_LABELS", epoch_predictions_csv[:240])
+            assert_ok("Seizure" not in reviewed_epoch_scores_csv and "Normal" not in reviewed_epoch_scores_csv, "V01_REVIEW_EXPORT_USES_DIAGNOSTIC_LABELS", reviewed_epoch_scores_csv[:240])
             assert_ok("review_status" in export.get("candidate_events_csv", ""), "V01_CANDIDATE_EVENTS_INVALID", export.get("candidate_events_csv", "")[:160])
             assert_ok("algorithm_workflow_id" in export.get("manual_corrections_csv", ""), "V01_MANUAL_CORRECTIONS_INVALID", export.get("manual_corrections_csv", "")[:160])
             assert_ok(export.get("scope_contract_json", {}).get("scope_contract") == "research_screening_support_only", "V01_SCOPE_CONTRACT_INVALID", export.get("scope_contract_json"))
-            assert_ok("review_stage_code" in export.get("reviewed_epoch_scores_csv", ""), "EXPORT_EPOCH_CSV_INVALID", export.get("reviewed_epoch_scores_csv", "")[:120])
+            assert_ok("review_stage_code" in reviewed_epoch_scores_csv, "EXPORT_EPOCH_CSV_INVALID", reviewed_epoch_scores_csv[:120])
             assert_ok(export.get("review_session_manifest", {}).get("immutability", {}).get("source_artifacts_readonly") is True, "EXPORT_IMMUTABILITY_MISSING", export.get("review_session_manifest"))
             record("review_export_contract", "passed", {"keys": sorted(required_export_keys), "v01_keys": sorted(v01_export_keys), "source_artifact_count": len(export.get("source_artifacts", []))})
 

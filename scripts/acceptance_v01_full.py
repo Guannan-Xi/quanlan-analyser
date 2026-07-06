@@ -11,6 +11,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 os.environ.setdefault("QLANALYSER_ENV", "test")
+os.environ.setdefault("QLANALYSER_SANDBOX_MODE", "true")
 ADMIN_EMAIL = os.getenv("QLANALYSER_ADMIN_EMAIL", "ops@quanlan.cn")
 ADMIN_PASSWORD = os.getenv("QLANALYSER_ADMIN_PASSWORD", "ops-demo-2026")
 
@@ -38,6 +39,17 @@ def assert_status(response, expected: int, name: str):
 
 def auth_headers(session: dict) -> dict:
     return {"Authorization": f"Bearer {session['token']}"}
+
+
+def demo_customer_headers(client: TestClient) -> dict:
+    session = assert_status(
+        client.post("/api/auth/login", json={"email": "demo.customer@quanlan.cn", "password": "demo123456"}),
+        200,
+        "demo customer auth login",
+    ).json()
+    headers = auth_headers(session)
+    client.headers.update(headers)
+    return headers
 
 
 def assert_contract_artifacts(module: str, workflow: str, artifacts: list[dict]) -> None:
@@ -92,14 +104,45 @@ def build_fif(path: Path, *, with_events: bool) -> Path:
 def upload_file(client: TestClient, project_id: str, path: Path) -> dict:
     with path.open("rb") as handle:
         response = client.post(
-            f"/api/eeg/upload?project_id={project_id}",
+            (
+                f"/api/eeg/upload?project_id={project_id}"
+                "&upload_authorization_confirmed=true"
+                "&upload_authorization_text=Acceptance%20runner%20confirms%20research%20trial%20upload%20authorization."
+            ),
             files={"file": (path.name, handle, "application/octet-stream")},
         )
     assert_status(response, 200, f"upload {path.suffix}")
     return response.json()
 
 
-def run_task(client: TestClient, project_id: str, file_id: str, module: str, workflow: str, params: dict) -> tuple[dict, list[dict]]:
+def confirm_data_preparation_plan(client: TestClient, project_id: str, file_id: str) -> dict:
+    response = client.post(
+        f"/api/eeg/files/{file_id}/data-preparation-plan",
+        json={
+            "project_id": project_id,
+            "status": "confirmed",
+            "title": "Full acceptance confirmed preparation plan",
+            "description": "Acceptance runner confirms the common QC/data-preparation plan before formal analysis.",
+            "preprocessing_json": {"reference": "as_recorded", "notch_hz": None},
+            "qc_json": {"reviewed": True, "source": "acceptance_v01_full"},
+            "psd_json": {"fmin": 1, "fmax": 40},
+        },
+    )
+    assert_status(response, 200, "confirm data preparation plan")
+    plan = response.json()
+    record("data preparation plan confirmed", plan.get("status") == "confirmed", json.dumps(plan, ensure_ascii=False))
+    return plan
+
+
+def with_preparation(params: dict, plan: dict) -> dict:
+    return {
+        **params,
+        "data_preparation_plan_id": plan["id"],
+        "data_preparation_revision": plan["revision"],
+    }
+
+
+def run_task(client: TestClient, project_id: str, file_id: str, module: str, workflow: str, params: dict, preparation_plan: dict) -> tuple[dict, list[dict]]:
     response = client.post(
         "/api/tasks",
         json={
@@ -107,7 +150,7 @@ def run_task(client: TestClient, project_id: str, file_id: str, module: str, wor
             "module_name": module,
             "workflow_id": workflow,
             "input_file_id": file_id,
-            "parameters_json": params,
+            "parameters_json": with_preparation(params, preparation_plan),
         },
     )
     assert_status(response, 200, f"run task {module}")
@@ -128,6 +171,7 @@ def run_task(client: TestClient, project_id: str, file_id: str, module: str, wor
 
 def main() -> None:
     client = TestClient(app)
+    anonymous_client = TestClient(app)
     work = Path(tempfile.mkdtemp(prefix="qlanalyser_acceptance_"))
     event_fif = build_fif(work / "with_events_raw.fif", with_events=True)
     no_event_fif = build_fif(work / "no_events_raw.fif", with_events=False)
@@ -141,6 +185,7 @@ def main() -> None:
     assert_status(response, 200, "health")
     health = response.json()
     record("health version", health.get("scope") == "eeg-v01-production" and health.get("version") == "0.1.0", json.dumps(health))
+    customer_headers = demo_customer_headers(client)
 
     response = client.get("/api/templates")
     assert_status(response, 200, "list workflow templates")
@@ -188,6 +233,8 @@ def main() -> None:
 
     eeg_file = upload_file(client, project["id"], event_fif)
     no_event_file = upload_file(client, project["id"], no_event_fif)
+    preparation_plan = confirm_data_preparation_plan(client, project["id"], eeg_file["id"])
+    no_event_preparation_plan = confirm_data_preparation_plan(client, project["id"], no_event_file["id"])
     assert_status(client.get(f"/api/eeg/files/{eeg_file['id']}"), 200, "get eeg file")
     metadata = assert_status(client.get(f"/api/eeg/files/{eeg_file['id']}/metadata"), 200, "metadata readable").json()
     record("metadata has signal structure", metadata.get("status") == "readable" and metadata.get("eeg_channel_count") == 4 and metadata.get("annotation_count") >= 5, json.dumps(metadata, ensure_ascii=False)[:1000])
@@ -202,9 +249,9 @@ def main() -> None:
     record("data patch persists label", patched.get("label") == "acceptance-label", json.dumps(patched, ensure_ascii=False))
 
     # Real analysis modules.
-    qc_task, qc_artifacts = run_task(client, project["id"], eeg_file["id"], "qc", "metadata_qc", {})
-    psd_task, psd_artifacts = run_task(client, project["id"], eeg_file["id"], "psd", "resting_psd", {"fmin": 1, "fmax": 40})
-    erp_task, erp_artifacts = run_task(client, project["id"], eeg_file["id"], "erp", "erp_p300", {"tmin": -0.2, "tmax": 0.6, "baseline": [None, 0]})
+    qc_task, qc_artifacts = run_task(client, project["id"], eeg_file["id"], "qc", "metadata_qc", {}, preparation_plan)
+    psd_task, psd_artifacts = run_task(client, project["id"], eeg_file["id"], "psd", "resting_psd", {"fmin": 1, "fmax": 40}, preparation_plan)
+    erp_task, erp_artifacts = run_task(client, project["id"], eeg_file["id"], "erp", "erp_p300", {"tmin": -0.2, "tmax": 0.6, "baseline": [None, 0]}, preparation_plan)
     for task in [qc_task, psd_task, erp_task]:
         fetched_task = assert_status(client.get(f"/api/tasks/{task['id']}"), 200, f"get task {task['module_name']}").json()
         record(f"get task {task['module_name']} identity", fetched_task["id"] == task["id"] and fetched_task["status"] == "completed", json.dumps(fetched_task))
@@ -221,16 +268,32 @@ def main() -> None:
     # Failure boundaries: ERP without events, invalid PSD range, advanced methods, unsupported module.
     response = client.post(
         "/api/tasks",
-        json={"project_id": project["id"], "module_name": "erp", "workflow_id": "erp_p300", "input_file_id": no_event_file["id"], "parameters_json": {}},
+        json={
+            "project_id": project["id"],
+            "module_name": "erp",
+            "workflow_id": "erp_p300",
+            "input_file_id": no_event_file["id"],
+            "parameters_json": with_preparation({}, no_event_preparation_plan),
+        },
     )
     assert_status(response, 422, "erp without events fails")
     failed_task_id = response.json()["detail"]["task_id"]
     failed_task = assert_status(client.get(f"/api/tasks/{failed_task_id}"), 200, "failed task retrievable").json()
-    record("failed ERP task stores error", failed_task["status"] == "failed" and "event" in failed_task["error_message"].lower(), json.dumps(failed_task))
+    record(
+        "failed ERP task stores sanitized error state",
+        failed_task["status"] == "failed" and failed_task.get("error_code") in {"ERP_NO_EVENTS", "TASK_EXECUTION_FAILED"},
+        json.dumps(failed_task),
+    )
 
     response = client.post(
         "/api/tasks",
-        json={"project_id": project["id"], "module_name": "psd", "workflow_id": "resting_psd", "input_file_id": eeg_file["id"], "parameters_json": {"fmin": 40, "fmax": 1}},
+        json={
+            "project_id": project["id"],
+            "module_name": "psd",
+            "workflow_id": "resting_psd",
+            "input_file_id": eeg_file["id"],
+            "parameters_json": with_preparation({"fmin": 40, "fmax": 1}, preparation_plan),
+        },
     )
     assert_status(response, 422, "invalid psd range fails")
     for module in ["tfr", "pac", "connectivity"]:
@@ -238,14 +301,14 @@ def main() -> None:
             "/api/tasks",
             json={"project_id": project["id"], "module_name": module, "workflow_id": module, "input_file_id": eeg_file["id"], "parameters_json": {}},
         )
-        assert_status(response, 422, f"advanced {module} disabled")
-        record(f"advanced {module} explains V01", "not enabled in V01" in response.text, response.text)
+        assert_status(response, 403, f"advanced {module} unavailable to customer workflow")
+        record(f"advanced {module} explains customer workflow boundary", "not available in the customer workflow" in response.text, response.text)
     assert_status(
         client.post(
             "/api/tasks",
             json={"project_id": project["id"], "module_name": "unknown", "workflow_id": "unknown", "input_file_id": eeg_file["id"], "parameters_json": {}},
         ),
-        422,
+        403,
         "unknown module fails",
     )
 
@@ -270,6 +333,7 @@ def main() -> None:
         422,
         "report project mismatch fails",
     )
+    assert_status(client.post(f"/api/tasks/{psd_task['id']}/result-review"), 200, "mark psd result reviewed")
     report = assert_status(
         client.post("/api/reports", json={"project_id": project["id"], "task_id": psd_task["id"], "title": "Acceptance PSD Report"}),
         200,
@@ -333,8 +397,8 @@ def main() -> None:
         "admin auth login",
     ).json()
     admin_headers = auth_headers(admin_session)
-    assert_status(client.get("/api/billing/wallet"), 401, "billing wallet rejects anonymous")
-    assert_status(client.get("/api/admin/overview"), 401, "admin overview rejects anonymous")
+    assert_status(anonymous_client.get("/api/billing/wallet"), 401, "billing wallet rejects anonymous")
+    assert_status(anonymous_client.get("/api/admin/overview"), 401, "admin overview rejects anonymous")
 
     wallet = assert_status(client.get(f"/api/billing/wallet?account_id={customer_account_id}", headers=customer_headers), 200, "billing wallet").json()
     record("billing wallet sandbox mode", wallet.get("payment_provider_mode") == "sandbox", json.dumps(wallet, ensure_ascii=False))
@@ -382,12 +446,12 @@ def main() -> None:
     failed = assert_status(client.get("/api/admin/tasks/failed", headers=admin_headers), 200, "admin failed tasks").json()
     record("admin failed task list", any(item["task_id"] == failed_task_id for item in failed), json.dumps(failed))
 
-    # V1 keeps customer EEG data soft-deleted and auditable unless a retention
-    # policy explicitly allows a physical purge.
+    # V1 keeps deleted-file registry/audit state while physically removing
+    # uploaded bytes to reduce storage and privacy risk.
     delete_target = upload_file(client, project["id"], build_fif(work / "delete_target_raw.fif", with_events=False))
     delete_path = Path(delete_target["stored_path"])
     assert_status(client.delete(f"/api/data/files/{delete_target['id']}"), 200, "delete uploaded file")
-    record("soft-deleted file retained on disk", delete_path.exists(), str(delete_path))
+    record("deleted upload removed from disk", not delete_path.exists(), str(delete_path))
     deleted_file = assert_status(client.get(f"/api/eeg/files/{delete_target['id']}"), 200, "deleted file registry retained").json()
     record("deleted file marked", deleted_file.get("status") == "deleted" and deleted_file.get("upload_status") == "deleted", json.dumps(deleted_file))
 

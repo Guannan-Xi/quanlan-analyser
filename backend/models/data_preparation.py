@@ -7,8 +7,8 @@ from pydantic import AliasChoices, BaseModel, Field
 from backend.models.base import new_id, utc_now
 
 
-PlanModuleName = Literal["qc", "psd", "erp", "epilepsy", "epilepsy_ml", "tfr", "pac", "reference_csd", "multitaper_psd_tfr", "connectivity"]
-SUPPORTED_PLAN_MODULES = {"qc", "psd", "erp", "epilepsy", "epilepsy_ml", "tfr", "pac", "reference_csd", "multitaper_psd_tfr", "connectivity"}
+PlanModuleName = Literal["qc", "psd", "erp", "epilepsy", "epilepsy_ml", "tfr", "pac", "pac_v2", "reference_csd", "multitaper_psd_tfr", "connectivity"]
+SUPPORTED_PLAN_MODULES = {"qc", "psd", "erp", "epilepsy", "epilepsy_ml", "tfr", "pac", "pac_v2", "reference_csd", "multitaper_psd_tfr", "connectivity"}
 DEFAULT_PLAN_MODULE_SCOPE: list[PlanModuleName] = ["qc", "psd", "erp"]
 
 
@@ -25,6 +25,7 @@ class DataPreparationPlanCreate(BaseModel):
     audit_trace_id: str | None = None
     schema_version: str = "qlanalyser-data-preparation-v0.2"
     scope: str = "common_qc_preparation"
+    delivery_scope: Literal["formal_delivery", "lab_preview_only"] = "formal_delivery"
     status: Literal["draft", "confirmed"] = "draft"
     module_scope: list[PlanModuleName] = Field(default_factory=lambda: list(DEFAULT_PLAN_MODULE_SCOPE))
     title: str = "Common data preparation plan"
@@ -58,6 +59,7 @@ class DataPreparationPlanForFileSave(BaseModel):
     audit_trace_id: str | None = None
     schema_version: str = "qlanalyser-data-preparation-v0.2"
     scope: str = "common_qc_preparation"
+    delivery_scope: Literal["formal_delivery", "lab_preview_only"] = "formal_delivery"
     status: Literal["draft", "confirmed"] = "draft"
     module_scope: list[PlanModuleName] = Field(default_factory=lambda: list(DEFAULT_PLAN_MODULE_SCOPE))
     title: str = "Common data preparation plan"
@@ -92,6 +94,7 @@ class DataPreparationPlanUpdate(BaseModel):
     audit_trace_id: str | None = None
     schema_version: str | None = None
     scope: str | None = None
+    delivery_scope: Literal["formal_delivery", "lab_preview_only"] | None = None
     status: Literal["draft", "confirmed"] | None = None
     title: str | None = None
     description: str | None = None
@@ -127,6 +130,7 @@ class DataPreparationPlanRead(BaseModel):
     quota_account_id: str | None = None
     audit_trace_id: str | None = None
     scope: str = "common_qc_preparation"
+    delivery_scope: str = "formal_delivery"
     status: str = "draft"
     module_scope: list[str] = Field(default_factory=lambda: list(DEFAULT_PLAN_MODULE_SCOPE))
     title: str = "Common data preparation plan"

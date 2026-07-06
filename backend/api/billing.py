@@ -45,7 +45,7 @@ def list_ledger(account_id: str | None = None, current: AccountRead = Depends(ac
 @router.post("/invoices")
 def create_invoice_request(payload: InvoiceRequestCreate, current: AccountRead = Depends(account_service.require_current_account)) -> dict:
     account_service.assert_same_account_or_admin(payload.account_id, current)
-    return invoice_service.create_invoice_request(payload).model_dump(mode="json")
+    return invoice_service.public_invoice_payload(invoice_service.create_invoice_request(payload))
 
 
 @router.get("/invoices")
@@ -71,4 +71,5 @@ def get_inbox_attachment(message_id: str, current: AccountRead = Depends(account
 
 @router.post("/admin/invoices/{invoice_id}/issue")
 async def issue_invoice(invoice_id: str, issued_by: str = "ops@quanlan.cn", file: UploadFile = File(...), admin: AccountRead = Depends(account_service.require_admin_account)) -> dict:
-    return (await invoice_service.issue_invoice(invoice_id, file, admin.email)).model_dump(mode="json")
+    invoice = await invoice_service.issue_invoice(invoice_id, file, admin.email)
+    return invoice_service.public_invoice_payload(invoice)

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -16,11 +17,14 @@ OUT_DIR = ROOT / "work" / "release_evidence" / "20260625-module-lab-grouped-meth
 EDF_PATH = OUT_DIR / "module_lab_grouped_methods_local.edf"
 EVENTS_PATH = OUT_DIR / "module_lab_grouped_methods_events.tsv"
 SUMMARY_PATH = OUT_DIR / "generated_edf_summary.json"
+GROUPED_E2E_DURATION_SEC = float(os.getenv("QLANALYSER_GROUPED_METHODS_DURATION_SEC", "30"))
 
 
 def main() -> None:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     raw = build_raw()
+    if GROUPED_E2E_DURATION_SEC > 0 and float(raw.times[-1]) > GROUPED_E2E_DURATION_SEC:
+        raw.crop(tmax=GROUPED_E2E_DURATION_SEC - (1.0 / float(raw.info["sfreq"])))
     raw.export(EDF_PATH, fmt="edf", overwrite=True, verbose="ERROR")
 
     with EVENTS_PATH.open("w", newline="", encoding="utf-8") as handle:
@@ -43,7 +47,7 @@ def main() -> None:
         "sampling_rate_hz": float(raw.info["sfreq"]),
         "duration_sec": float(raw.times[-1]),
         "annotation_count": len(raw.annotations),
-        "purpose": "Local EDF for Module Lab grouped-method end-to-end review.",
+        "purpose": "Short local EDF for Module Lab grouped-method end-to-end review; not a long-record performance benchmark.",
     }
     SUMMARY_PATH.write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(summary, ensure_ascii=False, indent=2))

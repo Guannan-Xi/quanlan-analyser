@@ -1,4 +1,5 @@
 import json
+import os
 import shutil
 import tempfile
 import uuid
@@ -38,6 +39,8 @@ MAX_DEMO_UPLOAD_BYTES = 50 * 1024 * 1024
 
 router = APIRouter()
 
+_TRUE_ENV_VALUES = {"1", "true", "yes", "on", "y"}
+_LOCAL_LAB_DEMO_ENVS = {"local", "dev", "development", "test", "ci", "sandbox"}
 _DEMO_PROJECT_IDS = {"proj_demo_learning", "proj_demo_epilepsy_lab"}
 _DERIVATIVES_ROOT = (Path(__file__).resolve().parents[2] / "data" / "derivatives").resolve()
 
@@ -46,11 +49,35 @@ class LabDemoRunRequest(BaseModel):
     parameters_json: dict = Field(default_factory=dict)
 
 
-def _assert_demo_task(task_id: str) -> None:
+def _env_flag(name: str, default: bool = False) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in _TRUE_ENV_VALUES
+
+
+def _public_lab_demo_enabled() -> bool:
+    if _env_flag("QLANALYSER_PUBLIC_LAB_DEMO_ENABLED"):
+        return True
+    if _env_flag("QLANALYSER_SANDBOX_MODE"):
+        return True
+    app_env = os.getenv("QLANALYSER_ENV", "").strip().lower()
+    return app_env in _LOCAL_LAB_DEMO_ENVS
+
+
+def _assert_public_lab_demo_enabled() -> None:
+    if not _public_lab_demo_enabled():
+        raise HTTPException(status_code=404, detail="Public lab demo is disabled")
+
+
+def _assert_demo_task(task_id: str) -> AnalysisTaskRead:
     """Only serve artifacts for demo-project tasks — no auth needed, but project must be demo."""
+    _assert_public_lab_demo_enabled()
     task = task_service.get_task(task_id, requesting_user_id=None)
     if task.project_id not in _DEMO_PROJECT_IDS:
         raise HTTPException(status_code=403, detail="Artifacts only available for demo tasks")
+    task_service.assert_task_artifacts_deliverable(task)
+    return task
 
 
 def _assert_path_within_derivatives(raw_path: Path) -> Path:
@@ -64,16 +91,19 @@ def _assert_path_within_derivatives(raw_path: Path) -> Path:
 
 @router.get("/lab/demo/dataset")
 def get_demo_dataset() -> dict:
+    _assert_public_lab_demo_enabled()
     return lab_demo_service.ensure_demo_dataset()
 
 
 @router.get("/lab/demo/epilepsy")
 def get_epilepsy_demo_dataset() -> dict:
+    _assert_public_lab_demo_enabled()
     return lab_demo_service.ensure_epilepsy_demo_dataset()
 
 
 @router.post("/lab/demo/run/{module}", response_model=AnalysisTaskRead)
 def run_demo_module(module: str) -> AnalysisTaskRead:
+    _assert_public_lab_demo_enabled()
     try:
         return lab_demo_service.run_demo_task(module)
     except ValueError as exc:
@@ -82,6 +112,7 @@ def run_demo_module(module: str) -> AnalysisTaskRead:
 
 @router.post("/lab/demo/run/{module}/configured", response_model=AnalysisTaskRead)
 def run_configured_demo_module(module: str, payload: LabDemoRunRequest) -> AnalysisTaskRead:
+    _assert_public_lab_demo_enabled()
     try:
         return lab_demo_service.run_demo_task(module, parameters=payload.parameters_json)
     except ValueError as exc:
@@ -90,6 +121,7 @@ def run_configured_demo_module(module: str, payload: LabDemoRunRequest) -> Analy
 
 @router.post("/lab/demo/run-all")
 def run_all_demo_modules() -> dict:
+    _assert_public_lab_demo_enabled()
     tasks = {}
     for module in ("qc", "psd", "erp", "reference_csd", "connectivity"):
         tasks[module] = lab_demo_service.run_demo_task(module).model_dump(mode="json")
@@ -101,7 +133,7 @@ def run_all_demo_modules() -> dict:
 @router.get("/lab/demo/artifacts/{task_id}")
 def list_demo_artifacts(task_id: str) -> list[dict]:
     """List artifacts for a demo task. No auth required — restricted to demo projects."""
-    _assert_demo_task(task_id)
+    task = _assert_demo_task(task_id)
     artifacts = task_service.list_task_artifacts(task_id)
     return [
         {
@@ -112,13 +144,14 @@ def list_demo_artifacts(task_id: str) -> list[dict]:
             "filename": Path(a.path).name if a.path else "",
         }
         for a in artifacts
+        if task_service.is_artifact_download_allowed(a, task)
     ]
 
 
 @router.get("/lab/demo/artifacts/{task_id}/download/{filename:path}")
 def download_demo_artifact(task_id: str, filename: str) -> FileResponse:
     """Download a demo artifact by filename. No auth required — restricted to demo projects."""
-    _assert_demo_task(task_id)
+    task = _assert_demo_task(task_id)
     artifacts = task_service.list_task_artifacts(task_id)
     match = None
     for a in artifacts:
@@ -128,6 +161,7 @@ def download_demo_artifact(task_id: str, filename: str) -> FileResponse:
             break
     if not match:
         raise HTTPException(status_code=404, detail=f"Artifact '{filename}' not found for task {task_id}")
+    task_service.assert_artifact_download_allowed(match, task)
     path = _assert_path_within_derivatives(Path(match.path)) if match.path else None
     if not path or not path.exists() or not path.is_file():
         raise HTTPException(status_code=410, detail="Artifact file is not available on disk")
@@ -144,6 +178,7 @@ async def analyze_uploaded_file(
     parameters_json: str = Form("{}"),
 ):
     """Run analysis on an uploaded EEG file. Temp-only, no persistent storage."""
+    _assert_public_lab_demo_enabled()
     module = module.lower()
     runner = _RUNNER_BY_MODULE.get(module)
     if runner is None:
@@ -214,14 +249,23 @@ _UPLOAD_RUNS: dict[str, dict] = {}
 @router.get("/lab/demo/upload-result/{run_id}")
 def get_upload_result(run_id: str) -> dict:
     """Get result summary for an upload analysis run."""
+    _assert_public_lab_demo_enabled()
     if run_id not in _UPLOAD_RUNS:
         raise HTTPException(status_code=404, detail="Run not found (results expire on restart)")
-    return _UPLOAD_RUNS[run_id]
+    run = _UPLOAD_RUNS[run_id]
+    artifacts = list(run.get("artifacts") or [])
+    return {
+        "run_id": run_id,
+        "module": run.get("module"),
+        "artifact_count": len(artifacts),
+        "artifacts": artifacts,
+    }
 
 
 @router.get("/lab/demo/upload-result/{run_id}/download/{filename:path}")
 def download_upload_result(run_id: str, filename: str) -> FileResponse:
     """Download an artifact from an upload analysis run."""
+    _assert_public_lab_demo_enabled()
     if run_id not in _UPLOAD_RUNS:
         raise HTTPException(status_code=404, detail="Run not found")
     output_dir = Path(_UPLOAD_RUNS[run_id]["output_dir"]).resolve()
@@ -239,6 +283,7 @@ def download_upload_result(run_id: str, filename: str) -> FileResponse:
 
 @router.get("/lab/demo/sample-files")
 def list_sample_files() -> dict:
+    _assert_public_lab_demo_enabled()
     samples = []
     labels = {
         "resting_alpha": "静息态 Alpha 示例（PSD / Connectivity / PAC）",
@@ -256,11 +301,12 @@ def list_sample_files() -> dict:
             "format": path.suffix.lower().lstrip("."),
             "size_bytes": path.stat().st_size,
         })
-    return {"root": str(_SAMPLE_DATA_DIR), "samples": samples}
+    return {"root": "work/sample_data", "samples": samples}
 
 
 @router.get("/lab/demo/sample-files/{filename:path}")
 def download_sample_file(filename: str) -> FileResponse:
+    _assert_public_lab_demo_enabled()
     path = (_SAMPLE_DATA_DIR / filename).resolve()
     try:
         path.relative_to(_SAMPLE_DATA_DIR.resolve())

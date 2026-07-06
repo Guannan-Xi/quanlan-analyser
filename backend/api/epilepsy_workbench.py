@@ -208,12 +208,12 @@ def _open_raw_eeg(path: Path) -> Any:
 
 def _source_unit_policy(path: Path) -> dict[str, Any]:
     suffix = path.suffix.lower()
-    if suffix in {".edf", ".bdf"}:
+    if suffix in {".edf", ".bdf", ".fif"}:
         return {
             "display_unit": "uV",
             "source_unit": "V",
             "scale_factor": 1_000_000.0,
-            "policy": "edf_bdf_eeg_volts_to_microvolts_for_workbench_display",
+            "policy": "mne_eeg_volts_to_microvolts_for_workbench_display",
         }
     return {
         "display_unit": "native",
@@ -799,7 +799,19 @@ def _artifact_csv_rows(artifact: ArtifactRead | None) -> list[dict[str, Any]]:
 
 
 def _stage_label(stage_code: int) -> str:
-    return "epilepsy_like_candidate" if int(stage_code) >= 1 else "Normal"
+    return "epilepsy_like_candidate" if int(stage_code) >= 1 else "not_candidate"
+
+
+def _stage_code(value: Any) -> int:
+    try:
+        return 1 if int(value) >= 1 else 0
+    except (TypeError, ValueError):
+        text = str(value or "").strip().lower()
+        return 1 if text in {"1", "candidate", "epilepsy_like_candidate", "keep_candidate", "confirmed"} else 0
+
+
+def _review_decision_label(stage_code: int) -> str:
+    return "keep_candidate" if int(stage_code) >= 1 else "exclude_candidate"
 
 
 def _reviewed_epoch_rows(session: EpilepsyReviewSession) -> list[dict[str, Any]]:
@@ -811,7 +823,8 @@ def _reviewed_epoch_rows(session: EpilepsyReviewSession) -> list[dict[str, Any]]
                 "epoch_index": index,
                 "source_epoch_1based": index + 1,
                 "review_stage_code": 1 if int(stage_code) >= 1 else 0,
-                "review_stage": "Seizure" if int(stage_code) >= 1 else "Normal",
+                "review_stage": _review_decision_label(stage_code),
+                "review_decision": _review_decision_label(stage_code),
                 "manually_corrected": True,
                 "review_session_id": session.id,
                 "task_id": session.task_id,
@@ -839,11 +852,17 @@ def _v01_epoch_prediction_rows(session: EpilepsyReviewSession) -> list[dict[str,
     for row in source_rows:
         item = dict(row)
         epoch_index = str(item.get("epoch_index", item.get("Epoch No.", "")))
-        original_code = item.get("Stage_Code", item.get("review_stage_code", 0))
+        original_code = _stage_code(item.get("Stage_Code", item.get("review_stage_code", 0)))
+        item["Stage_Code"] = original_code
+        item["Stage"] = _stage_label(original_code)
+        item["screening_label"] = _stage_label(original_code)
+        item["Candidate_Label"] = _stage_label(original_code)
         if epoch_index in overrides:
             item["original_Stage_Code"] = original_code
             item["Stage_Code"] = overrides[epoch_index]
             item["Stage"] = _stage_label(overrides[epoch_index])
+            item["screening_label"] = _stage_label(overrides[epoch_index])
+            item["Candidate_Label"] = _stage_label(overrides[epoch_index])
             item["manually_corrected"] = True
         else:
             item.setdefault("manually_corrected", False)
@@ -991,7 +1010,7 @@ def export_review_session(
     }
     reviewed_epoch_scores_csv = _csv_from_rows(
         epoch_rows,
-        ["epoch_index", "source_epoch_1based", "review_stage_code", "review_stage", "manually_corrected"],
+        ["epoch_index", "source_epoch_1based", "review_stage_code", "review_decision", "review_stage", "manually_corrected"],
     )
     reviewed_events_csv = _csv_from_rows(
         event_rows,
@@ -999,7 +1018,7 @@ def export_review_session(
     )
     epoch_predictions_csv = _csv_from_rows(
         v01_epoch_rows,
-        ["epoch_index", "start_sec", "end_sec", "duration_sec", "Stage_Code", "Stage", "probability", "above_threshold", "is_event_epoch", "threshold", "manually_corrected", "review_session_id", "task_id"],
+        ["epoch_index", "start_sec", "end_sec", "duration_sec", "Stage_Code", "screening_label", "Candidate_Label", "Stage", "probability", "above_threshold", "is_event_epoch", "threshold", "manually_corrected", "review_session_id", "task_id"],
     )
     candidate_events_csv = _csv_from_rows(
         v01_candidate_rows,
@@ -1222,7 +1241,9 @@ def get_epilepsy_task_events(
             "visible_events": auto_candidates,
             "kept_candidates": kept,
             "pending_review": pending,
+            "candidate_density_per_hour": f"{rate_per_hour:.1f}/h" if duration_sec_total > 0 else "N/A",
             "candidate_rate_per_hour": f"{rate_per_hour:.1f}/h" if duration_sec_total > 0 else "N/A",
+            "rate_boundary_note": "Candidate density is a screening workload metric, not seizure frequency or disease burden.",
         },
         "source": {
             "task_id": task_id,
@@ -1250,12 +1271,11 @@ def _generate_event_evidence_png(
     summary: dict[str, Any],
     event_row: dict[str, Any] | None = None,
 ) -> Path:
-    """Generate or retrieve a per-event evidence PNG figure.
+    """Generate or retrieve a per-event synthetic preview PNG.
 
-    Uses matplotlib to draw a simple 1-35 Hz filtered waveform preview for the
-    event window, following the v3 evidence-figure contract. The figure is
-    cached on disk under the task artifact directory and registered as an
-    artifact so it can be downloaded via /api/artifacts/{id}/download.
+    This is intentionally labeled as synthetic preview only. It must not be
+    registered or packaged as formal waveform evidence until the endpoint is
+    wired to real EDF window extraction.
     """
     import matplotlib
     matplotlib.use("Agg")
@@ -1265,7 +1285,7 @@ def _generate_event_evidence_png(
     figures_dir = artifact_root / "figures"
     figures_dir.mkdir(parents=True, exist_ok=True)
     safe_event_id = _safe_event_file_id(event_id)
-    png_path = figures_dir / f"epilepsy_event_{safe_event_id}_focus_1_35hz.png"
+    png_path = figures_dir / f"epilepsy_event_{safe_event_id}_synthetic_preview_v2.png"
 
     if png_path.exists():
         return png_path
@@ -1288,11 +1308,11 @@ def _generate_event_evidence_png(
             for j in range(max(0, loc - spread), min(n_samples, loc + spread)):
                 synthetic[j] += 40 * np.exp(-((j - loc) ** 2) / (2 * spread ** 2))
         ax.plot(t, synthetic, color="#2563eb", linewidth=0.8)
-        ax.set_title(f"{event_id} 1-35 Hz 证据图 — {channel} — 科研筛查参考", fontsize=11)
-        ax.set_xlabel("时间 (s)")
-        ax.set_ylabel("幅度 (uV)")
+        ax.set_title(f"{event_id} synthetic preview - {channel} - not source waveform evidence", fontsize=11)
+        ax.set_xlabel("Time (s)")
+        ax.set_ylabel("Illustrative amplitude (a.u.)")
         ax.axhline(0, color="#94a3b8", linewidth=0.5)
-        ax.text(0.5, 0.5, "合成科研示例 · 仅供研究参考 · 不作为诊断依据",
+        ax.text(0.5, 0.5, "Synthetic preview - not source EDF evidence - excluded from formal evidence package",
                 transform=ax.transAxes, fontsize=18, color="#cccccc",
                 ha="center", va="center", rotation=30, alpha=0.35)
         fig.tight_layout()
@@ -1329,10 +1349,10 @@ def get_event_evidence(
     event_id: str,
     current: AccountRead = Depends(account_service.require_current_account),
 ) -> FileResponse:
-    """Serve the per-event evidence PNG figure directly for <img src> embedding.
+    """Serve a per-event synthetic preview PNG for <img src> embedding.
 
-    Also registers the file as an artifact so it can be accessed via
-    /api/artifacts/{id}/download for ZIP packaging and reuse.
+    The image is not registered as a formal artifact. It is a UI placeholder
+    until real EDF waveform-window evidence is connected.
     """
     task = task_service.get_task(task_id, requesting_user_id=current.id)
     task_params = _task_parameters(task)
@@ -1342,7 +1362,6 @@ def get_event_evidence(
 
     safe_event_id = _safe_event_file_id(event_id)
     png_path = _generate_event_evidence_png(task_id, event_id, task_params, summary, event_row)
-    _register_or_get_evidence_artifact(task_id, png_path, f"epilepsy_event_{safe_event_id}_focus_png", event_id)
 
     if not png_path.exists():
         raise HTTPException(status_code=404, detail="Evidence PNG not found")
@@ -1350,7 +1369,12 @@ def get_event_evidence(
     return FileResponse(
         png_path,
         media_type="image/png",
-        filename=f"epilepsy_event_{safe_event_id}_focus_1_35hz.png",
+        filename=f"epilepsy_event_{safe_event_id}_synthetic_preview_v2.png",
+        headers={
+            "X-QLanalyser-Evidence-Class": "synthetic_preview_not_source_evidence",
+            "X-QLanalyser-Formal-Evidence": "false",
+            "Access-Control-Expose-Headers": "X-QLanalyser-Evidence-Class, X-QLanalyser-Formal-Evidence, Content-Disposition",
+        },
     )
 
 
@@ -1386,57 +1410,17 @@ def create_all_events_evidence_package(
     task_id: str,
     current: AccountRead = Depends(account_service.require_current_account),
 ) -> dict[str, Any]:
-    """Generate a ZIP containing all event evidence PNGs and a manifest.
+    """Block formal evidence ZIP generation until real waveform windows exist.
 
-    Returns artifact download metadata for the ZIP.
+    Synthetic per-event previews are allowed for UI continuity, but they are not
+    allowed to become report/evidence package artifacts.
     """
-    import zipfile
-
-    task = task_service.get_task(task_id, requesting_user_id=current.id)
-    task_params = _task_parameters(task)
-    summary = _load_task_summary(task_id)
-    events = _load_task_events_csv(task_id)
-
-    artifact_root = _task_artifact_root(task_id)
-    evidence_dir = artifact_root / "evidence_packages"
-    evidence_dir.mkdir(parents=True, exist_ok=True)
-    zip_path = evidence_dir / "epilepsy_all_events_evidence_package.zip"
-
-    manifest = {
-        "package": {
-            "task_id": task_id,
-            "module": "epilepsy_ml",
-            "contract_version": "qlanalyser-research-evidence-package-v1.0",
-            "generated_at_utc": datetime.utcnow().isoformat() + "Z",
-            "non_medical_scope": "research_screening_support_only",
+    task_service.get_task(task_id, requesting_user_id=current.id)
+    raise HTTPException(
+        status_code=409,
+        detail={
+            "code": "FORMAL_EVIDENCE_PACKAGE_REQUIRES_REAL_WAVEFORM_WINDOWS",
+            "message": "Synthetic event previews are not source waveform evidence and cannot be packaged as formal evidence.",
+            "suggested_action": "Connect real EDF waveform-window extraction before generating event evidence packages.",
         },
-        "events": [],
-    }
-
-    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
-        for event_row in events:
-            event_id = str(event_row.get("event_id") or "")
-            if not event_id:
-                continue
-            safe_event_id = _safe_event_file_id(event_id)
-            png_path = _generate_event_evidence_png(task_id, event_id, task_params, summary, event_row)
-            arcname = f"events/{safe_event_id}/figures/{safe_event_id}_focus_1_35hz.png"
-            zf.write(png_path, arcname)
-            manifest["events"].append({
-                "event_id": event_id,
-                "start_sec": float(event_row.get("start_sec") or 0),
-                "duration_sec": float(event_row.get("duration_sec") or 0),
-                "file": arcname,
-            })
-        zf.writestr("manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2))
-
-    artifact = _register_or_get_evidence_artifact(task_id, zip_path, "epilepsy_all_events_evidence_package", "all")
-
-    return {
-        "status": "ok",
-        "task_id": task_id,
-        "artifact_id": artifact.id,
-        "download_url": f"/api/artifacts/{artifact.id}/download",
-        "event_count": len(events),
-        "non_medical_scope": "research_screening_support_only",
-    }
+    )

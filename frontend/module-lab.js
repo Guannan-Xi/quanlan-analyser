@@ -1,6 +1,8 @@
 const DEFAULT_API_BASE = ["localhost", "127.0.0.1"].includes(window.location.hostname) ? "http://127.0.0.1:8001/api" : "/api";
 const API_BASE = new URLSearchParams(window.location.search).get("api") || DEFAULT_API_BASE;
 const AUTH_KEY = "qlanalyser_auth_session";
+const DATA_PREPARATION_CONTRACT_VERSION = "qlanalyser-data-preparation-v0.2";
+const LAB_PLAN_MODULE_SCOPE = ["qc", "psd", "erp", "epilepsy", "tfr", "pac", "pac_v2", "reference_csd", "multitaper_psd_tfr", "connectivity"];
 
 const state = {
   project: null,
@@ -8,6 +10,8 @@ const state = {
   demo数据集: null,
   selectedFileId: "",
   uploadInFlight: false,
+  preparationPlansByFileId: {},
+  preparationPlanPromisesByFileId: {},
 };
 
 const EPILEPSY_STD_FIELDS = [
@@ -445,13 +449,53 @@ async function apiJson(path, options = {}) {
       const payload = await response.json();
       detail = readableErrorDetail(payload.detail || payload.message, detail);
     } catch (_) {}
-    throw new Error(detail);
+    const error = new Error(detail);
+    error.status = response.status;
+    throw error;
   }
   return response.json();
 }
 
+function backendModuleIdFor(moduleId) {
+  return MODULES[moduleId]?.backendModule || moduleId;
+}
+
+function labPlanModuleScope() {
+  const ids = Object.keys(MODULES)
+    .map((moduleId) => backendModuleIdFor(moduleId))
+    .filter((moduleId) => LAB_PLAN_MODULE_SCOPE.includes(moduleId));
+  return [...new Set(ids)];
+}
+
+function dataPreparationParameters(plan) {
+  if (!plan?.id || !Number.isFinite(Number(plan.revision))) return {};
+  return {
+    data_preparation_plan_id: plan.id,
+    data_preparation_revision: Number(plan.revision),
+    data_preparation_contract_version: plan.schema_version || DATA_PREPARATION_CONTRACT_VERSION,
+  };
+}
+
+function confirmedPlanSupportsModule(plan, backendModuleId = "") {
+  if (!plan || plan.status !== "confirmed") return false;
+  const moduleLabPreviewPlan = plan.metadata_review?.reviewed_in === "module-lab"
+    || plan.artifact_contract_json?.producer === "module-lab";
+  if (moduleLabPreviewPlan && plan.delivery_scope !== "lab_preview_only") return false;
+  if (!backendModuleId) return true;
+  return Array.isArray(plan.module_scope) && plan.module_scope.includes(backendModuleId);
+}
+
 async function loadFiles() {
-  state.files = await apiJson("/eeg/files");
+  try {
+    state.files = await apiJson("/eeg/files");
+  } catch (error) {
+    if (error.status !== 401 && error.status !== 403) throw error;
+    state.files = [];
+    state.selectedFileId = "";
+    renderFileOptions();
+    renderDataSourceStatus("当前使用教学示例数据；登录后可选择或上传客户 EEG 文件。", "info");
+    return state.files;
+  }
   if (state.selectedFileId) {
     state.files.sort((a, b) => (a.id === state.selectedFileId ? -1 : b.id === state.selectedFileId ? 1 : 0));
   }
@@ -461,6 +505,89 @@ async function loadFiles() {
   renderFileOptions();
   renderDataSourceStatus();
   return state.files;
+}
+
+async function currentDataPreparationPlan(fileId) {
+  if (!fileId) return null;
+  try {
+    return await apiJson(`/eeg/files/${encodeURIComponent(fileId)}/data-preparation-plan`);
+  } catch (error) {
+    if (error.status === 404) return null;
+    throw error;
+  }
+}
+
+async function ensureLabDataPreparationPlan(file, backendModuleId = "") {
+  if (!file?.id) throw new Error("Cannot create a data preparation plan without an EEG file.");
+  const cached = state.preparationPlansByFileId[file.id];
+  if (confirmedPlanSupportsModule(cached, backendModuleId)) return cached;
+  const pending = state.preparationPlanPromisesByFileId[file.id];
+  if (pending) {
+    const plan = await pending;
+    if (confirmedPlanSupportsModule(plan, backendModuleId)) return plan;
+  }
+  const promise = (async () => {
+    const current = await currentDataPreparationPlan(file.id);
+    if (confirmedPlanSupportsModule(current, backendModuleId)) {
+      state.preparationPlansByFileId[file.id] = current;
+      return current;
+    }
+    const payload = {
+      project_id: file.project_id,
+      status: "confirmed",
+      delivery_scope: "lab_preview_only",
+      module_scope: labPlanModuleScope(),
+      title: "Module Lab uploaded EEG preparation plan",
+      description: "Confirmed by Module Lab before running uploaded-file analysis. Research preview only; not clinical decision support.",
+      source_file: {
+        id: file.id,
+        filename: file.original_filename || file.filename || "",
+        detected_format: file.detected_format || "",
+        sampling_rate: file.sampling_rate || file.sfreq || null,
+        channel_count: file.channel_count || null,
+        duration_sec: file.duration_sec || null,
+      },
+      metadata_review: {
+        status: "accepted_for_lab_preview",
+        upload_authorization_confirmed: Boolean(file.upload_authorization_confirmed),
+        reviewed_in: "module-lab",
+      },
+      preprocessing_json: {
+        mode: "as_uploaded",
+        note: "No automatic filtering, ICA, or bad-channel edits are applied by this Module Lab confirmation.",
+      },
+      qc_json: {
+        status: "confirmed",
+        boundary: "Data preparation confirmation records readiness for research method preview only.",
+      },
+      artifact_contract_json: {
+        producer: "module-lab",
+        delivery_scope: "lab_preview_only",
+        contract_version: DATA_PREPARATION_CONTRACT_VERSION,
+        expected_task_lineage_fields: [
+          "data_preparation_plan_id",
+          "data_preparation_revision",
+          "data_preparation_contract_version",
+        ],
+      },
+    };
+    if (current?.revision) payload.expected_revision = Number(current.revision);
+    const plan = await apiJson(`/eeg/files/${encodeURIComponent(file.id)}/data-preparation-plan`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    state.preparationPlansByFileId[file.id] = plan;
+    return plan;
+  })();
+  state.preparationPlanPromisesByFileId[file.id] = promise;
+  try {
+    return await promise;
+  } finally {
+    if (state.preparationPlanPromisesByFileId[file.id] === promise) {
+      delete state.preparationPlanPromisesByFileId[file.id];
+    }
+  }
 }
 
 async function loadDemo数据集() {
@@ -508,7 +635,8 @@ async function uploadLabFile() {
   state.selectedFileId = uploaded.id;
   state.files = [uploaded, ...state.files.filter((file) => file.id !== uploaded.id)];
   renderFileOptions();
-  renderDataSourceStatus(`已上传试跑数据： ${uploaded.filename || uploaded.id}`, "ok");
+  const plan = await ensureLabDataPreparationPlan(uploaded);
+  renderDataSourceStatus(`已上传试跑数据： ${uploaded.filename || uploaded.id}；已确认数据准备记录 ${plan.id} r${plan.revision}`, "ok");
   return uploaded;
 }
 
@@ -542,7 +670,7 @@ function renderDataSourceStatus(message = "", tone = "info") {
   const file = selectedCustomerFile();
   const demoFile = state.demo数据集?.file;
   const sourceFile = file || demoFile;
-  const eventsCounts = sourceFile?.metadata_json?.events || state.demo数据集?.file?.metadata_json?.events || null;
+  const eventsCounts = file ? (file.metadata_json?.events || null) : (demoFile?.metadata_json?.events || null);
   const sourceLabel = file
     ? `当前客户数据：${fileOptionText(file)}`
     : "当前使用教学示例 Oddball EEG（仅用于方法演示）。";
@@ -928,13 +1056,19 @@ function renderMethodGroupCard(group) {
   </article>`;
 }
 
-function renderArtifacts(task, artifacts, parameters) {
+function renderArtifacts(task, artifacts, parameters, options = {}) {
   const displayTitle = parameters?.display_alias || moduleTitle(task.module_name || "");
-  const links = artifacts.map((item) => `<a class="artifact" href="${api(`/artifacts/${item.id}/download`)}" target="_blank" rel="noopener">
+  const links = artifacts.map((item) => {
+    const downloadName = item.filename || item.label || item.id;
+    const href = options.publicDemo
+      ? api(`/lab/demo/artifacts/${encodeURIComponent(task.id)}/download/${encodeURIComponent(downloadName)}`)
+      : api(`/artifacts/${item.id}/download`);
+    return `<a class="artifact" href="${href}" target="_blank" rel="noopener">
     <span>${h(item.artifact_type)}</span>
     <strong>${h(publicArtifactLabel(item))}</strong>
     <small>${h(item.mime_type || "可下载产物")}</small>
-  </a>`).join("");
+  </a>`;
+  }).join("");
   return `<div class="demo-status ok" data-testid="method-summary">
     <strong>分析完成：${h(displayTitle)}</strong>
     <span>结果文件已生成，可在下方下载；参数和解释边界已随结果记录保存。</span>
@@ -944,15 +1078,21 @@ function renderArtifacts(task, artifacts, parameters) {
 }
 
 async function runModule(moduleId, form, resultBox) {
-  const backendModuleId = MODULES[moduleId].backendModule || moduleId;
+  const backendModuleId = backendModuleIdFor(moduleId);
   const parameters = collect参数(moduleId, form);
   resultBox.innerHTML = `<div class="demo-status">正在试跑 ${h(moduleId.toUpperCase())}。后端正在读取 EEG、执行分析并写入结果文件……</div>`;
   const selectedFileId = form.elements.dataset?.value || "";
   let task;
+  let artifacts;
+  let publicDemo = false;
   if (selectedFileId) {
     const file = state.files.find((item) => item.id === selectedFileId);
     if (!file) throw new Error("当前选择的 EEG 文件不可用，请刷新文件列表后重试。");
     state.selectedFileId = selectedFileId;
+    const plan = await ensureLabDataPreparationPlan(file, backendModuleId);
+    Object.assign(parameters, dataPreparationParameters(plan));
+    parameters.lab_preview_run = true;
+    parameters.lab_preview_boundary = "Module Lab research preview only; not a formal delivery source.";
     task = await apiJson("/tasks", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -966,16 +1106,18 @@ async function runModule(moduleId, form, resultBox) {
         created_by: "local-user",
       }),
     });
+    task = await apiJson(`/tasks/${encodeURIComponent(task.id)}`);
+    artifacts = await apiJson(`/tasks/${encodeURIComponent(task.id)}/artifacts`);
   } else {
     task = await apiJson(`/lab/demo/run/${encodeURIComponent(backendModuleId)}/configured`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ parameters_json: parameters }),
     });
+    artifacts = await apiJson(`/lab/demo/artifacts/${encodeURIComponent(task.id)}`);
+    publicDemo = true;
   }
-  const refreshedTask = await apiJson(`/tasks/${encodeURIComponent(task.id)}`);
-  const artifacts = await apiJson(`/tasks/${encodeURIComponent(task.id)}/artifacts`);
-  resultBox.innerHTML = renderArtifacts(refreshedTask, artifacts, parameters);
+  resultBox.innerHTML = renderArtifacts(task, artifacts, parameters, { publicDemo });
   if (window.lucide) window.lucide.createIcons();
 }
 

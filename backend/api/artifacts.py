@@ -31,7 +31,9 @@ def download_artifact(
     current: AccountRead = Depends(account_service.require_current_account),
 ) -> FileResponse:
     descriptor = task_service.get_artifact_download_descriptor(artifact_id)
-    task_service.get_task(str(descriptor["task_id"]), requesting_user_id=current.id)
+    task = task_service.get_task(str(descriptor["task_id"]), requesting_user_id=current.id)
+    task_service.assert_task_artifacts_deliverable(task)
+    task_service.assert_artifact_download_allowed(descriptor, task)
     path = _assert_path_within_derivatives(Path(descriptor["path"]))
     if not path.exists() or not path.is_file():
         raise HTTPException(status_code=410, detail="Artifact file is not available on disk")

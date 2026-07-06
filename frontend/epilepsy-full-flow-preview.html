@@ -6,7 +6,7 @@
     <title>癫痫样候选事件全流程预览 - QLanalyser</title>
     <meta
       name="description"
-      content="QLanalyser 癫痫样候选事件选择、预检、候选生成、人工复核、质量评审与复核草稿输出的端到端预览。"
+      content="QLanalyser 癫痫样候选事件筛查、人工复核和复核草稿预览。"
     />
     <link rel="stylesheet" href="./epilepsy-full-flow-preview.css?v=20260706-spacious-v1" />
     <link rel="stylesheet" href="./workbench-spacious-overrides.css?v=20260706-spacious-v1" />
@@ -22,11 +22,11 @@
         <div class="ep-flow-top-actions">
           <button class="ep-flow-btn ep-flow-btn-ghost" type="button" id="copyFlowBtn">
             <i data-lucide="copy" aria-hidden="true"></i>
-            <span>开发导出</span>
+            <span>复制流程记录</span>
           </button>
           <button class="ep-flow-btn ep-flow-btn-ghost" type="button" id="openReviewBtn" disabled>
             <i data-lucide="square-pen" aria-hidden="true"></i>
-            <span>复核预览</span>
+            <span>候选复核工作台</span>
           </button>
           <button class="ep-flow-btn ep-flow-btn-primary" type="button" id="openReportBtn" disabled>
             <i data-lucide="file-chart-column" aria-hidden="true"></i>
@@ -40,14 +40,14 @@
           <p class="ep-flow-kicker">HE 示例 EDF 复核流程</p>
           <h1>选择示例 EDF，生成可复核草稿</h1>
           <p>
-            面向科研筛查支持：先做数据预检，再生成候选事件，最后由人工复核形成草稿记录。
-            候选事件不等于临床诊断，浏览器也不会全量读取 2GB EDF。
+            面向科研筛查支持：先确认记录是否可读，再标出疑似癫痫样片段，最后由人工复核形成草稿记录。
+            候选事件不等于临床诊断；长时程记录会按时间窗分段查看。
           </p>
         </div>
         <div class="ep-flow-scope" aria-label="非医疗边界">
           <span>边界</span>
           <strong>科研筛查支持，不作为临床诊断依据</strong>
-          <small>当前用于流程预览和复核演示；正式交付需由后端生成可追溯证据包。</small>
+          <small>当前用于流程演示和复核练习；正式交付还需要真实波形证据、参数记录和复核追溯表。</small>
         </div>
       </section>
 
@@ -62,7 +62,7 @@
         </button>
         <button type="button" data-step="candidates" disabled>
           <span>3</span>
-          <strong>生成候选</strong>
+          <strong>查找疑似</strong>
         </button>
         <button type="button" data-step="review" disabled>
           <span>4</span>
@@ -70,7 +70,7 @@
         </button>
         <button type="button" data-step="adversarial" disabled>
           <span>5</span>
-          <strong>质量评审</strong>
+          <strong>边界检查</strong>
         </button>
         <button type="button" data-step="report" disabled>
           <span>6</span>
@@ -106,7 +106,7 @@
           <section class="ep-flow-panel ep-flow-stage is-active" id="stageUpload" data-stage="upload">
             <div class="ep-flow-section-head">
               <div>
-                <span>Step 1</span>
+                <span>第 1 步</span>
                 <h2>上传或选择 HE 示例 EDF</h2>
               </div>
               <button class="ep-flow-file-btn" type="button" id="chooseEdfBtn">
@@ -122,7 +122,7 @@
                 <code id="sampleFolderText">HE sample folder</code>
               </div>
               <button class="ep-flow-btn ep-flow-btn-ghost" type="button" id="copyFolderBtn">
-                <i data-lucide="folder-copy" aria-hidden="true"></i>
+                <i data-lucide="copy" aria-hidden="true"></i>
                 <span>复制目录</span>
               </button>
             </div>
@@ -132,8 +132,8 @@
             <div class="ep-flow-callout">
               <i data-lucide="shield-alert" aria-hidden="true"></i>
               <p>
-                浏览器无法强制文件选择框默认打开某个本地目录。这里提供目录复制、示例文件卡片和 EDF 上传入口；
-                真实分析由后端按窗口读取，不在浏览器全量加载 EDF。
+                可直接选择下面的 HE 示例记录，也可以上传 EDF 做占位检查。长时程 EDF 不会一次性读进浏览器；
+                后续分析只读取需要查看的时间窗。
               </p>
             </div>
           </section>
@@ -141,7 +141,7 @@
           <section class="ep-flow-panel ep-flow-stage" id="stagePreflight" data-stage="preflight">
             <div class="ep-flow-section-head">
               <div>
-                <span>Step 2</span>
+                <span>第 2 步</span>
                 <h2>数据预检与可分析性确认</h2>
               </div>
               <button class="ep-flow-btn ep-flow-btn-primary" type="button" id="runPreflightBtn">
@@ -153,8 +153,8 @@
             <div class="ep-flow-method-note">
               <strong>预检目标</strong>
               <p>
-                确认文件格式、时长、采样率、通道、长任务策略和隐私显示策略。当前 HE 样本为开发示例；
-                若换成其他 EDF，页面只读取文件名与大小，具体元数据应由后端 EDF reader 返回。
+                确认文件格式、记录时长、采样率和通道是否足够进入复核。当前 HE 记录是本地示例；
+                如果换成新的 EDF，需要先完成元数据读取，不能直接套用示例候选。
               </p>
             </div>
           </section>
@@ -162,12 +162,12 @@
           <section class="ep-flow-panel ep-flow-stage" id="stageCandidates" data-stage="candidates">
             <div class="ep-flow-section-head">
               <div>
-                <span>Step 3</span>
-                <h2>生成癫痫样候选事件包</h2>
+                <span>第 3 步</span>
+                <h2>查找疑似癫痫样事件</h2>
               </div>
               <button class="ep-flow-btn ep-flow-btn-primary" type="button" id="generateCandidatesBtn">
                 <i data-lucide="sparkles" aria-hidden="true"></i>
-                <span>生成预览候选</span>
+                <span>查找疑似事件</span>
               </button>
             </div>
             <div class="ep-flow-runner" id="candidateRunner" aria-live="polite">
@@ -187,66 +187,33 @@
           <section class="ep-flow-panel ep-flow-stage" id="stageReview" data-stage="review">
             <div class="ep-flow-section-head">
               <div>
-                <span>Step 4</span>
-                <h2>人工复核与矫正</h2>
+                <span>第 4 步</span>
+                <h2>进入候选复核工作台</h2>
               </div>
               <div class="ep-flow-action-row">
-                <button class="ep-flow-btn ep-flow-btn-ghost" type="button" id="autoReviewBtn">
+                <button class="ep-flow-btn ep-flow-btn-ghost" type="button" id="autoReviewBtn" hidden>
                   <i data-lucide="wand-sparkles" aria-hidden="true"></i>
-                  <span>填充演示复核</span>
+                  <span>填充预览复核</span>
                 </button>
                 <button class="ep-flow-btn ep-flow-btn-primary" type="button" id="saveReviewBtn">
-                  <i data-lucide="save" aria-hidden="true"></i>
-                  <span>保存复核层</span>
+                  <i data-lucide="square-pen" aria-hidden="true"></i>
+                  <span>打开工作台</span>
                 </button>
               </div>
             </div>
             <div class="ep-flow-review-layout">
               <div class="ep-flow-event-list" id="eventList"></div>
-              <aside class="ep-flow-review-form" aria-label="当前候选复核">
+              <aside class="ep-flow-review-form ep-flow-review-handoff" aria-label="候选复核工作台入口">
                 <h3 id="activeEventTitle">请选择候选事件</h3>
-                <canvas id="reviewWaveform" width="900" height="300" role="img" aria-label="候选事件波形预览" aria-describedby="reviewWaveformDesc"></canvas>
-                <p class="ep-flow-sr-only" id="reviewWaveformDesc">候选事件波形图用于人工复核预览；后端样本显示真实 EDF 窗口，内置样本显示合成示意，不作为临床诊断依据。</p>
-                <div class="ep-flow-form-grid">
-                  <label>
-                    <span>事件类型</span>
-                    <select id="eventTypeSelect"></select>
-                  </label>
-                  <label>
-                    <span>证据等级</span>
-                    <select id="evidenceGradeSelect">
-                      <option value="A">A 展示证据充分</option>
-                      <option value="B">B 展示证据有限但可复核</option>
-                      <option value="C">C 证据很有限</option>
-                      <option value="X">X 不可判读</option>
-                    </select>
-                  </label>
-                  <label>
-                    <span>修正起点 s</span>
-                    <input id="adjustStartInput" type="number" step="0.1" />
-                  </label>
-                  <label>
-                    <span>修正终点 s</span>
-                    <input id="adjustEndInput" type="number" step="0.1" />
-                  </label>
+                <div class="ep-flow-waveform-preview">
+                  <canvas id="reviewWaveform" width="900" height="300" role="img" aria-label="候选事件波形只读概览" aria-describedby="reviewWaveformDesc"></canvas>
+                  <span class="ep-flow-preview-badge">只读概览</span>
                 </div>
-                <label class="ep-flow-wide-field">
-                  <span>排除原因 / 备注</span>
-                  <textarea id="reviewNoteInput" rows="4" placeholder="记录保留、排除或存疑的关键证据"></textarea>
-                </label>
-                <div class="ep-flow-decision-row" role="group" aria-label="人工结论">
-                  <button class="ep-flow-decision keep" type="button" data-review-status="confirmed">
-                    <i data-lucide="check" aria-hidden="true"></i>
-                    <span>保留</span>
-                  </button>
-                  <button class="ep-flow-decision unsure" type="button" data-review-status="needs_review">
-                    <i data-lucide="circle-help" aria-hidden="true"></i>
-                    <span>存疑</span>
-                  </button>
-                  <button class="ep-flow-decision reject" type="button" data-review-status="rejected">
-                    <i data-lucide="x" aria-hidden="true"></i>
-                    <span>排除</span>
-                  </button>
+                <p class="ep-flow-sr-only" id="reviewWaveformDesc">候选事件波形图用于流程概览；有真实 EDF 窗口时显示原始片段，示例不足时显示示意图，不作为临床诊断依据。</p>
+                <div class="ep-flow-workbench-card">
+                  <h4>复核记录由候选复核工作台统一生成</h4>
+                  <p id="reviewHandoffCopy">本页展示候选队列和流程状态，精细复核不在这里重复录入。</p>
+                  <div class="ep-flow-workbench-facts" id="reviewHandoffFacts"></div>
                 </div>
               </aside>
             </div>
@@ -255,8 +222,8 @@
           <section class="ep-flow-panel ep-flow-stage" id="stageAdversarial" data-stage="adversarial">
             <div class="ep-flow-section-head">
               <div>
-                <span>Step 5</span>
-                <h2>关键节点质量评审</h2>
+                <span>第 5 步</span>
+                <h2>结果边界检查</h2>
               </div>
               <button class="ep-flow-btn ep-flow-btn-primary" type="button" id="runAdversarialBtn">
                 <i data-lucide="shield-check" aria-hidden="true"></i>
@@ -270,17 +237,17 @@
           <section class="ep-flow-panel ep-flow-stage" id="stageReport" data-stage="report">
             <div class="ep-flow-section-head">
               <div>
-                <span>Step 6</span>
-                <h2>草稿报告预览</h2>
+                <span>第 6 步</span>
+                <h2>复核草稿预览</h2>
               </div>
               <div class="ep-flow-action-row">
                 <button class="ep-flow-btn ep-flow-btn-ghost" type="button" id="exportCsvBtn" disabled>
                   <i data-lucide="table" aria-hidden="true"></i>
-                  <span>导出草稿事件 CSV</span>
+                  <span>导出草稿事件表</span>
                 </button>
                 <button class="ep-flow-btn ep-flow-btn-primary" type="button" id="exportReportJsonBtn" disabled>
                   <i data-lucide="download" aria-hidden="true"></i>
-                  <span>导出草稿 JSON</span>
+                  <span>下载草稿数据</span>
                 </button>
               </div>
             </div>
@@ -288,7 +255,7 @@
             <article class="ep-flow-report" id="reportPreview" aria-label="草稿报告预览">
               <header>
                 <div>
-                  <p class="ep-flow-kicker">Research Screening Report Preview</p>
+                  <p class="ep-flow-kicker">候选事件复核摘要</p>
                   <h2>癫痫样候选事件复核草稿</h2>
                   <p id="reportBoundary">
                     本草稿描述候选事件经人工复核后的科研筛查结果，不作为临床诊断、治疗或用药依据。
@@ -305,13 +272,13 @@
                 </figure>
                 <figure>
                   <canvas id="funnelFigure" width="560" height="250" role="img" aria-describedby="funnelFigureDesc"></canvas>
-                  <p class="ep-flow-sr-only" id="funnelFigureDesc">候选生成、已复核、人工保留的数量漏斗。</p>
-                  <figcaption>图 2. 候选生成到人工保留的复核漏斗。</figcaption>
+                  <p class="ep-flow-sr-only" id="funnelFigureDesc">疑似片段、已复核、纳入草稿候选的数量漏斗。</p>
+                  <figcaption>图 2. 疑似片段到纳入草稿候选的复核漏斗。</figcaption>
                 </figure>
                 <figure>
                   <canvas id="densityFigure" width="560" height="250" role="img" aria-describedby="densityFigureDesc"></canvas>
-                  <p class="ep-flow-sr-only" id="densityFigureDesc">已复核人工保留候选数的预览归一化统计，单位为个每记录小时，不代表发作频率、疾病活动度或完整事件负荷。</p>
-                  <figcaption>图 3. 已复核人工保留候选数（预览，按记录小时归一化）；不代表发作频率、疾病活动度或完整事件负荷。</figcaption>
+                  <p class="ep-flow-sr-only" id="densityFigureDesc">已复核纳入草稿候选数的预览归一化统计，单位为个每记录小时，不代表发作频率、疾病活动度或完整事件负荷。</p>
+                  <figcaption>图 3. 已复核纳入草稿候选数（预览，按记录小时归一化）；不代表发作频率、疾病活动度或完整事件负荷。</figcaption>
                 </figure>
                 <figure>
                   <canvas id="qcFigure" width="560" height="250" role="img" aria-describedby="qcFigureDesc"></canvas>
@@ -362,15 +329,15 @@
 
           <section class="ep-flow-panel">
             <div class="ep-flow-side-head">
-              <span>Gate</span>
-              <strong>质量评审总览</strong>
+              <span>检查</span>
+              <strong>边界检查总览</strong>
             </div>
             <div class="ep-flow-gate-list" id="gateSummary"></div>
           </section>
 
           <section class="ep-flow-panel">
             <div class="ep-flow-side-head">
-              <span>Audit</span>
+              <span>记录</span>
               <strong>操作与来源</strong>
             </div>
             <ol class="ep-flow-audit" id="auditList"></ol>

@@ -212,6 +212,19 @@ def upsert_item(name: str, item: BaseModel) -> None:
         _write_payload(name, list(by_id.values()))
 
 
+def upsert_items(name: str, items: list[BaseModel]) -> None:
+    if not items:
+        return
+    incoming = [item.model_dump(mode="json") for item in items]
+    with _registry_lock(name):
+        payload = _load_payload_unlocked(name)
+        by_id = {entry.get("id"): entry for entry in payload if isinstance(entry, dict) and entry.get("id")}
+        for entry in incoming:
+            if isinstance(entry, dict) and entry.get("id"):
+                by_id[entry["id"]] = entry
+        _write_payload(name, list(by_id.values()))
+
+
 def delete_item(name: str, item_id: str) -> None:
     with _registry_lock(name):
         payload = _load_payload_unlocked(name)

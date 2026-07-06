@@ -70,7 +70,8 @@ def get_task(task_id: str, current: AccountRead = Depends(account_service.requir
 @router.get("/tasks/{task_id}/artifacts", response_model=list[ArtifactRead])
 def get_task_artifacts(task_id: str, current: AccountRead = Depends(account_service.require_current_account)) -> list[ArtifactRead]:
     # SEC-P0-01 FIX: Verify task ownership before returning artifacts
-    task_service.get_task(task_id, requesting_user_id=current.id)
+    task = task_service.get_task(task_id, requesting_user_id=current.id)
+    task_service.assert_task_artifacts_deliverable(task)
     return task_service.list_task_artifacts(task_id)
 
 
@@ -86,6 +87,7 @@ def batch_download_task_artifacts(
     """
     # Get task to verify it exists and user has access
     task = task_service.get_task(task_id, requesting_user_id=current.id)
+    task_service.assert_task_artifacts_deliverable(task)
     
     # Get all artifacts for this task
     artifacts = task_service.list_task_artifacts(task_id)
@@ -99,6 +101,8 @@ def batch_download_task_artifacts(
     with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
         for artifact in artifacts:
             try:
+                if not task_service.is_artifact_download_allowed(artifact, task):
+                    continue
                 # Validate and resolve path
                 artifact_path = _assert_path_within_derivatives(Path(artifact.path))
                 

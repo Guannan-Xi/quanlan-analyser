@@ -8,7 +8,7 @@ from pathlib import Path
 from backend.models.analysis_task import AnalysisTaskCreate, AnalysisTaskRead
 from backend.models.eeg_file import EEGFileRead
 from backend.models.project import ProjectRead
-from backend.services import storage_service, task_service
+from backend.services import account_service, storage_service, task_service
 from scripts.generate_teaching_oddball_case import build_raw
 
 
@@ -355,12 +355,17 @@ def run_demo_task(module: str, parameters: dict | None = None) -> AnalysisTaskRe
     task_parameters = default_parameters(module)
     if parameters:
         task_parameters.update(parameters)
+    acceptance_run_id = str(task_parameters.pop("__acceptance_run_id", "") or "").strip()
+    demo_account = account_service.get_account("demo-customer")
     payload = AnalysisTaskCreate(
         project_id=project_id,
         module_name=module,
         workflow_id=WORKFLOW_BY_MODULE[module],
         input_file_id=file_id,
         parameters_json=task_parameters,
+        owner_user_id=demo_account.id,
+        created_by=demo_account.id,
+        idempotency_key=f"lab-demo:{module}:{acceptance_run_id}" if acceptance_run_id else None,
     )
     return task_service.create_task(payload)
 

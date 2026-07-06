@@ -87,8 +87,10 @@ def run_multitaper_psd_tfr(input_path: str | Path, output_dir: str | Path, param
         sfreq=float(eeg_all.info["sfreq"]),
         n_times=int(eeg_all.n_times),
     )
-    eeg_all.info["bads"] = sorted(set(eeg_all.info.get("bads", [])) | set(params["bad_channels"]))
-    eeg = eeg_all.copy().pick_types(eeg=True, meg=False, eog=False, ecg=False, stim=False, exclude="bads")
+    bads = sorted(set(raw.info.get("bads", [])) | set(params["bad_channels"]))
+    raw.info["bads"] = bads
+    eeg_all.info["bads"] = bads
+    eeg = _select_analysis_eeg(eeg_all, params)
     if not eeg.ch_names:
         raise ValueError("multitaper_psd_tfr requires at least one usable EEG channel after bad-channel exclusion")
 
@@ -402,6 +404,16 @@ def _run_multitaper_psd(eeg, params: dict[str, Any], tables: Path, figures: Path
     }
 
 
+def _select_analysis_eeg(eeg_all, params: dict[str, Any]):
+    usable = eeg_all.copy().pick_types(eeg=True, meg=False, eog=False, ecg=False, stim=False, exclude="bads")
+    if not params["picks"]:
+        return usable
+    missing_after_bad = [channel for channel in params["picks"] if channel not in usable.ch_names]
+    if missing_after_bad:
+        raise ValueError(f"multitaper_psd_tfr picks are unavailable after bad-channel exclusion: {', '.join(missing_after_bad)}")
+    return usable.copy().pick_channels(params["picks"], ordered=True)
+
+
 def _run_multitaper_tfr(raw, eeg, params: dict[str, Any], tables: Path, figures: Path) -> dict[str, Any]:
     event_map = _resolve_event_id(params["event_id"])
     if event_map is None:
@@ -411,7 +423,7 @@ def _run_multitaper_tfr(raw, eeg, params: dict[str, Any], tables: Path, figures:
     if events.size == 0:
         raise ValueError("multitaper_psd_tfr requires at least one event or annotation for the TFR branch")
 
-    picks = params["picks"] or mne.pick_types(raw.info, eeg=True, meg=False, eog=False, ecg=False, stim=False, exclude="bads")
+    picks = list(eeg.ch_names)
     if len(picks) == 0:
         raise ValueError("multitaper_psd_tfr TFR branch requires at least one usable EEG channel")
 

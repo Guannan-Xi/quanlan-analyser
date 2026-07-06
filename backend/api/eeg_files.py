@@ -58,9 +58,7 @@ async def upload_eeg(
                 "suggested_action": "Tick the upload authorization confirmation before uploading.",
             },
         )
-    project = storage_service.get_project(project_id)
-    if current.role != "admin" and project.owner_user_id != current.id:
-        raise HTTPException(status_code=403, detail="You do not have permission to upload EEG data into this project")
+    project = storage_service.get_project(project_id, requesting_user_id=_requesting_user_id(current))
     text = upload_authorization_text or "Uploader confirms authorization to upload this EEG file for research trial analysis."
     return await storage_service.create_eeg_file(
         project_id=project_id,

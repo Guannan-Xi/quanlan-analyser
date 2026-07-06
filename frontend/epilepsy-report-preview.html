@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>癫痫样候选事件复核草稿预览 - QLanalyser</title>
     <meta name="description" content="QLanalyser 癫痫样候选事件人工复核后的草稿预览。" />
-    <link rel="stylesheet" href="./epilepsy-report-preview.css?v=20260706-preview" />
+    <link rel="stylesheet" href="./epilepsy-report-preview.css?v=20260706-preview-v7" />
     <script src="./vendor/lucide.min.js"></script>
   </head>
   <body>
@@ -14,7 +14,7 @@
         <div class="ep-brand">
           <div class="ep-kicker">
             <i data-lucide="file-chart-column" aria-hidden="true"></i>
-            <span>癫痫样候选事件复核草稿</span>
+            <span>癫痫样候选事件复核记录</span>
           </div>
           <h1>复核草稿预览</h1>
           <p id="reportSubtitle">科研筛查支持，不作为临床诊断结论。</p>
@@ -22,7 +22,7 @@
         <div class="ep-top-actions">
           <label class="ep-file-btn" for="reviewJsonInput">
             <i data-lucide="upload" aria-hidden="true"></i>
-            <span>载入复核 JSON</span>
+            <span>载入复核记录</span>
           </label>
           <input id="reviewJsonInput" type="file" accept=".json,application/json" hidden />
           <a class="ep-btn ep-btn-secondary" href="./epilepsy-review-preview.html">
@@ -31,14 +31,14 @@
           </a>
           <button class="ep-btn ep-btn-primary" type="button" id="exportReportBtn">
             <i data-lucide="download" aria-hidden="true"></i>
-            <span>导出预览 JSON</span>
+            <span>下载复核草稿数据</span>
           </button>
         </div>
       </header>
 
-      <section class="ep-report-banner" aria-label="报告边界">
+      <section class="ep-report-banner" aria-label="草稿边界">
         <strong id="overallStatement">已载入示例复核数据。</strong>
-        <span>草稿只汇总人工保留候选；排除、存疑和未复核候选保留在追溯记录中。</span>
+        <span>草稿先看事件结果，再看图表和方法边界；合成示意图不作为正式 EEG 证据。</span>
       </section>
 
       <section class="ep-summary-grid" aria-label="报告摘要">
@@ -48,7 +48,7 @@
           <small id="recordMeta">-</small>
         </article>
         <article>
-          <span>人工保留</span>
+          <span>纳入草稿候选</span>
           <strong id="confirmedMetric">-</strong>
           <small id="eventRateMetric">-</small>
         </article>
@@ -65,10 +65,10 @@
       </section>
 
       <section class="ep-report-layout">
-        <aside class="ep-report-nav" aria-label="报告目录">
-          <a href="#summarySection" class="is-active">摘要</a>
-          <a href="#figuresSection">图表</a>
-          <a href="#eventsSection">事件表</a>
+        <aside class="ep-report-nav" aria-label="草稿目录">
+          <a href="#summarySection" class="is-active">草稿摘要</a>
+          <a href="#eventsSection">事件结果</a>
+          <a href="#figuresSection">图表预览</a>
           <a href="#methodsSection">方法</a>
           <a href="#auditSection">追溯</a>
         </aside>
@@ -77,8 +77,8 @@
           <section class="ep-section" id="summarySection">
             <div class="ep-section-head">
               <div>
-                <span>Summary</span>
-                <h2>报告摘要</h2>
+                <span>摘要</span>
+                <h2>草稿摘要</h2>
               </div>
               <button class="ep-icon-btn" type="button" id="copySummaryBtn" title="复制摘要">
                 <i data-lucide="copy" aria-hidden="true"></i>
@@ -90,55 +90,21 @@
                 <p id="interpretationText">-</p>
               </div>
               <div class="ep-interpretation muted">
-                <h3>报告边界</h3>
-                <p>本报告描述算法候选经人工复核后的研究筛查结果。临床诊断、用药或治疗决策需要结合病史、视频、正式临床 EEG 判读和医生意见。</p>
+                <h3>草稿边界</h3>
+                <p>本草稿描述算法候选经人工复核后的研究筛查结果。临床诊断、用药或治疗决策需要结合病史、视频、正式临床 EEG 判读和医生意见。</p>
               </div>
-            </div>
-          </section>
-
-          <section class="ep-section" id="figuresSection">
-            <div class="ep-section-head">
-              <div>
-                <span>Figures</span>
-                <h2>核心图表</h2>
-              </div>
-              <button class="ep-icon-btn" type="button" id="redrawBtn" title="重绘图表">
-                <i data-lucide="refresh-cw" aria-hidden="true"></i>
-              </button>
-            </div>
-            <div class="ep-figure-grid">
-              <figure class="ep-figure wide">
-                <canvas id="timelineFigure" width="1200" height="260"></canvas>
-                <figcaption>全记录候选时间轴：展示人工保留、排除、存疑和未复核候选的分布。</figcaption>
-              </figure>
-              <figure class="ep-figure">
-                <canvas id="waveformFigure" width="760" height="360"></canvas>
-                <figcaption>代表事件波形示意：当前预览使用合成波形；正式报告需替换为真实 EDF waveform-window 或 evidence package。</figcaption>
-              </figure>
-              <figure class="ep-figure">
-                <canvas id="funnelFigure" width="760" height="360"></canvas>
-                <figcaption>复核漏斗：AI 候选到人工保留事件的状态流。</figcaption>
-              </figure>
-              <figure class="ep-figure">
-                <canvas id="densityFigure" width="760" height="320"></canvas>
-                <figcaption>已复核人工保留候选数（预览，按记录小时归一化）：不代表发作频率、疾病活动度或完整事件负荷。</figcaption>
-              </figure>
-              <figure class="ep-figure">
-                <canvas id="qcFigure" width="760" height="320"></canvas>
-                <figcaption>通道证据概览：EEG、EMG、ACC 对事件判读的参与情况。</figcaption>
-              </figure>
             </div>
           </section>
 
           <section class="ep-section" id="eventsSection">
             <div class="ep-section-head">
               <div>
-                <span>Events</span>
+                <span>事件</span>
                 <h2>事件结果表</h2>
               </div>
               <button class="ep-btn ep-btn-secondary compact" type="button" id="exportCsvBtn">
                 <i data-lucide="table" aria-hidden="true"></i>
-                <span>导出 CSV</span>
+                <span>导出事件表</span>
               </button>
             </div>
             <div class="ep-table-wrap">
@@ -146,12 +112,13 @@
                 <thead>
                   <tr>
                     <th>事件</th>
-                    <th>时间</th>
-                    <th>持续</th>
+                    <th>复核窗口</th>
+                    <th>原始候选</th>
                     <th>类型</th>
                     <th>通道</th>
-                    <th>证据</th>
+                    <th>证据摘要</th>
                     <th>状态</th>
+                    <th>复核记录</th>
                   </tr>
                 </thead>
                 <tbody id="eventTableBody"></tbody>
@@ -159,13 +126,47 @@
             </div>
           </section>
 
+          <section class="ep-section" id="figuresSection">
+            <div class="ep-section-head">
+              <div>
+                <span>图表</span>
+                <h2>图表预览</h2>
+              </div>
+              <button class="ep-icon-btn" type="button" id="redrawBtn" title="重绘图表">
+                <i data-lucide="refresh-cw" aria-hidden="true"></i>
+              </button>
+            </div>
+            <div class="ep-figure-grid">
+              <figure class="ep-figure wide">
+                <canvas id="timelineFigure" width="1200" height="260" role="img" aria-describedby="timelineFigureCaption"></canvas>
+                <figcaption id="timelineFigureCaption">全记录候选时间轴：展示纳入草稿、不纳入草稿、存疑和未复核候选的分布。</figcaption>
+              </figure>
+              <figure class="ep-figure">
+                <canvas id="waveformFigure" width="760" height="360" role="img" aria-describedby="waveformFigureCaption"></canvas>
+                <figcaption id="waveformFigureCaption">代表候选波形版式示意：当前预览使用合成波形；正式草稿需替换为真实 EDF 波形窗口。</figcaption>
+              </figure>
+              <figure class="ep-figure">
+                <canvas id="funnelFigure" width="760" height="360" role="img" aria-describedby="funnelFigureCaption"></canvas>
+                <figcaption id="funnelFigureCaption">复核漏斗：疑似片段到纳入草稿候选的状态流。</figcaption>
+              </figure>
+              <figure class="ep-figure">
+                <canvas id="densityFigure" width="760" height="320" role="img" aria-describedby="densityFigureCaption"></canvas>
+                <figcaption id="densityFigureCaption">已复核纳入草稿候选数（预览，按记录小时归一化）：不代表发作频率、疾病活动度或完整事件负荷。</figcaption>
+              </figure>
+              <figure class="ep-figure">
+                <canvas id="qcFigure" width="760" height="320" role="img" aria-describedby="qcFigureCaption"></canvas>
+                <figcaption id="qcFigureCaption">通道证据概览：EEG、EMG、ACC 对事件判读的参与情况。</figcaption>
+              </figure>
+            </div>
+          </section>
+
           <section class="ep-section" id="methodsSection">
             <div class="ep-section-head">
               <div>
-                <span>Methods</span>
-                <h2>方法与局限性</h2>
+                <span>方法</span>
+                <h2>方法与边界</h2>
               </div>
-              <button class="ep-icon-btn" type="button" id="copyMethodsBtn" title="复制 Methods">
+              <button class="ep-icon-btn" type="button" id="copyMethodsBtn" title="复制方法说明">
                 <i data-lucide="clipboard" aria-hidden="true"></i>
               </button>
             </div>
@@ -179,8 +180,8 @@
                 <p id="reviewMethodText">-</p>
               </article>
               <article>
-                <h3>报告规则</h3>
-                <p>仅人工保留候选进入草稿摘要、代表图和预览归一化统计；排除候选不进入统计；存疑和未复核候选单列为待确认，不扩展为临床结论。</p>
+                <h3>草稿规则</h3>
+                <p>仅纳入草稿候选进入草稿摘要、代表图和预览归一化统计；不纳入草稿候选不进入统计；存疑和未复核候选单列为待确认，不扩展为临床结论。</p>
               </article>
               <article>
                 <h3>局限性</h3>
@@ -192,7 +193,7 @@
           <section class="ep-section" id="auditSection">
             <div class="ep-section-head">
               <div>
-                <span>Traceability</span>
+                <span>追溯</span>
                 <h2>复核追溯</h2>
               </div>
               <span class="ep-contract" id="contractLabel">-</span>
@@ -203,6 +204,6 @@
       </section>
     </main>
 
-    <script src="./epilepsy-report-preview.js?v=20260706-preview"></script>
+    <script src="./epilepsy-report-preview.js?v=20260706-preview-v7"></script>
   </body>
 </html>

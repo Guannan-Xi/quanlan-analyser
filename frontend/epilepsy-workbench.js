@@ -34,6 +34,20 @@ const WAVEFORM_WHEEL_PAN_RATIO = 0.16;
 const WAVEFORM_ARROW_PAN_RATIO = 0.1;
 const WAVEFORM_GAINS = ["auto", "0.5", "1", "2", "4"];
 
+function customerErrorMessage(action, error) {
+  const raw = String(error?.message || error || "");
+  const errorId = `EP-${Math.abs(hashString(raw || action)).toString(36).slice(0, 6).toUpperCase()}`;
+  return `${action}失败。请确认数据文件、网络和本地服务状态后重试；如需协助，请提供错误编号 ${errorId}。`;
+}
+
+function hashString(value) {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = ((hash << 5) - hash + value.charCodeAt(index)) | 0;
+  }
+  return hash;
+}
+
 const state = {
   project: null,
   files: [],
@@ -71,6 +85,8 @@ const state = {
   reviewSession: null,
   reviewSessionError: "",
   reviewExport: null,
+  saveInFlight: false,
+  publishInFlight: false,
   history: [],
   future: [],
   waveformTask: null,
@@ -402,7 +418,7 @@ function toggleWaveformFilter() {
 function renderWaveformMiniMap(event = selectedEvent(), file = selectedFile()) {
   const duration = recordingDurationSec(file);
   if (!duration) {
-    return `<div class="waveform-minimap empty-mini" data-testid="epilepsy-waveform-minimap">No duration metadata</div>`;
+    return `<div class="waveform-minimap empty-mini" data-testid="epilepsy-waveform-minimap">暂无记录时长</div>`;
   }
   const pct = (value) => clamp((Number(value) / duration) * 100, 0, 100);
   const eventLeft = event ? pct(numeric(event.start_sec)) : 0;
@@ -518,7 +534,7 @@ function renderTimeChartHost(payload) {
   const labels = channels.map((channel, index) => `<span style="top:${8 + (index + 0.5) * (84 / Math.max(1, channels.length))}%">${h(channel.name || `CH${index + 1}`)}</span>`).join("");
   const meta = `${fmt(start, 2)}-${fmt(stop, 2)}s | ${h(payload.filter_profile?.description || payload.filter_profile_id || "raw")} | ${h(payload.unit || "")}`;
   return `<div class="waveform-window timechart-window" data-timechart-key="${h(waveformPayloadKey(payload))}">
-    <div class="waveform-meta">${meta}<span class="timechart-status" id="timechartStatus">Legacy renderer disabled</span></div>
+    <div class="waveform-meta">${meta}<span class="timechart-status" id="timechartStatus">备用波形预览未启用</span></div>
     <div class="timechart-shell">
       <div class="timechart-host" id="timechartWaveformHost" data-testid="epilepsy-timechart-host"></div>
       ${selected ? `<div class="timechart-event-overlay" style="left:${eventStartPct}%;width:${Math.max(0.5, eventEndPct - eventStartPct)}%"></div>` : ""}
@@ -535,10 +551,10 @@ function renderMainPreviewCanvasHost(payload) {
   return `<div class="waveform-window main-preview-window" data-main-preview-key="${h(waveformPayloadKey(payload))}">
     <div class="waveform-meta main-preview-meta">
       <span>${meta}</span>
-      <span class="main-preview-status" id="mainPreviewStatus">Main preview Canvas</span>
+      <span class="main-preview-status" id="mainPreviewStatus">波形预览待绘制</span>
     </div>
     <div class="main-preview-canvas-shell">
-      <canvas id="mainPreviewWaveformCanvas" data-testid="epilepsy-main-preview-canvas" aria-label="Main trunk waveform preview canvas"></canvas>
+      <canvas id="mainPreviewWaveformCanvas" data-testid="epilepsy-main-preview-canvas" aria-label="主干波形预览画布"></canvas>
     </div>
     <div class="main-preview-hint">EDFbrowser 操作：滚轮平移，Ctrl+滚轮缩放，左键框选放大，中键拖动平移，方向键翻阅。</div>
   </div>`;
@@ -653,10 +669,10 @@ function drawMainPreviewCanvas(payload) {
   const isFiltered = String(payload.filter_profile_id || "raw") !== "raw";
   ctx.fillStyle = "#0f172a";
   ctx.font = "700 14px system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif";
-  ctx.fillText(isFiltered ? "Filter preview waveform" : "Raw EDF waveform", left, 24);
+  ctx.fillText(isFiltered ? "滤波后波形预览" : "原始 EDF 波形", left, 24);
   ctx.fillStyle = "#64748b";
   ctx.font = "12px system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif";
-  ctx.fillText(`${channels.length} channels | ${payload.unit || "uV"} | ${isFiltered ? "filter preview only" : "raw signal"} | non-medical research review`, left + 150, 24);
+  ctx.fillText(`${channels.length} 导联 | ${payload.unit || "uV"} | ${isFiltered ? "仅作滤波预览" : "原始信号"} | 科研复核支持`, left + 150, 24);
 
   state.mainPreviewMetrics = {
     renderer: "main_canvas",
@@ -668,7 +684,7 @@ function drawMainPreviewCanvas(payload) {
   };
   window.__QLANALYSER_EPILEPSY_MAIN_PREVIEW__ = state.mainPreviewMetrics;
   const status = document.querySelector("#mainPreviewStatus");
-  if (status) status.textContent = `Canvas ${state.mainPreviewMetrics.duration_ms} ms`;
+  if (status) status.textContent = `波形已绘制 ${state.mainPreviewMetrics.duration_ms} ms`;
   return true;
 }
 async function hydrateWaveformRenderer() {
@@ -688,7 +704,7 @@ async function hydrateWaveformRenderer() {
   host.dataset.rendered = waveformPayloadKey(payload);
   const started = performance.now();
   try {
-    if (status) status.textContent = "loading TimeChart";
+    if (status) status.textContent = "正在加载交互波形";
     const TimeChart = await ensureTimeChart();
     const start = Number(payload.start_sec || 0);
     const stop = Number(payload.stop_sec ?? (start + Number(payload.duration_sec || 0)));
@@ -710,7 +726,7 @@ async function hydrateWaveformRenderer() {
       payload_key: waveformPayloadKey(payload),
     };
     window.__QLANALYSER_EPILEPSY_TIMECHART__ = state.timechartMetrics;
-    if (status) status.textContent = `TimeChart ${state.timechartMetrics.duration_ms} ms`;
+    if (status) status.textContent = `交互波形已加载 ${state.timechartMetrics.duration_ms} ms`;
   } catch (error) {
     state.timechartLoadState = "failed";
     state.timechartLoadError = error.message || String(error);
@@ -723,13 +739,13 @@ async function hydrateWaveformRenderer() {
     };
     window.__QLANALYSER_EPILEPSY_TIMECHART__ = state.timechartMetrics;
     host.innerHTML = renderWaveformWindow(payload);
-    if (status) status.textContent = `SVG fallback: ${state.timechartLoadError}`;
+    if (status) status.textContent = "波形渲染已切换为备用视图";
   }
 }
 function scoreLabel() {
   return state.task?.module_name === "epilepsy_ml" || state.summary?.method === "ml_epoch_classifier" || state.algorithmMode === "ml_epoch_classifier"
-    ? "probability"
-    : "mean RMS";
+    ? "候选排序值"
+    : "平均 RMS";
 }
 function renderEpilepsyWorkbenchStatus() {
   const container = document.getElementById('epilepsyWorkbenchStatus');
@@ -870,7 +886,7 @@ function stageCodeOf(row) {
 }
 
 function stageName(code) {
-  return Number(code) === 1 ? "Seizure" : "Normal";
+  return Number(code) === 1 ? "纳入草稿候选" : "不纳入草稿";
 }
 
 function normalizeEpochRows(rows) {
@@ -1100,10 +1116,10 @@ function render() {
       <nav class="ep-nav">
         <a class="brand" href="./epilepsy-workbench.html?lab=1&api=${encodeURIComponent(API_BASE)}">
           <span class="brand-mark">EP</span>
-          <span><strong>Epilepsy-like Event Screening</strong><small>Lab route / candidate events / waveform evidence</small></span>
+          <span><strong>癫痫样候选事件初筛</strong><small>候选事件 / 波形预览 / 候选复核</small></span>
         </a>
         <div class="top-links">
-          <a href="./?customer_demo=auto&teaching_demo=auto&api=${encodeURIComponent(API_BASE)}#analysis">${icon("layout-dashboard")}Analysis</a>
+          <a href="./?customer_demo=auto&teaching_demo=auto&api=${encodeURIComponent(API_BASE)}#analysis">${icon("layout-dashboard")}返回分析任务</a>
         </div>
       </nav>
     </header>`}
@@ -1164,30 +1180,31 @@ function renderMainNavigationFrame(content) {
 function renderEmbeddedScreeningPanel() {
   const hasTask = Boolean(state.task?.id || START_TASK_ID);
   const isMl = state.algorithmMode === "ml_epoch_classifier";
+  const canRunTask = Boolean(selectedFile() && !state.runInFlight);
   const runLabel = hasTask
-    ? (isMl ? "重新初筛" : "重新 STD 初筛")
-    : (isMl ? "开始初筛" : "开始 STD 初筛");
+    ? "重新初筛"
+    : "开始初筛";
   const statusText = hasTask
-    ? "已生成初筛结果，可继续查看候选事件、波形证据并进行人工复核。"
-    : "已继承数据准备方案。先在本操作台内进行癫痫样事件初筛，再查看 Stage_Code、候选事件和波形证据并人工复核。";
+    ? "已生成初筛结果，可继续查看候选事件、波形预览并进行候选复核。"
+    : "已继承数据准备方案。先在本操作台内进行癫痫样事件初筛，再查看候选事件、区段标记和波形预览并复核候选。";
   return `<section class="panel embedded-screening-panel" data-testid="epilepsy-console-screening-panel">
     <div>
-      <p class="eyebrow">Screening inside console</p>
+      <p class="eyebrow">控制台内筛查</p>
       <h2>${icon("activity")}癫痫样事件分析台</h2>
       <p class="notice" data-testid="epilepsy-console-empty-state">${h(statusText)}</p>
     </div>
-    <button class="btn primary" id="runTaskBtn" data-testid="epilepsy-run" ${state.runInFlight ? "disabled" : ""}>${icon("play")}${runLabel}</button>
+    <button class="btn primary" id="runTaskBtn" data-testid="epilepsy-run" ${canRunTask ? "" : "disabled"} title="${canRunTask ? "开始候选事件初筛" : "请先选择或上传 EEG 文件"}">${icon("play")}${runLabel}</button>
   </section>`;
 }
 
 function renderContextBlocked() {
   return `<section class="ep-wrap embedded-child-page">
     <article class="panel context-blocked" data-testid="epilepsy-context-blocked">
-      <p class="eyebrow">QLanalyser analysis child page</p>
-      <h1>Open this page from an Analysis task</h1>
-      <p>This child page inherits the prepared EEG file, screening task, plan revision, and Results route from QLanalyser. Direct standalone entry is blocked for customer use.</p>
+      <p class="eyebrow">QLanalyser 分析任务内页</p>
+      <h1>请从分析任务打开本页</h1>
+      <p>本页需要继承已准备的 EEG 文件、初筛任务、准备记录版本和结果入口。为避免上下文不一致，客户模式下不允许直接独立进入。</p>
       <div class="inline-actions">
-        <a class="btn primary" href="./?customer_demo=auto&teaching_demo=auto&api=${encodeURIComponent(API_BASE)}#analysis">${icon("layout-dashboard")}Back to Analysis</a>
+        <a class="btn primary" href="./?customer_demo=auto&teaching_demo=auto&api=${encodeURIComponent(API_BASE)}#analysis">${icon("layout-dashboard")}返回分析任务</a>
       </div>
     </article>
   </section>`;
@@ -1205,26 +1222,26 @@ function renderContextHeader() {
   const contract = CONTEXT_HINT.contract || taskParams.data_preparation_contract_version || "-";
   return `<section class="panel context-header ${mismatches.length ? "context-stale" : ""}" data-testid="epilepsy-context-header" data-context-state="${mismatches.length ? "stale" : "ready"}">
     <div>
-      <p class="eyebrow">Analysis child page</p>
-      <h1>Epilepsy-like Event Screening</h1>
-      <p>Inherited data preparation first. Start event screening inside this console, then inspect waveform evidence, candidate events, and manual corrections. Research support only; not for diagnosis or clinical decisions.</p>
+      <p class="eyebrow">分析任务内页</p>
+      <h1>癫痫样候选事件初筛</h1>
+      <p>先继承已确认的数据准备记录，再在本页完成候选事件初筛、波形预览和候选复核。仅用于科研筛查支持，不作为临床诊断或治疗决策依据。</p>
     </div>
     <div class="context-grid">
-      <span data-context-field="task"><strong>Task</strong>${h(taskLabel)} / ${h(taskStatus)}</span>
-      <span data-context-field="file"><strong>File</strong>${h(fileLabel)}</span>
-      <span data-context-field="plan"><strong>Plan</strong>${h(plan)}</span>
-      <span data-context-field="revision"><strong>Revision</strong>${h(revision)}</span>
-      <span data-context-field="contract"><strong>Contract</strong>${h(contract)}</span>
-      <span data-context-field="results"><strong>Results</strong>${h(CONTEXT_HINT.results || "#results")}</span>
+      <span data-context-field="task"><strong>分析记录</strong>${h(taskLabel)} / ${h(taskStatus)}</span>
+      <span data-context-field="file"><strong>数据文件</strong>${h(fileLabel)}</span>
+      <span data-context-field="plan"><strong>准备记录</strong>${h(plan)}</span>
+      <span data-context-field="revision"><strong>复核版本</strong>${h(revision)}</span>
+      <span data-context-field="contract"><strong>流程版本</strong>${h(contract)}</span>
+      <span data-context-field="results"><strong>结果入口</strong>${h(CONTEXT_HINT.results || "#results")}</span>
     </div>
-    ${mismatches.length ? `<div class="context-warning" data-testid="epilepsy-context-stale">ContextStale: ${h(mismatches.join(", "))} does not match the task. Correction is blocked until the task is reopened from Analysis.</div>` : ""}
+    ${mismatches.length ? `<div class="context-warning" data-testid="epilepsy-context-stale">当前页面上下文与分析记录不一致：${h(mismatches.join(", "))}。请从分析任务重新打开本页后再复核。</div>` : ""}
   </section>`;
 }
 
 function renderHero() {
   return `<section class="hero">
     <div class="hero-card">
-      <p class="eyebrow">Epileptiform research screening</p>
+      <p class="eyebrow">癫痫样候选事件科研筛查</p>
       <h1>进入癫痫样候选事件工作台</h1>
       <p>这里不是诊断工具。它把源模型 ML 筛查结果变成可复核工作台：参数可改、epoch 可点、候选事件可看、波形可回看、复核结果可导出。</p>
       <div class="hero-actions">
@@ -1236,8 +1253,8 @@ function renderHero() {
     <aside class="side-card">
       <h2>边界</h2>
       <ul class="status-list">
-        <li><strong>同源工作流</strong><span>默认提交 module_name=epilepsy_ml / workflow_id=epilepsy_ml_xgboost；STD 可作为基线切换。</span></li>
-        <li><strong>人工复核</strong><span>复核层保存在浏览器本地，可导出 JSON/CSV；不会改原始 EEG。</span></li>
+        <li><strong>同源工作流</strong><span>默认使用迁移后的候选事件初筛流程；阈值基线可作为对照切换。</span></li>
+        <li><strong>候选复核</strong><span>复核层保存在当前分析记录，可导出复核记录和事件表；不会改原始 EEG。</span></li>
         <li><strong>非医疗</strong><span>仅用于科研筛查和候选事件复核，不用于诊断、确诊、治疗或临床决策。</span></li>
       </ul>
     </aside>
@@ -1277,35 +1294,36 @@ function renderParameterPanel() {
   const p = state.parameters;
   const isMl = state.algorithmMode === "ml_epoch_classifier";
   const hasTask = Boolean(state.task?.id || START_TASK_ID);
+  const canRunTask = Boolean(selectedFile() && !state.runInFlight);
   const runLabel = hasTask
-    ? (isMl ? "重新运行 ML 初筛" : "重新运行 STD 初筛")
-    : (isMl ? "开始 ML 初筛" : "开始 STD 初筛");
+    ? "重新运行初筛"
+    : "开始初筛";
   const notice = isMl
-    ? "当前算法底座为源项目 XGBoost ML：模型文件 hash 校验、19 个特征顺序、0.5 阈值、完整 epoch 截断和连续 2 个 epoch 事件规则均按源代码迁移。"
-    : "当前算法底座为 STD 阈值筛查；可随时切换到 ML 高保真模式。";
+    ? "当前使用迁移后的候选事件初筛流程；参数、窗口长度、连续区段规则和复核记录会一起保存，便于追溯。"
+    : "当前使用阈值基线筛查，适合作为候选复核流程的对照。";
   return `<section class="panel">
     <h2>${icon("sliders-horizontal")}参数设置</h2>
     <div class="field">
       <label>算法</label>
       <select id="algorithmModeSelect">
-        <option value="ml_epoch_classifier" ${isMl ? "selected" : ""}>ML 高保真源模型</option>
-        <option value="std_threshold" ${!isMl ? "selected" : ""}>STD 阈值基线</option>
+        <option value="ml_epoch_classifier" ${isMl ? "selected" : ""}>候选事件初筛</option>
+        <option value="std_threshold" ${!isMl ? "selected" : ""}>阈值基线筛查</option>
       </select>
     </div>
     <form id="parameterForm">
       <div class="field"><label>EEG 通道</label><input name="eeg_channel" value="${h(p.eeg_channel)}" placeholder="空 = 第一个可用 EEG" /></div>
       <div class="grid-2">
-        <div class="field"><label>Epoch 长度（秒）</label><input name="epoch_length_sec" type="number" step="0.5" value="${h(p.epoch_length_sec)}" /></div>
-        <div class="field"><label>STD 阈值系数</label><input name="std_factor" type="number" step="0.1" value="${h(p.std_factor)}" /></div>
-        <div class="field"><label>RMS 窗口（样本）</label><input name="rms_window_samples" type="number" step="1" value="${h(p.rms_window_samples)}" /></div>
-        <div class="field"><label>合并间隔（epoch）</label><input name="merge_gap_epoch_num" type="number" step="1" value="${h(p.merge_gap_epoch_num)}" /></div>
-        <div class="field"><label>最小事件（epoch）</label><input name="min_event_epochs" type="number" step="1" value="${h(p.min_event_epochs)}" /></div>
+        <div class="field"><label>分段长度（秒）</label><input name="epoch_length_sec" type="number" step="0.5" value="${h(p.epoch_length_sec)}" /></div>
+        <div class="field"><label>阈值系数</label><input name="std_factor" type="number" step="0.1" value="${h(p.std_factor)}" /></div>
+        <div class="field"><label>幅度统计窗口（样本）</label><input name="rms_window_samples" type="number" step="1" value="${h(p.rms_window_samples)}" /></div>
+        <div class="field"><label>合并间隔（区段）</label><input name="merge_gap_epoch_num" type="number" step="1" value="${h(p.merge_gap_epoch_num)}" /></div>
+        <div class="field"><label>最小事件长度（区段）</label><input name="min_event_epochs" type="number" step="1" value="${h(p.min_event_epochs)}" /></div>
         <div class="field"><label>统计窗口（秒）</label><input name="event_window_sec" type="number" step="60" value="${h(p.event_window_sec)}" /></div>
       </div>
       <div class="field"><label>排除通道</label><input name="bad_channels" value="${h(p.bad_channels)}" placeholder="英文逗号分隔" /></div>
     </form>
-    ${EMBED_MODE && !state.task?.id ? `<p class="notice" data-testid="epilepsy-console-empty-state">已继承数据准备方案。请先在本操作台内开始初筛，完成后再查看 Stage_Code、候选事件和波形并人工矫正。</p>` : ""}
-    <button class="btn primary" id="runTaskBtn" data-testid="epilepsy-run" ${state.runInFlight ? "disabled" : ""}>${icon("play")}${runLabel}</button>
+    ${EMBED_MODE && !state.task?.id ? `<p class="notice" data-testid="epilepsy-console-empty-state">已继承数据准备方案。请先在本操作台内开始初筛，完成后再查看候选事件、区段标记和波形并复核候选。</p>` : ""}
+    <button class="btn primary" id="runTaskBtn" data-testid="epilepsy-run" ${canRunTask ? "" : "disabled"} title="${canRunTask ? "开始候选事件初筛" : "请先选择或上传 EEG 文件"}">${icon("play")}${runLabel}</button>
     <p class="notice">${h(notice)}</p>
   </section>`;
 }
@@ -1326,21 +1344,21 @@ function renderReviewExportPanel() {
       <input value="${h(taskId)}" readonly />
     </div>
     <div class="inline-actions">
-      <button class="btn" id="undoReviewBtn" ${state.history.length ? "" : "disabled"}>${icon("undo-2")}Undo</button>
-      <button class="btn" id="redoReviewBtn" ${state.future.length ? "" : "disabled"}>${icon("redo-2")}Redo</button>
-      <button class="btn warn" id="resetReviewsBtn" ${(Object.keys(state.reviews).length || correctedCount) ? "" : "disabled"}>${icon("rotate-ccw")}Reset</button>
+      <button class="btn" id="undoReviewBtn" ${state.history.length ? "" : "disabled"}>${icon("undo-2")}撤销</button>
+      <button class="btn" id="redoReviewBtn" ${state.future.length ? "" : "disabled"}>${icon("redo-2")}重做</button>
+      <button class="btn warn" id="resetReviewsBtn" ${(Object.keys(state.reviews).length || correctedCount) ? "" : "disabled"}>${icon("rotate-ccw")}清空本次复核</button>
     </div>
     <div class="inline-actions">
-      <button class="btn primary" id="saveReviewDraftBtn" data-testid="epilepsy-save-draft" ${state.reviewSession?.id ? "" : "disabled"}>${icon("save")}保存草稿</button>
-      <button class="btn primary" id="publishReviewResultsBtn" data-testid="epilepsy-publish-results" ${state.reviewSession?.id ? "" : "disabled"}>${icon("upload-cloud")}发布到结果查看</button>
+      <button class="btn primary" id="saveReviewDraftBtn" data-testid="epilepsy-save-draft" ${state.reviewSession?.id && !state.saveInFlight ? "" : "disabled"}>${icon("save")}${state.saveInFlight ? "正在保存" : "保存复核草稿"}</button>
+      <button class="btn primary" id="publishReviewResultsBtn" data-testid="epilepsy-publish-results" ${state.reviewSession?.id && !state.publishInFlight ? "" : "disabled"}>${icon("upload-cloud")}${state.publishInFlight ? "正在生成" : "生成复核记录"}</button>
       <a class="btn ${canOpenResults ? "" : "disabled"}" data-testid="epilepsy-open-results" href="${h(resultsHref)}" ${canOpenResults ? "" : "aria-disabled=\"true\""}>${icon("panel-right-open")}回到主程序结果查看</a>
     </div>
     ${labDownloads ? `<div class="inline-actions">
-      <button class="btn" id="downloadReviewJsonBtn" ${state.task ? "" : "disabled"}>${icon("download")}下载草稿 JSON</button>
-      <button class="btn" id="downloadReviewCsvBtn" ${state.task ? "" : "disabled"}>${icon("table")}下载草稿 Epoch CSV</button>
-      <button class="btn" id="downloadEventsCsvBtn" ${state.task ? "" : "disabled"}>${icon("list-checks")}下载候选事件 CSV</button>
+      <button class="btn" id="downloadReviewJsonBtn" ${state.task ? "" : "disabled"}>${icon("download")}下载复核记录</button>
+      <button class="btn" id="downloadReviewCsvBtn" ${state.task ? "" : "disabled"}>${icon("table")}下载复核表</button>
+      <button class="btn" id="downloadEventsCsvBtn" ${state.task ? "" : "disabled"}>${icon("list-checks")}下载候选事件表</button>
     </div>` : ""}
-    <p class="kbd-hint">发布会把人工矫正 epoch、事件、动作日志和 manifest 注册为当前分析任务的结果产物；不会覆盖原始 ML 输出。已矫正 epoch：${correctedCount}，动作记录：${state.reviewActions.length}${registeredCount ? `，已注册结果产物：${registeredCount}` : ""}</p>
+    <p class="kbd-hint">生成复核记录会保存候选状态、事件边界和操作记录；不会覆盖原始初筛结果。已调整片段：${correctedCount}，操作记录：${state.reviewActions.length}${registeredCount ? `，已生成复核文件：${registeredCount}` : ""}。正式客户报告仍需单独审核。</p>
   </section>`;
 }
 
@@ -1350,7 +1368,7 @@ function renderRunSummary() {
   const taskStatus = state.task?.status || "未初筛";
   const threshold = summary.threshold ?? state.task?.parameters_json?.probability_threshold ?? buildTaskParameters().probability_threshold ?? "-";
   const planLabel = CONTEXT_HINT.plan ? `${CONTEXT_HINT.plan} / r${CONTEXT_HINT.rev || "-"}` : "未继承";
-  const workflowLabel = state.task?.workflow_id || (state.algorithmMode === "ml_epoch_classifier" ? "ML 源模型初筛" : "STD 阈值初筛");
+  const workflowLabel = state.algorithmMode === "ml_epoch_classifier" ? "候选事件初筛" : "阈值基线筛查";
   return `<section class="panel">
     <div class="panel-head">
       <h2>${icon("activity")}工作台概览</h2>
@@ -1358,14 +1376,14 @@ function renderRunSummary() {
     </div>
     <div class="metric-grid">
       <div class="metric"><span>候选事件</span><strong>${summary.event_count ?? (state.eventRows.length || "-")}</strong></div>
-      <div class="metric"><span>Epoch</span><strong>${summary.epoch_count ?? (state.epochRows.length || "-")}</strong></div>
+      <div class="metric"><span>复核区段</span><strong>${summary.epoch_count ?? (state.epochRows.length || "-")}</strong></div>
       <div class="metric"><span>阈值</span><strong>${threshold === "-" ? "-" : fmt(threshold, 7)}</strong></div>
-      <div class="metric"><span>人工修改</span><strong>${reviewed}</strong></div>
+      <div class="metric"><span>人工调整</span><strong>${reviewed}</strong></div>
     </div>
     <div class="summary-list" data-testid="epilepsy-console-summary">
       <span><strong>数据准备</strong>${h(planLabel)}</span>
       <span><strong>分析流程</strong>${h(workflowLabel)}</span>
-      <span><strong>波形与矫正</strong>${state.task?.id ? "结果已生成，可查看候选事件波形并进行人工复核。" : "初筛完成后显示 Stage_Code、候选事件和波形证据。"}</span>
+      <span><strong>波形与复核</strong>${state.task?.id ? "结果已生成，可查看候选事件波形并进行候选复核。" : "初筛完成后显示候选区段、候选事件和波形预览。"}</span>
     </div>
   </section>`;
 }
@@ -1374,8 +1392,8 @@ function renderSourceReplicaToolbar() {
   const total = state.epochRows.length;
   if (!total) {
     return `<section class="panel source-replica">
-      <h2>${icon("panel-top")}ML Epilepsy Analysis 源交互区</h2>
-      <div class="empty">运行初筛后，这里会显示源代码式 epoch 导航、候选事件/Normal 人工复核、Undo/Redo/Reset 和幅度控制。</div>
+      <h2>${icon("panel-top")}候选区段复核</h2>
+      <div class="empty">运行初筛后，这里会显示 epoch 导航、候选事件复核、撤销/重做和幅度控制。</div>
     </section>`;
   }
   const range = selectedEpochRange();
@@ -1386,68 +1404,68 @@ function renderSourceReplicaToolbar() {
     ? 1
     : Math.max(1, Math.ceil(total / Math.max(1, Number(state.visibleEpochCount))));
   const countOptions = ["All", "100", "50", "30", "20", "10", "5", "3"].map((value) =>
-    `<option value="${value}" ${String(state.visibleEpochCount) === value ? "selected" : ""}>${value}</option>`
+    `<option value="${value}" ${String(state.visibleEpochCount) === value ? "selected" : ""}>${value === "All" ? "全部" : value}</option>`
   ).join("");
   const stageEditDisabled = correctionModeActive() ? "" : "disabled";
   return `<section class="panel source-replica">
     <div class="panel-head">
-      <h2>${icon("panel-top")}ML Epilepsy Analysis 源交互区</h2>
-      <span class="badge">Page ${currentPage} of ${totalPages}</span>
+      <h2>${icon("panel-top")}候选区段复核</h2>
+      <span class="badge">第 ${currentPage} / ${totalPages} 页</span>
     </div>
     <div class="source-toolbar">
       <div class="field compact">
-        <label>Number of Epochs to display</label>
+        <label>显示区段数</label>
         <select id="visibleEpochCountSelect">${countOptions}</select>
       </div>
-      <div class="source-nav" aria-label="epoch navigation">
-        <button class="btn icon-only" data-nav-epoch="first" title="First">${icon("skip-back")}</button>
-        <button class="btn icon-only" data-nav-epoch="previous" title="Previous">${icon("chevron-left")}</button>
-        <input id="gotoEpochInput" type="number" min="1" max="${total}" value="${state.selectedEpoch + 1}" aria-label="Goto epoch" />
-        <button class="btn icon-only" data-nav-epoch="next" title="Next">${icon("chevron-right")}</button>
-        <button class="btn icon-only" data-nav-epoch="last" title="Last">${icon("skip-forward")}</button>
+      <div class="source-nav" aria-label="候选区段导航">
+        <button class="btn icon-only" data-nav-epoch="first" title="第一页">${icon("skip-back")}</button>
+        <button class="btn icon-only" data-nav-epoch="previous" title="上一页">${icon("chevron-left")}</button>
+        <input id="gotoEpochInput" type="number" min="1" max="${total}" value="${state.selectedEpoch + 1}" aria-label="跳转到区段" />
+        <button class="btn icon-only" data-nav-epoch="next" title="下一页">${icon("chevron-right")}</button>
+        <button class="btn icon-only" data-nav-epoch="last" title="最后一页">${icon("skip-forward")}</button>
       </div>
       <div class="field compact">
-        <label>Start Epoch</label>
+        <label>起始区段</label>
         <input id="epochRangeStartInput" type="number" min="1" max="${total}" value="${range.start + 1}" />
       </div>
       <div class="field compact">
-        <label>End Epoch</label>
+        <label>结束区段</label>
         <input id="epochRangeEndInput" type="number" min="1" max="${total}" value="${range.end + 1}" />
       </div>
     </div>
     <div class="source-toolbar source-editbar">
-      <button class="btn danger" id="applyStageSeizureBtn" ${stageEditDisabled}>${icon("badge-alert")}Seizure</button>
-      <button class="btn primary" id="applyStageNormalBtn" ${stageEditDisabled}>${icon("check")}Normal</button>
-      <button class="btn" id="sourceUndoBtn" ${state.history.length ? "" : "disabled"}>${icon("undo-2")}Undo</button>
-      <button class="btn" id="sourceRedoBtn" ${state.future.length ? "" : "disabled"}>${icon("redo-2")}Redo</button>
-      <button class="btn warn" id="sourceResetBtn" ${(Object.keys(state.reviews).length || Object.keys(state.epochOverrides).length) ? "" : "disabled"}>${icon("rotate-ccw")}Reset</button>
+      <button class="btn danger" id="applyStageSeizureBtn" ${stageEditDisabled}>${icon("badge-alert")}纳入草稿</button>
+      <button class="btn primary" id="applyStageNormalBtn" ${stageEditDisabled}>${icon("check")}不纳入草稿</button>
+      <button class="btn" id="sourceUndoBtn" ${state.history.length ? "" : "disabled"}>${icon("undo-2")}撤销</button>
+      <button class="btn" id="sourceRedoBtn" ${state.future.length ? "" : "disabled"}>${icon("redo-2")}重做</button>
+      <button class="btn warn" id="sourceResetBtn" ${(Object.keys(state.reviews).length || Object.keys(state.epochOverrides).length) ? "" : "disabled"}>${icon("rotate-ccw")}清空</button>
       <div class="field compact">
-        <label>EEG amplitude</label>
+        <label>EEG 幅度</label>
         <select id="eegAmplitudeSelect" aria-label="EEG amplitude">
-          <option>Auto</option><option>±100</option><option>±200</option><option>±500</option><option>±1000</option><option>±2000</option>
+          <option>自动</option><option>±100</option><option>±200</option><option>±500</option><option>±1000</option><option>±2000</option>
         </select>
       </div>
       <div class="field compact">
-        <label>EMG amplitude</label>
+        <label>EMG 幅度</label>
         <select aria-label="EMG amplitude">
-          <option>Auto</option><option>±50</option><option>±100</option><option>±200</option><option>±500</option>
+          <option>自动</option><option>±50</option><option>±100</option><option>±200</option><option>±500</option>
         </select>
       </div>
       <div class="field compact">
-        <label>ACC amplitude</label>
+        <label>ACC 幅度</label>
         <select aria-label="ACC amplitude">
           <option>Auto</option><option>±500</option><option>±1000</option><option>±2000</option><option>±4000</option>
         </select>
       </div>
     </div>
-    <p class="kbd-hint">当前选择：epoch ${range.start + 1} - ${range.end + 1}。Seizure/Normal 只有在 Correction mode 中才会修改选中 epoch 的 Stage_Code，并触发本地事件重算。</p>
+    <p class="kbd-hint">当前选择：区段 ${range.start + 1} - ${range.end + 1}。只有进入调整模式后，纳入草稿/不纳入草稿按钮才会修改当前候选区段标记，并触发本地事件重算。</p>
   </section>`;
 }
 
 function renderTimelinePanel() {
   const label = scoreLabel();
   if (!state.epochRows.length) {
-    return `<section class="panel"><h2>${icon("bar-chart-3")}Epoch 时间轴</h2><div class="empty">运行分析后会显示每个 epoch 的阈值命中、事件归属和 ${h(label)} 曲线。</div></section>`;
+    return `<section class="panel"><h2>${icon("bar-chart-3")}区段时间轴</h2><div class="empty">运行分析后会显示每个复核区段的阈值命中、事件归属和 ${h(label)} 曲线。</div></section>`;
   }
   const range = selectedEpochRange();
   const cells = visibleEpochRows().map((row) => {
@@ -1462,15 +1480,15 @@ function renderTimelinePanel() {
   }).join("");
   return `<section class="panel">
     <div class="panel-head">
-      <h2>${icon("bar-chart-3")}Epoch 时间轴与 ${h(label)}</h2>
-      <span class="badge">点击 epoch 选择；按钮改 Stage_Code</span>
+      <h2>${icon("bar-chart-3")}区段时间轴与 ${h(label)}</h2>
+      <span class="badge">点击 epoch 选择；按钮修改候选区段标记</span>
     </div>
     <div class="timeline-card">
       <div class="timeline-head">
-        <strong>红色 = Seizure；蓝色 = Normal；绿色边框 = 已聚合候选事件</strong>
-        <span>当前 epoch：${state.selectedEpoch + 1}</span>
+        <strong>红色 = 纳入草稿候选；蓝色 = 不纳入草稿；绿色边框 = 已聚合候选事件</strong>
+        <span>当前区段：${state.selectedEpoch + 1}</span>
       </div>
-      <div class="stage-axis"><span>Seizure</span><span>Normal</span></div>
+      <div class="stage-axis"><span>纳入草稿</span><span>不纳入</span></div>
       <div class="epoch-strip source-strip" style="--epoch-count:${visibleEpochRows().length}">${cells}</div>
       ${renderRmsChart()}
     </div>
@@ -1497,7 +1515,7 @@ function renderRmsChart() {
     return `<rect class="event-band" x="${x1}" y="${pad.top}" width="${Math.max(4, x2 - x1)}" height="${height - pad.top - pad.bottom}" />`;
   }).join("");
   const circles = rows.map((row, index) => `<circle class="point ${index === state.selectedEpoch ? "selected" : ""}" cx="${x(index)}" cy="${y(numeric(row.mean_rms))}" r="${index === state.selectedEpoch ? 5 : 3}" />`).join("");
-  return `<svg class="rms-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Epoch ${h(label)} curve">
+  return `<svg class="rms-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="复核区段 ${h(label)} 曲线">
     <line class="axis" x1="${pad.left}" y1="${height - pad.bottom}" x2="${width - pad.right}" y2="${height - pad.bottom}" />
     <line class="axis" x1="${pad.left}" y1="${pad.top}" x2="${pad.left}" y2="${height - pad.bottom}" />
     ${eventBands}
@@ -1605,7 +1623,7 @@ function prevEventPage() {
 
 function renderEventsPanel() {
   if (!state.eventRows.length) {
-    return `<section class="panel"><div class="panel-head"><h2>${icon("list-checks")}候选事件与人工矫正</h2><span class="badge warn" data-testid="epilepsy-event-count">0 个候选事件</span></div><div class="empty">当前矫正后的 Stage_Code 没有形成连续 >=2 个 Seizure epoch，因此没有候选事件。可以 Undo 或把 epoch 范围重新标为 Seizure。</div></section>`;
+    return `<section class="panel"><div class="panel-head"><h2>${icon("list-checks")}候选事件与候选复核</h2><span class="badge warn" data-testid="epilepsy-event-count">0 个候选事件</span></div><div class="empty">当前复核层没有形成连续 >=2 个纳入草稿区段，因此没有候选事件。可以撤销，或把区段范围重新标为纳入草稿。</div></section>`;
   }
   
   const pagination = paginateEvents();
@@ -1651,23 +1669,23 @@ function renderEventsPanel() {
   const correctionReady = correctionModeActive();
   const writesAllowed = correctionWritesAllowed();
   const disabledReason = !selected
-    ? "Select an event first."
+    ? "请先选择候选事件。"
     : !correctionReady
-      ? "Switch to Correction mode before changing review state."
+      ? "请先进入调整模式，再修改复核状态。"
       : state.waveformInFlight || waveformIsStale() || !waveformWindowMatchesActiveView(state.waveformWindow)
-        ? "Wait until the current waveform window is ready."
+        ? "请等待当前波形窗口加载完成。"
         : "";
   const stageButtonState = selected && writesAllowed ? "" : `disabled title="${h(disabledReason)}" data-disabled-reason="${h(disabledReason)}"`;
   return `<section class="panel">
     <div class="panel-head">
-      <h2>${icon("list-checks")}候选事件与人工矫正</h2>
+      <h2>${icon("list-checks")}候选事件与候选复核</h2>
       <span class="badge" data-testid="epilepsy-event-count">${state.eventRows.length} 个候选事件</span>
     </div>
     <div class="review-card">
       <div>
         <div class="table-wrap">
           <table class="data-table" data-testid="epilepsy-event-table">
-            <thead><tr><th>事件</th><th>时间</th><th>Epoch</th><th>长度</th><th>RMS</th><th>复核</th></tr></thead>
+            <thead><tr><th>事件</th><th>时间</th><th>区段</th><th>长度</th><th>排序值</th><th>复核</th></tr></thead>
             <tbody>${rows}</tbody>
           </table>
         </div>
@@ -1683,11 +1701,11 @@ function renderEventsPanel() {
           <textarea id="reviewNote" placeholder="例如：高幅连续 3 个 epoch，需回看原始波形。">${h(state.reviewNote || selectedReview.note || "")}</textarea>
         </div>
         <div class="review-actions">
-          <button class="btn danger" id="markSeizureBtn" data-testid="epilepsy-stage-seizure" ${stageButtonState}>${icon("badge-alert")}Seizure</button>
-          <button class="btn primary" id="markNormalBtn" data-testid="epilepsy-stage-normal" ${stageButtonState}>${icon("check")}Normal</button>
-          <button class="btn" id="markNeedsReviewBtn" data-testid="epilepsy-event-needs-review" ${stageButtonState}>${icon("eye")}Needs review</button>
+          <button class="btn danger" id="markSeizureBtn" data-testid="epilepsy-stage-seizure" ${stageButtonState}>${icon("badge-alert")}纳入草稿</button>
+          <button class="btn primary" id="markNormalBtn" data-testid="epilepsy-stage-normal" ${stageButtonState}>${icon("check")}不纳入草稿</button>
+          <button class="btn" id="markNeedsReviewBtn" data-testid="epilepsy-event-needs-review" ${stageButtonState}>${icon("eye")}存疑复核</button>
         </div>
-        <p class="kbd-hint">${correctionReady ? "矫正模式已开启：Seizure/Normal 会修改当前事件 epoch 范围的工作台 Stage_Code。" : "浏览模式：Seizure/Normal 已锁定，进入 Correction mode 后才可修改 Stage_Code。"} 算法原始产物不会被覆盖。</p>
+        <p class="kbd-hint">${correctionReady ? "调整模式已开启：纳入草稿/不纳入草稿会修改当前事件区段范围的复核层标记。" : "浏览模式：复核写入已锁定，进入调整模式后才可修改复核层标记。"} 算法原始产物不会被覆盖。</p>
       </aside>
     </div>
   </section>`;
@@ -1701,7 +1719,7 @@ function renderWaveformPanel() {
   const viewportStop = viewport.start + viewport.duration;
   const mode = correctionModeActive() ? "correct" : "browse";
   const gain = String(state.waveformInteraction?.gain || "auto");
-  const filterLabel = waveformFilterProfileId() === "raw" ? "Raw" : "Filter preview";
+  const filterLabel = waveformFilterProfileId() === "raw" ? "原始波形" : "滤波后波形";
   const fileLabel = file?.original_filename || file?.filename || file?.id || "未选择 EDF";
   window.__QLANALYSER_EPILEPSY_WAVEFORM_STATE__ = {
     mode,
@@ -1734,17 +1752,17 @@ function renderWaveformPanel() {
   const renderer = state.waveformRenderer === "svg" ? "svg" : "canvas";
   const labRendererControls = !EMBED_MODE || LAB_MODE;
   const frameBody = directWindow || staleWindow
-    ? `${staleWindow ? `<div class="waveform-stale-banner">Stale waveform: displayed ${h(displayedWindowLabel)}, requested ${h(requestedWindowLabel)}. Correction is locked until the new window is ready.</div>` : ""}${renderer === "canvas" ? renderMainPreviewCanvasHost(directWindow || staleWindow) : renderWaveformWindow(directWindow || staleWindow)}`
+    ? `${staleWindow ? `<div class="waveform-stale-banner">波形窗口正在更新：当前显示 ${h(displayedWindowLabel)}，请求窗口 ${h(requestedWindowLabel)}。新窗口就绪前复核写入已锁定。</div>` : ""}${renderer === "canvas" ? renderMainPreviewCanvasHost(directWindow || staleWindow) : renderWaveformWindow(directWindow || staleWindow)}`
     : figure
     ? `<img src="${h(artifactUrl(figure))}" alt="癫痫候选事件波形预览" />`
     : previewMatchesSelection && state.waveformError
-      ? `<div class="empty error">波形预览失败：${h(state.waveformError)}</div>`
+      ? `<div class="empty error">波形预览失败：${h(customerErrorMessage("读取候选波形", state.waveformError))}</div>`
       : state.waveformInFlight
-      ? `<div class="empty">正在读取 EDF 并生成 Raw / Filter preview，请稍等。</div>`
+      ? `<div class="empty">正在读取 EDF 并生成原始波形 / 滤波后波形，请稍等。</div>`
       : selected && !analysisMatchesFile
         ? `<div class="empty">当前候选事件不是当前文件生成的，请先运行当前文件的筛查。</div>`
         : previewMatchesSelection && state.waveformTask?.status === "completed"
-          ? `<div class="empty">后端任务已完成，但没有返回 Raw / Filter preview 图像产物。</div>`
+          ? `<div class="empty">后端任务已完成，但没有返回原始波形或滤波后波形图。</div>`
       : `<div class="empty">选择候选事件后点击“刷新当前候选波形”。</div>`;
   return `<section class="panel waveform-panel" data-waveform-wheel-region>
     <div class="panel-head">
@@ -1752,27 +1770,27 @@ function renderWaveformPanel() {
       <span class="badge ${status === "completed" ? "" : "warn"}">${h(status)}</span>
     </div>
     <div class="waveform-statusbar waveform-primary-status" data-testid="epilepsy-waveform-statusbar" data-mode="${h(mode)}" data-gain="${h(gain)}" data-start-sec="${viewport.start}" data-duration-sec="${viewport.duration}" data-window-key="${h(state.waveformWindow?.window_key || state.waveformWindow?.__client_window_key || "")}" data-requested-window-key="${h(state.requestedWaveformWindowKey || "")}">
-      <span><strong>${mode === "correct" ? "Correction" : "Browse"}</strong>${h(requestedWindowLabel)}</span>
-      <span>${selected ? `Event #${h(selected.event_id)}` : "No event selected"}</span>
-      <span>${h(filterLabel)} · ${gain === "auto" ? "Auto gain" : `${h(gain)}x gain`} · ${h(fileLabel)}</span>
-      ${staleWindow ? `<span class="warn">Stale ${h(displayedWindowLabel)}</span>` : ""}
+      <span><strong>${mode === "correct" ? "调整模式" : "浏览模式"}</strong>${h(requestedWindowLabel)}</span>
+      <span>${selected ? `候选事件 #${h(selected.event_id)}` : "未选择候选事件"}</span>
+      <span>${h(filterLabel)} · ${gain === "auto" ? "自动增益" : `${h(gain)}x 增益`} · ${h(fileLabel)}</span>
+      ${staleWindow ? `<span class="warn">旧窗口 ${h(displayedWindowLabel)}</span>` : ""}
     </div>
     ${renderWaveformMiniMap(selected, file)}
     <div class="toolbar waveform-toolbar">
       <button class="btn primary" id="runWaveformBtn" ${canRunWaveform ? "" : "disabled"}>${icon("activity")}${state.waveformInFlight ? "正在生成波形" : "刷新当前候选波形"}</button>
-      <button class="btn ${state.activeWaveformLabel === "raw_preview_figure" ? "primary" : ""}" data-waveform-label="raw_preview_figure">Raw</button>
-      <button class="btn ${state.activeWaveformLabel === "filter_preview_figure" ? "primary" : ""}" data-waveform-label="filter_preview_figure">Filter preview</button>
-      <button class="btn" data-waveform-reset="event">${icon("locate-fixed")}Fit event</button>
-      <button class="btn ${mode === "browse" ? "primary" : ""}" data-waveform-mode="browse" data-testid="epilepsy-waveform-mode-browse">${icon("hand")}Browse</button>
-      <button class="btn ${mode === "correct" ? "primary" : ""}" data-waveform-mode="correct" data-testid="epilepsy-waveform-mode-correct">${icon("pencil")}Correction</button>
-      <label class="waveform-gain-control">Gain
+      <button class="btn ${state.activeWaveformLabel === "raw_preview_figure" ? "primary" : ""}" data-waveform-label="raw_preview_figure">原始波形</button>
+      <button class="btn ${state.activeWaveformLabel === "filter_preview_figure" ? "primary" : ""}" data-waveform-label="filter_preview_figure">滤波后波形</button>
+      <button class="btn" data-waveform-reset="event">${icon("locate-fixed")}适配事件</button>
+      <button class="btn ${mode === "browse" ? "primary" : ""}" data-waveform-mode="browse" data-testid="epilepsy-waveform-mode-browse">${icon("hand")}浏览</button>
+      <button class="btn ${mode === "correct" ? "primary" : ""}" data-waveform-mode="correct" data-testid="epilepsy-waveform-mode-correct">${icon("pencil")}调整</button>
+      <label class="waveform-gain-control">增益
         <select data-waveform-gain data-testid="epilepsy-waveform-gain">${gainOptions}</select>
       </label>
       <span class="toolbar-spacer"></span>
-      <button class="btn ${renderer === "canvas" ? "primary" : ""}" data-waveform-renderer="canvas" data-testid="epilepsy-renderer-canvas">Canvas preview</button>
-      ${labRendererControls ? `<button class="btn ${renderer === "svg" ? "primary" : ""}" data-waveform-renderer="svg" data-testid="epilepsy-renderer-svg">SVG fallback</button>` : ""}
+      <button class="btn ${renderer === "canvas" ? "primary" : ""}" data-waveform-renderer="canvas" data-testid="epilepsy-renderer-canvas">高性能预览</button>
+      ${labRendererControls ? `<button class="btn ${renderer === "svg" ? "primary" : ""}" data-waveform-renderer="svg" data-testid="epilepsy-renderer-svg">备用预览</button>` : ""}
     </div>
-    <p class="notice">波形预览按当前候选事件窗口生成，保留 Raw / Filter preview 两种视图，供人工复核时回看原始波形。</p>
+    <p class="notice">波形预览按当前候选事件窗口生成，保留原始波形和滤波后波形两种视图，供候选复核时回看。</p>
     <div class="figure-frame waveform-frame ${mode === "correct" ? "correct-mode" : "browse-mode"} ${staleWindow ? "stale-window" : ""}" tabindex="0" data-waveform-interactive="true" data-testid="epilepsy-waveform-frame" data-window-key="${h(state.waveformWindow?.window_key || state.waveformWindow?.__client_window_key || "")}" data-requested-window-key="${h(state.requestedWaveformWindowKey || "")}">
       ${frameBody}
       <div class="waveform-selection-overlay" data-testid="epilepsy-waveform-selection" hidden></div>
@@ -1785,7 +1803,7 @@ function renderArtifactsPanel() {
     return `<section class="panel"><h2>${icon("download")}结果文件</h2><div class="empty">运行后会列出 epoch 表、事件表、summary、参数和复现记录。</div></section>`;
   }
   const links = state.artifacts.map((item) => `<a class="artifact" href="${h(artifactUrl(item))}" target="_blank" rel="noopener">
-    <span>${h(item.artifact_type)}</span>
+    <span>${h(artifactTypeLabel(item))}</span>
     <strong>${h(item.label || item.path || "output")}</strong>
     <small>${h(item.mime_type || "可下载产物")}</small>
   </a>`).join("");
@@ -1793,6 +1811,17 @@ function renderArtifactsPanel() {
     <div class="panel-head"><h2>${icon("download")}结果文件</h2><span class="badge">${state.artifacts.length} 个产物</span></div>
     <div class="artifact-grid">${links}</div>
   </section>`;
+}
+
+function artifactTypeLabel(item) {
+  const text = String(item?.artifact_type || item?.label || "").toLowerCase();
+  if (text.includes("epoch")) return "复核区段表";
+  if (text.includes("event")) return "候选事件表";
+  if (text.includes("summary")) return "摘要记录";
+  if (text.includes("parameter")) return "参数记录";
+  if (text.includes("manifest")) return "追溯清单";
+  if (text.includes("figure") || text.includes("image")) return "图表预览";
+  return "结果文件";
 }
 
 function eventReviewForEpoch(epochIndex) {
@@ -1808,10 +1837,10 @@ function selectedEvent() {
 
 function reviewLabel(status) {
   return {
-    seizure_candidate: "Seizure",
-    normal: "Normal",
+    seizure_candidate: "纳入草稿候选",
+    normal: "不纳入草稿",
     needs_review: "待复核",
-    manual_stage: "已矫正",
+    manual_stage: "已调整",
   }[status] || "未复核";
 }
 
@@ -2113,7 +2142,7 @@ async function loadFiles(options = {}) {
     }
     setMessage(`文件列表已加载：${state.files.length} 个文件，已预置癫痫实验室数据。`, false);
   } catch (error) {
-    setMessage(`文件列表加载失败：${error.message || error}`, true);
+    setMessage(customerErrorMessage("加载文件列表", error), true);
   }
   render();
 }
@@ -2214,7 +2243,7 @@ async function uploadFile(event) {
     state.files = [uploaded, ...state.files.filter((item) => item.id !== uploaded.id)];
     setMessage(`已上传并选中：${uploaded.original_filename || uploaded.id}`, false);
   } catch (error) {
-    setMessage(`上传失败：${error.message || error}`, true);
+    setMessage(customerErrorMessage("上传 EEG 文件", error), true);
   } finally {
     state.uploadInFlight = false;
     render();
@@ -2232,7 +2261,7 @@ async function runEpilepsyTask() {
   resetAnalysisOutputs();
   state.runInFlight = true;
   const isMl = state.algorithmMode === "ml_epoch_classifier";
-  setMessage(isMl ? "正在运行 ML 高保真癫痫样筛查，后端会校验源模型 hash 并写出 epoch/event/feature 产物……" : "正在运行癫痫样事件 STD 筛查，后端会读取 EEG 并写出 epoch/event 产物……", false);
+  setMessage(isMl ? "正在运行癫痫样候选事件初筛，后端会写出候选区段、候选事件和追溯记录……" : "正在运行阈值基线筛查，后端会读取 EEG 并写出候选区段和事件记录……", false);
   render();
   try {
     const payload = {
@@ -2258,7 +2287,7 @@ async function runEpilepsyTask() {
     setMessage(`工作台分析完成：${state.task.id}，候选事件 ${state.eventRows.length} 个。`, false);
   } catch (error) {
     // P0-EPILEPSY-PHASE1: Enhanced error handling for phase limitations
-    let errorMessage = `运行失败：${error.message || error}`;
+    let errorMessage = customerErrorMessage("运行初筛", error);
     
     // Check if error is related to phase validation
     if (error.message && (error.message.includes("EpilepsyFileTooLarge") || 
@@ -2302,7 +2331,7 @@ async function loadTask(taskId) {
     if (state.selectedEventId) selectEvent(state.selectedEventId, false);
     setMessage(`已载入任务：${taskId}`, false);
   } catch (error) {
-    setMessage(`任务载入失败：${error.message || error}`, true);
+    setMessage(customerErrorMessage("载入分析记录", error), true);
   }
 }
 
@@ -2414,27 +2443,35 @@ function queueReviewSessionSync() {
 }
 
 async function saveReviewDraft() {
+  if (state.saveInFlight) return;
   if (!state.task?.id) {
-    setMessage("No screening task is loaded; open this child page from Analysis first.", true);
+    setMessage("尚未载入分析记录，请从分析任务页重新打开本工作台。", true);
     render();
     return;
   }
+  state.saveInFlight = true;
+  render();
   try {
     await ensureReviewSession();
     await syncReviewSession();
-    setMessage("Review draft saved to the inherited analysis task session. Formal Results publishing is still disabled in P0.", false);
+    setMessage("复核草稿已保存到当前分析记录。正式结果发布仍需完成复核记录验收。", false);
   } catch (error) {
-    setMessage(`Review draft save failed: ${error.message || error}`, true);
+    setMessage(customerErrorMessage("保存复核草稿", error), true);
+  } finally {
+    state.saveInFlight = false;
   }
   render();
 }
 
 async function publishReviewResults() {
+  if (state.publishInFlight) return;
   if (!state.task?.id) {
-    setMessage("No screening task is loaded; open this child page from Analysis first.", true);
+    setMessage("尚未载入分析记录，请从分析任务页重新打开本工作台。", true);
     render();
     return;
   }
+  state.publishInFlight = true;
+  render();
   try {
     await ensureReviewSession();
     await syncReviewSession();
@@ -2444,9 +2481,11 @@ async function publishReviewResults() {
       headers: { "Content-Type": "application/json" },
     });
     const count = Array.isArray(state.reviewExport?.registered_artifacts) ? state.reviewExport.registered_artifacts.length : 0;
-    setMessage(`Review results registered to the analysis task: ${count} artifacts. You can return to the main Results page.`, false);
+    setMessage(`复核记录已生成：${count} 个文件。可返回主程序结果页查看。`, false);
   } catch (error) {
-    setMessage(`Review results publish failed: ${error.message || error}`, true);
+    setMessage(customerErrorMessage("生成复核记录", error), true);
+  } finally {
+    state.publishInFlight = false;
   }
   render();
 }
@@ -2483,7 +2522,7 @@ function markSelectedEvent(status) {
   const event = selectedEvent();
   if (!event) return;
   if (!correctionWritesAllowed()) {
-    setMessage("Current waveform is read-only. Switch to Correction mode and wait for the active waveform window before writing review changes.", true);
+    setMessage("当前波形为只读状态。请进入调整模式，并等待当前波形窗口加载完成后再写入复核标记。", true);
     render();
     return;
   }
@@ -2500,7 +2539,7 @@ function markSelectedEvent(status) {
     label: reviewLabel(status),
     note: state.reviewNote || "",
     reviewed_at: new Date().toISOString(),
-    reviewer: "local-user",
+    reviewer: "未记录复核人",
     source: "epilepsy-workbench-local-review",
     event: {
       start_sec: numeric(event.start_sec),
@@ -2549,7 +2588,7 @@ function pushHistory(previous, next, label) {
 function applyStageToSelection(stageCode, context = {}) {
   if (!state.sourceEpochRows.length) return;
   if (!context.force && !correctionWritesAllowed()) {
-    setMessage("Current waveform is read-only. Stage_Code changes require Correction mode and a ready, non-stale waveform window.", true);
+    setMessage("当前波形为只读状态。请进入调整模式，并等待当前波形窗口加载完成后再写入复核标记。", true);
     render();
     return;
   }
@@ -2738,7 +2777,7 @@ async function runWaveformPreview(options = {}) {
     if (!requestId || state.activeWaveformRequestId === requestId) {
       state.waveformTask = { status: "failed" };
       state.waveformError = error.message || String(error);
-      setMessage(`波形预览失败：${error.message || error}`, true);
+      setMessage(customerErrorMessage("读取候选波形", error), true);
     }
   } finally {
     if (!requestId || state.activeWaveformRequestId === requestId) {
@@ -2750,39 +2789,41 @@ async function runWaveformPreview(options = {}) {
 
 function reviewPayload() {
   return {
-    status: "reviewed_locally",
-    task_id: state.task?.id || "",
-    input_file_id: state.task?.input_file_id || state.selectedFileId || "",
-    workflow_id: state.task?.workflow_id || (state.algorithmMode === "ml_epoch_classifier" ? "epilepsy_ml_xgboost" : "epilepsy_std_threshold"),
-    non_medical_boundary: "Research screening/support only; no diagnosis, treatment, or clinical decision-making.",
-    exported_at: new Date().toISOString(),
-    review_count: Object.keys(state.reviews).length,
-    corrected_epoch_count: Object.keys(state.epochOverrides).length,
-    event_count_after_review: state.eventRows.length,
-    source_event_count: state.sourceEventRows.length,
-    epoch_length_sec: epochLengthSec(),
-    source_contract: {
-      stage_code_map: { 0: "Normal", 1: "Seizure" },
-      min_consecutive_seizure_epochs_for_event: 2,
-      shortcut_normal: "Shift+1",
-      shortcut_seizure: "Shift+2",
+    草稿类型: "癫痫样候选事件复核记录",
+    生成时间: new Date().toISOString(),
+    使用边界: "仅用于科研筛查和人工复核支持；不作为临床诊断、治疗或用药依据。",
+    分析记录: {
+      任务编号: state.task?.id || "未记录",
+      数据文件编号: state.task?.input_file_id || state.selectedFileId || "未记录",
+      分析流程: state.algorithmMode === "ml_epoch_classifier" ? "候选事件初筛" : "阈值基线筛查",
+      区段长度秒: epochLengthSec(),
     },
-    reviews: Object.values(state.reviews),
-    epoch_overrides: state.epochOverrides,
-    review_actions: state.reviewActions,
-    reviewed_events: state.eventRows,
-    reviewed_epoch_scores: reviewedEpochRows(),
+    复核摘要: {
+      事件复核数: Object.keys(state.reviews).length,
+      人工调整区段数: Object.keys(state.epochOverrides).length,
+      复核后候选事件数: state.eventRows.length,
+      源候选事件数: state.sourceEventRows.length,
+    },
+    复核规则: {
+      候选区段标记映射: { 0: "不纳入草稿", 1: "纳入草稿候选" },
+      连续纳入候选最小区段数: 2,
+      不纳入草稿快捷键: "Shift+1",
+      纳入草稿快捷键: "Shift+2",
+    },
+    事件表: reviewedEventRows(),
+    区段表: reviewedEpochRows(),
+    操作记录: reviewedActionRows(),
   };
 }
 
 function downloadReview(format) {
   const payload = reviewPayload();
   if (format === "csv") {
-    saveBlob(csvFromObjects(reviewedEpochRows()), "reviewed_epoch_scores.csv", "text/csv;charset=utf-8");
+    saveBlob(csvFromObjects(reviewedEpochRows()), "复核区段表.csv", "text/csv;charset=utf-8");
   } else if (format === "events_csv") {
-    saveBlob(csvFromObjects(state.eventRows), "reviewed_events.csv", "text/csv;charset=utf-8");
+    saveBlob(csvFromObjects(reviewedEventRows()), "候选事件表.csv", "text/csv;charset=utf-8");
   } else {
-    saveBlob(JSON.stringify(payload, null, 2), "review_session_manifest.json", "application/json;charset=utf-8");
+    saveBlob(JSON.stringify(payload, null, 2), "复核草稿记录.json", "application/json;charset=utf-8");
   }
 }
 
@@ -2790,20 +2831,52 @@ function reviewedEpochRows() {
   return state.epochRows.map((row, fallbackIndex) => {
     const index = epochIndexOf(row, fallbackIndex);
     return {
-      epoch_index: index,
-      source_epoch_1based: index + 1,
-      start_sec: numeric(row.start_sec),
-      end_sec: numeric(row.end_sec),
-      source_Stage_Code: row.source_Stage_Code ?? stageCodeOf(state.sourceEpochRows[fallbackIndex] || row),
-      source_Stage: row.source_Stage ?? stageName(stageCodeOf(state.sourceEpochRows[fallbackIndex] || row)),
-      Stage_Code: stageCodeOf(row),
-      Stage: stageName(stageCodeOf(row)),
-      manually_corrected: state.epochOverrides[index] !== undefined,
-      probability: row.probability ?? "",
-      mean_rms: row.mean_rms ?? "",
-      is_event_epoch: boolValue(row.is_event_epoch),
+      区段序号: index + 1,
+      起始秒: numeric(row.start_sec),
+      结束秒: numeric(row.end_sec),
+      原始区段标记: row.source_Stage ?? stageName(stageCodeOf(state.sourceEpochRows[fallbackIndex] || row)),
+      复核区段标记: stageName(stageCodeOf(row)),
+      是否人工调整: state.epochOverrides[index] !== undefined ? "是" : "否",
+      候选排序值: row.probability ?? "",
+      平均RMS: row.mean_rms ?? "",
+      是否属于候选事件: boolValue(row.is_event_epoch) ? "是" : "否",
     };
   });
+}
+
+function reviewedEventRows() {
+  return state.eventRows.map((event) => ({
+    事件编号: event.event_id,
+    起始秒: numeric(event.start_sec),
+    结束秒: numeric(event.end_sec),
+    时长秒: numeric(event.duration_sec),
+    起始区段: Number(event.start_epoch ?? 0) + 1,
+    结束区段: Number(event.end_epoch ?? event.start_epoch ?? 0) + 1,
+    最大候选排序值: event.max_probability ?? event.max_score ?? "",
+    复核状态: reviewLabel(state.reviews[String(event.event_id)]?.status || ""),
+    复核备注: state.reviews[String(event.event_id)]?.note || "",
+  }));
+}
+
+function reviewedActionRows() {
+  return state.reviewActions.map((item) => ({
+    操作: actionLabel(item.action || item.type),
+    事件编号: item.event_id || "",
+    状态: reviewLabel(item.status || ""),
+    起始区段: Number.isFinite(Number(item.start_epoch)) ? Number(item.start_epoch) + 1 : "",
+    结束区段: Number.isFinite(Number(item.end_epoch)) ? Number(item.end_epoch) + 1 : "",
+    时间: item.created_at || "",
+  }));
+}
+
+function actionLabel(action) {
+  return {
+    set_event_review: "设置候选复核状态",
+    set_stage: "设置区段标记",
+    adjust_event_interval: "调整候选时间边界",
+    undo: "撤销",
+    redo: "重做",
+  }[action] || "复核操作";
 }
 
 function csvFromObjects(rows) {
@@ -2841,7 +2914,7 @@ document.addEventListener("keydown", (event) => {
   if (event.key === "2" || event.code === "Digit2") {
     event.preventDefault();
     if (!correctionModeActive()) {
-      setMessage("浏览模式下 Shift+2 不会修改 Stage_Code；按 E 或点击 Correction mode 后再执行。", true);
+      setMessage("浏览模式下 Shift+2 不会写入复核标记；按 E 或点击调整模式后再执行。", true);
       render();
       return;
     }
@@ -2850,7 +2923,7 @@ document.addEventListener("keydown", (event) => {
   if (event.key === "1" || event.code === "Digit1") {
     event.preventDefault();
     if (!correctionModeActive()) {
-      setMessage("浏览模式下 Shift+1 不会修改 Stage_Code；按 E 或点击 Correction mode 后再执行。", true);
+      setMessage("浏览模式下 Shift+1 不会写入复核标记；按 E 或点击调整模式后再执行。", true);
       render();
       return;
     }

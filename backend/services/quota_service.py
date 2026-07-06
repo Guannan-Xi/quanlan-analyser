@@ -53,6 +53,18 @@ def record_usage(
     quota_account_id: str | None = None,
     metadata_json: dict | None = None,
 ) -> UsageRecordRead:
+    for existing in state_store.load_registry(REGISTRY, UsageRecordRead).values():
+        if existing.source_type == source_type and existing.source_id == source_id and existing.action == action:
+            existing.resource_type = resource_type
+            existing.quantity = quantity
+            existing.unit = unit
+            existing.organization_id = organization_id
+            existing.project_id = project_id
+            existing.owner_user_id = owner_user_id
+            existing.quota_account_id = quota_account_id
+            existing.metadata_json = metadata_json or {}
+            state_store.upsert_item(REGISTRY, existing)
+            return existing
     record = UsageRecordRead(
         organization_id=organization_id,
         project_id=project_id,

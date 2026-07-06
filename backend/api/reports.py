@@ -19,6 +19,7 @@ def create_report(payload: ReportCreate, current: AccountRead = Depends(account_
         raise HTTPException(status_code=422, detail="Report project_id must match the task project_id")
     if task.status != "completed":
         raise HTTPException(status_code=422, detail="Report requires a completed analysis task")
+    report_service.assert_default_report_primary_module(task)
     reviewed_events = audit_service.list_events(
         action="result.reviewed",
         object_type="analysis_task",

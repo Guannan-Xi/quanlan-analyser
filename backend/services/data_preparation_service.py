@@ -30,8 +30,10 @@ REGISTRY = "data_preparation_plans"
 EPOCH_SET_REGISTRY = "epoch_sets"
 CONTRACT_VERSION = "qlanalyser-data-preparation-v0.2"
 EPOCH_SET_CONTRACT_VERSION = "qlanalyser-epoch-set-v0.1"
-LEGACY_DEFAULT_PLAN_MODULE_SCOPE = {"qc", "psd", "erp", "tfr", "pac", "reference_csd"}
-LEGACY_DEFAULT_PLAN_SCOPE_WITHOUT_EPILEPSY_ML = set(DEFAULT_PLAN_MODULE_SCOPE) - {"epilepsy_ml"}
+LEGACY_DEFAULT_PLAN_MODULE_SCOPES = {
+    frozenset({"qc", "psd", "erp", "tfr", "pac", "reference_csd"}),
+    frozenset({"qc", "psd", "erp", "tfr", "pac", "reference_csd", "multitaper_psd_tfr", "connectivity"}),
+}
 
 DEFAULT_ARTIFACT_CONTRACT = {
     "contract_version": CONTRACT_VERSION,
@@ -47,6 +49,7 @@ DEFAULT_ARTIFACT_CONTRACT = {
         "data_preparation_revision",
         "data_preparation_contract_version",
     ],
+    "delivery_scope": "formal_delivery",
     "allowed_modules": sorted(SUPPORTED_PLAN_MODULES),
 }
 
@@ -146,6 +149,7 @@ def _merged_contract(plan: DataPreparationPlanRead) -> dict:
     contract.update(plan.artifact_contract_json or {})
     contract["contract_version"] = CONTRACT_VERSION
     contract["allowed_modules"] = sorted(set(plan.module_scope) & SUPPORTED_PLAN_MODULES)
+    contract["delivery_scope"] = plan.delivery_scope
     return contract
 
 
@@ -172,8 +176,8 @@ def _write_plan_artifacts(plan: DataPreparationPlanRead) -> Path:
 
 
 def _normalize_legacy_default_scope(plan: DataPreparationPlanRead) -> DataPreparationPlanRead:
-    current_scope = set(plan.module_scope or [])
-    if current_scope in (LEGACY_DEFAULT_PLAN_MODULE_SCOPE, LEGACY_DEFAULT_PLAN_SCOPE_WITHOUT_EPILEPSY_ML):
+    current_scope = frozenset(plan.module_scope or [])
+    if current_scope in LEGACY_DEFAULT_PLAN_MODULE_SCOPES:
         plan.module_scope = list(DEFAULT_PLAN_MODULE_SCOPE)
         _write_plan_artifacts(plan)
         state_store.upsert_item(REGISTRY, plan)
@@ -254,27 +258,46 @@ def _validate_scope(scope: list[str]) -> list[str]:
     return normalized
 
 
-def list_plans(project_id: str | None = None, input_file_id: str | None = None) -> list[DataPreparationPlanRead]:
+def _assert_plan_owner(plan: DataPreparationPlanRead, requesting_user_id: str | None = None) -> None:
+    if requesting_user_id is not None and plan.owner_user_id != requesting_user_id:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code": "DATA_PREPARATION_PLAN_PERMISSION_DENIED",
+                "message": "You do not have permission to use this data preparation plan.",
+            },
+        )
+
+
+def list_plans(
+    project_id: str | None = None,
+    input_file_id: str | None = None,
+    owner_user_id: str | None = None,
+) -> list[DataPreparationPlanRead]:
     _refresh_plans()
     values = list(_plans.values())
     if project_id:
         values = [plan for plan in values if plan.project_id == project_id]
     if input_file_id:
         values = [plan for plan in values if plan.input_file_id == input_file_id]
+    if owner_user_id:
+        values = [plan for plan in values if plan.owner_user_id == owner_user_id]
     return sorted(values, key=lambda plan: plan.updated_at, reverse=True)
 
 
-def get_plan(plan_id: str) -> DataPreparationPlanRead:
+def get_plan(plan_id: str, requesting_user_id: str | None = None) -> DataPreparationPlanRead:
     _refresh_plans()
     try:
-        return _plans[plan_id]
+        plan = _plans[plan_id]
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Data preparation plan not found") from exc
+    _assert_plan_owner(plan, requesting_user_id=requesting_user_id)
+    return plan
 
 
-def get_current_plan_for_file(input_file_id: str) -> DataPreparationPlanRead:
+def get_current_plan_for_file(input_file_id: str, requesting_user_id: str | None = None) -> DataPreparationPlanRead:
     storage_service.get_eeg_file(input_file_id)
-    plans = list_plans(input_file_id=input_file_id)
+    plans = list_plans(input_file_id=input_file_id, owner_user_id=requesting_user_id)
     if plans:
         return plans[0]
     eeg_file = storage_service.get_eeg_file(input_file_id)
@@ -300,25 +323,49 @@ def get_current_plan_for_file(input_file_id: str) -> DataPreparationPlanRead:
     )
 
 
-def list_epoch_sets(project_id: str | None = None, input_file_id: str | None = None) -> list[EpochSetRead]:
+def list_epoch_sets(
+    project_id: str | None = None,
+    input_file_id: str | None = None,
+    owner_user_id: str | None = None,
+) -> list[EpochSetRead]:
     _refresh_epoch_sets()
     values = list(_epoch_sets.values())
     if project_id:
         values = [epoch_set for epoch_set in values if epoch_set.project_id == project_id]
     if input_file_id:
         values = [epoch_set for epoch_set in values if epoch_set.input_file_id == input_file_id]
+    if owner_user_id:
+        values = [epoch_set for epoch_set in values if epoch_set.owner_user_id == owner_user_id]
     return sorted(values, key=lambda epoch_set: epoch_set.updated_at, reverse=True)
 
 
-def get_epoch_set(epoch_set_id: str) -> EpochSetRead:
+def _assert_epoch_set_owner(epoch_set: EpochSetRead, requesting_user_id: str | None = None) -> None:
+    if requesting_user_id is not None and epoch_set.owner_user_id != requesting_user_id:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code": "EPOCH_SET_PERMISSION_DENIED",
+                "message": "You do not have permission to use this epoch set.",
+            },
+        )
+
+
+def get_epoch_set(epoch_set_id: str, requesting_user_id: str | None = None) -> EpochSetRead:
     _refresh_epoch_sets()
     try:
-        return _epoch_sets[epoch_set_id]
+        epoch_set = _epoch_sets[epoch_set_id]
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Epoch set not found") from exc
+    _assert_epoch_set_owner(epoch_set, requesting_user_id=requesting_user_id)
+    return epoch_set
 
 
-def _validate_epoch_set_payload(input_file_id: str, payload: EpochSetCreate | EpochSetUpdate, current: EpochSetRead | None = None) -> None:
+def _validate_epoch_set_payload(
+    input_file_id: str,
+    payload: EpochSetCreate | EpochSetUpdate,
+    current: EpochSetRead | None = None,
+    requesting_user_id: str | None = None,
+) -> None:
     eeg_file = storage_service.get_eeg_file(input_file_id)
     project_id = getattr(payload, "project_id", None) or (current.project_id if current else None)
     if project_id and eeg_file.project_id != project_id:
@@ -340,14 +387,14 @@ def _validate_epoch_set_payload(input_file_id: str, payload: EpochSetCreate | Ep
     if plan_id or plan_revision is not None:
         if not plan_id or plan_revision is None:
             raise HTTPException(status_code=422, detail="Both data_preparation_plan_id and data_preparation_revision are required for epoch set lineage")
-        plan = assert_plan_revision(str(plan_id), int(plan_revision), "erp")
+        plan = assert_plan_revision(str(plan_id), int(plan_revision), "erp", requesting_user_id=requesting_user_id)
         if plan.input_file_id != input_file_id:
             raise HTTPException(status_code=422, detail="Epoch set data preparation plan must reference the same EEG file")
 
 
-def save_epoch_set_for_file(input_file_id: str, payload: EpochSetCreate) -> EpochSetRead:
+def save_epoch_set_for_file(input_file_id: str, payload: EpochSetCreate, requesting_user_id: str | None = None) -> EpochSetRead:
     eeg_file = storage_service.get_eeg_file(input_file_id)
-    _validate_epoch_set_payload(input_file_id, payload)
+    _validate_epoch_set_payload(input_file_id, payload, requesting_user_id=requesting_user_id)
     lineage = dict(payload.lineage_json or {})
     lineage.setdefault("source_file", {
         "file_id": eeg_file.id,
@@ -401,11 +448,11 @@ def save_epoch_set_for_file(input_file_id: str, payload: EpochSetCreate) -> Epoc
     return epoch_set
 
 
-def update_epoch_set(epoch_set_id: str, payload: EpochSetUpdate) -> EpochSetRead:
-    epoch_set = get_epoch_set(epoch_set_id)
+def update_epoch_set(epoch_set_id: str, payload: EpochSetUpdate, requesting_user_id: str | None = None) -> EpochSetRead:
+    epoch_set = get_epoch_set(epoch_set_id, requesting_user_id=requesting_user_id)
     if payload.expected_revision != epoch_set.revision:
         raise _revision_conflict(epoch_set_id, payload.expected_revision, epoch_set.revision)
-    _validate_epoch_set_payload(epoch_set.input_file_id, payload, epoch_set)
+    _validate_epoch_set_payload(epoch_set.input_file_id, payload, epoch_set, requesting_user_id=requesting_user_id)
     updates = payload.model_dump(exclude_unset=True)
     updates.pop("expected_revision", None)
     for key, value in updates.items():
@@ -429,11 +476,15 @@ def update_epoch_set(epoch_set_id: str, payload: EpochSetUpdate) -> EpochSetRead
     return epoch_set
 
 
-def save_bad_channel_audit_for_file(input_file_id: str, payload: BadChannelAuditCreate) -> BadChannelAuditRead:
+def save_bad_channel_audit_for_file(
+    input_file_id: str,
+    payload: BadChannelAuditCreate,
+    requesting_user_id: str | None = None,
+) -> BadChannelAuditRead:
     eeg_file = storage_service.get_eeg_file(input_file_id)
     if eeg_file.project_id != payload.project_id:
         raise HTTPException(status_code=422, detail="Bad-channel audit project_id must match the EEG file project_id")
-    plan = assert_plan_revision(payload.plan_id, payload.plan_revision, "qc")
+    plan = assert_plan_revision(payload.plan_id, payload.plan_revision, "qc", requesting_user_id=requesting_user_id)
     if plan.input_file_id != input_file_id:
         raise HTTPException(status_code=422, detail="Bad-channel audit plan must reference the same EEG file")
     if payload.decision not in {"save", "discard"}:
@@ -568,6 +619,7 @@ def save_plan(payload: DataPreparationPlanCreate) -> DataPreparationPlanRead:
         audit_trace_id=payload.audit_trace_id,
         schema_version=payload.schema_version,
         scope=payload.scope,
+        delivery_scope=payload.delivery_scope,
         status=payload.status,
         module_scope=scope,
         title=payload.title,
@@ -603,11 +655,15 @@ def save_plan(payload: DataPreparationPlanCreate) -> DataPreparationPlanRead:
     return plan
 
 
-def save_current_plan_for_file(input_file_id: str, payload: DataPreparationPlanForFileSave) -> DataPreparationPlanRead:
+def save_current_plan_for_file(
+    input_file_id: str,
+    payload: DataPreparationPlanForFileSave,
+    requesting_user_id: str | None = None,
+) -> DataPreparationPlanRead:
     eeg_file = storage_service.get_eeg_file(input_file_id)
     if eeg_file.project_id != payload.project_id:
         raise HTTPException(status_code=422, detail="Data preparation plan project_id must match the EEG file project_id")
-    current_plans = list_plans(project_id=payload.project_id, input_file_id=input_file_id)
+    current_plans = list_plans(project_id=payload.project_id, input_file_id=input_file_id, owner_user_id=requesting_user_id)
     current_plan = current_plans[0] if current_plans else None
     expected_revision = payload.expected_revision
     if current_plan is None:
@@ -617,11 +673,15 @@ def save_current_plan_for_file(input_file_id: str, payload: DataPreparationPlanF
     if expected_revision is None:
         raise HTTPException(status_code=422, detail="base_revision or expected_revision is required when updating an existing data preparation plan")
     update_payload = DataPreparationPlanUpdate(**payload.model_dump(exclude={"project_id", "expected_revision"}), expected_revision=expected_revision)
-    return update_plan(current_plan.id, update_payload)
+    return update_plan(current_plan.id, update_payload, requesting_user_id=requesting_user_id)
 
 
-def update_plan(plan_id: str, payload: DataPreparationPlanUpdate) -> DataPreparationPlanRead:
-    plan = get_plan(plan_id)
+def update_plan(
+    plan_id: str,
+    payload: DataPreparationPlanUpdate,
+    requesting_user_id: str | None = None,
+) -> DataPreparationPlanRead:
+    plan = get_plan(plan_id, requesting_user_id=requesting_user_id)
     if payload.expected_revision != plan.revision:
         raise _revision_conflict(plan_id, payload.expected_revision, plan.revision)
     updates = payload.model_dump(exclude_unset=True)
@@ -649,8 +709,13 @@ def update_plan(plan_id: str, payload: DataPreparationPlanUpdate) -> DataPrepara
     return plan
 
 
-def assert_plan_revision(plan_id: str, expected_revision: int, module_name: str | None = None) -> DataPreparationPlanRead:
-    plan = get_plan(plan_id)
+def assert_plan_revision(
+    plan_id: str,
+    expected_revision: int,
+    module_name: str | None = None,
+    requesting_user_id: str | None = None,
+) -> DataPreparationPlanRead:
+    plan = get_plan(plan_id, requesting_user_id=requesting_user_id)
     if expected_revision != plan.revision:
         raise _revision_conflict(plan_id, expected_revision, plan.revision)
     if module_name and module_name not in plan.module_scope:
@@ -658,8 +723,12 @@ def assert_plan_revision(plan_id: str, expected_revision: int, module_name: str 
     return plan
 
 
-def create_task_reference(plan_id: str, payload: DataPreparationTaskReferenceCreate) -> DataPreparationTaskReferenceRead:
-    plan = assert_plan_revision(plan_id, payload.expected_revision, payload.module_name)
+def create_task_reference(
+    plan_id: str,
+    payload: DataPreparationTaskReferenceCreate,
+    requesting_user_id: str | None = None,
+) -> DataPreparationTaskReferenceRead:
+    plan = assert_plan_revision(plan_id, payload.expected_revision, payload.module_name, requesting_user_id=requesting_user_id)
     root = plan.artifact_root or _plan_root(plan.project_id, plan.id, plan.revision)
     contract = _merged_contract(plan)
     parameters_json = {
@@ -683,7 +752,11 @@ def create_task_reference(plan_id: str, payload: DataPreparationTaskReferenceCre
     return reference
 
 
-def validate_task_parameters(module_name: str, parameters_json: dict) -> DataPreparationPlanRead | None:
+def validate_task_parameters(
+    module_name: str,
+    parameters_json: dict,
+    requesting_user_id: str | None = None,
+) -> DataPreparationPlanRead | None:
     plan_id = parameters_json.get("data_preparation_plan_id")
     revision = parameters_json.get("data_preparation_revision")
     if not plan_id and revision is None:
@@ -697,6 +770,6 @@ def validate_task_parameters(module_name: str, parameters_json: dict) -> DataPre
         expected_revision = int(revision)
     except (TypeError, ValueError) as exc:
         raise HTTPException(status_code=422, detail="data_preparation_revision must be an integer") from exc
-    plan = assert_plan_revision(str(plan_id), expected_revision, module_name)
+    plan = assert_plan_revision(str(plan_id), expected_revision, module_name, requesting_user_id=requesting_user_id)
     parameters_json.setdefault("data_preparation_contract_version", CONTRACT_VERSION)
     return plan

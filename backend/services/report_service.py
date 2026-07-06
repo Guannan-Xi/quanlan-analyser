@@ -16,6 +16,8 @@ ROOT = Path(__file__).resolve().parents[2]
 REPORT_ROOT = ROOT / "data" / "reports"
 DERIVATIVES_ROOT = ROOT / "data" / "derivatives"
 PATH_TOKEN_RE = re.compile(r"(?i)([a-z]:[\\/][^\s\"'<>]+)")
+STABLE_REPORT_SIBLING_MODULES = {"psd", "erp"}
+STABLE_REPORT_PRIMARY_MODULES = {"psd", "erp"}
 
 _reports: dict[str, ReportRead] = state_store.load_registry("reports", ReportRead)
 
@@ -30,10 +32,51 @@ def _save_reports() -> None:
         state_store.upsert_item("reports", report)
 
 
+def assert_default_report_primary_module(task) -> None:
+    if task.parameters_json.get("lab_preview_run"):
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "LAB_PREVIEW_TASK_NOT_REPORTABLE",
+                "message": "Module Lab preview runs cannot be used as default customer report sources.",
+                "suggested_action": "Run a formal PSD or ERP analysis from a formal data preparation plan before creating a report.",
+            },
+        )
+    if task.module_name in STABLE_REPORT_PRIMARY_MODULES:
+        return
+    raise HTTPException(
+        status_code=422,
+        detail={
+            "code": "REPORT_PRIMARY_MODULE_NOT_STABLE_DELIVERY",
+            "message": "Default customer report generation is available only for stable PSD/ERP analyses.",
+            "module_name": task.module_name,
+            "stable_primary_modules": sorted(STABLE_REPORT_PRIMARY_MODULES),
+            "suggested_action": "Use PSD or ERP for the default report package; advanced or epilepsy modules require a separate lab/internal workflow.",
+        },
+    )
+
+
+def assert_report_source_ready(task, reviewer_user_id: str | None = None) -> None:
+    if task.status != "completed":
+        raise HTTPException(status_code=422, detail="Report requires a completed analysis task")
+    task_service.assert_task_artifacts_deliverable(task)
+    reviewed_events = audit_service.list_events(
+        action="result.reviewed",
+        object_type="analysis_task",
+        object_id=task.id,
+        actor_user_id=reviewer_user_id,
+        project_id=task.project_id,
+    )
+    if not reviewed_events:
+        raise HTTPException(status_code=422, detail="Please review the analysis results before generating a report")
+
+
 def create_report(payload: ReportCreate) -> ReportRead:
     task = task_service.get_task(payload.task_id)
     if task.project_id != payload.project_id:
         raise HTTPException(status_code=422, detail="Report project_id must match the task project_id")
+    assert_default_report_primary_module(task)
+    assert_report_source_ready(task, payload.created_by or payload.owner_user_id)
 
     report_payload = payload.model_dump()
     report_payload.update({"organization_id": task.organization_id, "owner_user_id": task.owner_user_id})
@@ -116,6 +159,7 @@ def get_report(report_id: str, requesting_user_id: str | None = None) -> ReportR
         )
     if requesting_user_id is not None:
         _assert_report_result_reviewed(report, requesting_user_id=requesting_user_id)
+        _assert_report_source_deliverable(report)
     return report
 
 
@@ -160,6 +204,46 @@ def _assert_report_result_reviewed(report: ReportRead, *, requesting_user_id: st
     )
 
 
+def _assert_report_source_deliverable(report: ReportRead) -> None:
+    try:
+        task = task_service.get_task(report.task_id)
+    except HTTPException as exc:
+        if exc.status_code == 404:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "REPORT_SOURCE_TASK_NOT_DELIVERABLE",
+                    "message": "Report files are available only while the source analysis task remains deliverable.",
+                    "task_id": report.task_id,
+                },
+            ) from exc
+        raise
+    if task.project_id != report.project_id:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "REPORT_SOURCE_TASK_PROJECT_MISMATCH",
+                "message": "Report source task does not match the report project.",
+                "task_id": report.task_id,
+            },
+        )
+    task_service.assert_task_artifacts_deliverable(task)
+
+
+def _task_result_reviewed(task, reviewer_user_id: str | None) -> bool:
+    if reviewer_user_id is None:
+        return True
+    return bool(
+        audit_service.list_events(
+            action="result.reviewed",
+            object_type="analysis_task",
+            object_id=task.id,
+            actor_user_id=reviewer_user_id,
+            project_id=task.project_id,
+        )
+    )
+
+
 def _write_report_package(report_dir: Path, report_id: str, html_path: Path, task: dict, task_output_dir: Path, artifacts: list[dict], related_artifacts: list[dict] | None = None, sibling_analyses: list[dict] | None = None) -> Path:
     package_path = report_dir / f"{report_id}.zip"
     sanitized_dir = report_dir / "_package_sanitized"
@@ -199,6 +283,12 @@ def _write_report_package(report_dir: Path, report_id: str, html_path: Path, tas
                     "artifact_labels": _readable_artifact_labels(artifacts),
                     "included_analysis_modules": [item.get("module_name") for item in (sibling_analyses or [])],
                     "included_analysis_task_ids": [item.get("task", {}).get("id") for item in (sibling_analyses or [])],
+                    "included_analysis_policy": {
+                        "owner_scope": "same_owner_as_primary_task",
+                        "default_lifecycle": "stable_modules_only",
+                        "stable_sibling_modules": sorted(STABLE_REPORT_SIBLING_MODULES),
+                        "advanced_modules": "excluded_from_default_customer_report_package",
+                    },
                     "required_download_endpoints": [
                         f"/api/reports/{report_id}/html",
                         f"/api/reports/{report_id}/package",
@@ -354,11 +444,18 @@ def _write_report_json_alias(report_dir: Path, report_id: str, task: dict, task_
                 "task_id": item.get("task", {}).get("id"),
                 "module_name": item.get("module_name"),
                 "workflow_id": item.get("workflow_id"),
+                "lifecycle_state": item.get("lifecycle_state"),
                 "artifact_count": len(item.get("artifacts") or []),
                 "package_prefix": item.get("package_prefix"),
             }
             for item in (sibling_analyses or [])
         ],
+        "included_analysis_policy": {
+            "owner_scope": "same_owner_as_primary_task",
+            "default_lifecycle": "stable_modules_only",
+            "stable_sibling_modules": sorted(STABLE_REPORT_SIBLING_MODULES),
+            "advanced_modules": "excluded_from_default_customer_report_package",
+        },
         "manifest_summary": {
             "schema_version": manifest_payload.get("schema_version"),
             "artifact_schema_version": manifest_payload.get("artifact_schema_version"),
@@ -419,21 +516,19 @@ def _readable_artifact_labels(artifacts: list[dict]) -> list[str]:
 def _sibling_completed_analyses(task: dict) -> list[dict]:
     project_id = task.get("project_id")
     input_file_id = task.get("input_file_id")
-    supported = {
-        "psd",
-        "erp",
-        "tfr",
-        "multitaper_psd_tfr",
-        "pac",
-        "pac_v2",
-        "reference_csd",
-        "connectivity",
-    }
+    owner_user_id = task.get("owner_user_id")
+    supported = STABLE_REPORT_SIBLING_MODULES
     analyses: list[dict] = []
     for candidate in task_service.list_tasks():
         if candidate.project_id != project_id or candidate.input_file_id != input_file_id or candidate.status != "completed":
             continue
+        if owner_user_id and candidate.owner_user_id != owner_user_id:
+            continue
         if candidate.module_name not in supported:
+            continue
+        if not task_service.is_task_artifact_delivery_ready(candidate):
+            continue
+        if not _task_result_reviewed(candidate, owner_user_id):
             continue
         task_payload = candidate.model_dump(mode="json")
         artifacts = [artifact.model_dump(mode="json") for artifact in task_service.list_task_artifacts(candidate.id)]
@@ -444,6 +539,7 @@ def _sibling_completed_analyses(task: dict) -> list[dict]:
                 "task_id": candidate.id,
                 "module_name": module_name,
                 "workflow_id": candidate.workflow_id,
+                "lifecycle_state": "stable",
                 "artifacts": artifacts,
                 "task_output_dir": str(DERIVATIVES_ROOT / candidate.project_id / candidate.id),
                 "package_prefix": f"analyses/{module_name}_{candidate.id}",
@@ -457,10 +553,17 @@ def _related_qc_and_audit_artifacts(task: dict) -> list[dict]:
     related: list[dict] = []
     project_id = task.get("project_id")
     input_file_id = task.get("input_file_id")
+    owner_user_id = task.get("owner_user_id")
     for candidate in task_service.list_tasks():
         if candidate.project_id != project_id or candidate.input_file_id != input_file_id or candidate.status != "completed":
             continue
+        if owner_user_id and candidate.owner_user_id != owner_user_id:
+            continue
         if candidate.module_name != "qc":
+            continue
+        if not task_service.is_task_artifact_delivery_ready(candidate):
+            continue
+        if not _task_result_reviewed(candidate, owner_user_id):
             continue
         for artifact in task_service.list_task_artifacts(candidate.id):
             item = artifact.model_dump(mode="json")

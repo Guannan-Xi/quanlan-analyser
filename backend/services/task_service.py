@@ -1,4 +1,5 @@
 import hashlib
+import json
 from pathlib import Path
 
 from fastapi import HTTPException
@@ -197,6 +198,16 @@ WORKFLOW_TEMPLATES = module_contract_service.enrich_workflow_templates(_BASE_WOR
 _tasks: dict[str, AnalysisTaskRead] = state_store.load_registry("tasks", AnalysisTaskRead)
 _artifacts: dict[str, ArtifactRead] = state_store.load_registry("artifacts", ArtifactRead)
 
+EPILEPSY_RESEARCH_MODULES = {"epilepsy", "epilepsy_ml"}
+FORMAL_EPILEPSY_EVIDENCE_BLOCKED_MARKERS = {
+    "all_events_evidence_package",
+    "event_evidence_package",
+    "evidence_package.zip",
+    "evidence_packages/",
+    "focus_1_35hz",
+    "synthetic_preview",
+}
+
 _MODULES_ALLOWED_BEFORE_DATA_PREPARATION = {"qc"}
 _STRICT_WORKFLOW_BY_MODULE = {
     "epilepsy_ml": "epilepsy_ml_xgboost",
@@ -245,7 +256,88 @@ def _artifact_file_metadata(path: Path, project_id: str, task_id: str) -> dict:
     }
 
 
-def _register_data_preparation_artifacts(task: AnalysisTaskRead, artifact_root: Path) -> None:
+def _artifact_policy_text(artifact: ArtifactRead | dict) -> str:
+    def value(name: str) -> str:
+        if isinstance(artifact, dict):
+            return str(artifact.get(name) or "")
+        return str(getattr(artifact, name, "") or "")
+
+    return " ".join(
+        [
+            value("label"),
+            value("object_key"),
+            value("path"),
+            value("artifact_type"),
+        ]
+    ).replace("\\", "/").lower()
+
+
+def is_artifact_download_allowed(artifact: ArtifactRead | dict, task: AnalysisTaskRead | None = None) -> bool:
+    if task is None or task.module_name not in EPILEPSY_RESEARCH_MODULES:
+        return True
+    text = _artifact_policy_text(artifact)
+    return not any(marker in text for marker in FORMAL_EPILEPSY_EVIDENCE_BLOCKED_MARKERS)
+
+
+def is_task_artifact_delivery_ready(task: AnalysisTaskRead) -> bool:
+    if task.status != "completed" or task.queue_status != "completed":
+        return False
+    billing_transaction_id = task.actual_resource_usage_json.get("billing_transaction_id")
+    return billing_service.has_posted_analysis_task_charge(
+        task.id,
+        transaction_id=str(billing_transaction_id) if billing_transaction_id else None,
+        account_id=task.quota_charge_preview_json.get("billing_account_id") or task.owner_user_id,
+        module_name=task.module_name,
+        expected_credits=float(task.quota_charge_preview_json.get("estimated_credits") or 0) or None,
+    )
+
+
+def assert_task_artifacts_deliverable(task: AnalysisTaskRead) -> None:
+    if is_task_artifact_delivery_ready(task):
+        return
+    if task.status == "payment_failed" or task.error_code == "TASK_PAYMENT_FAILED":
+        raise HTTPException(
+            status_code=402,
+            detail={
+                "code": "TASK_PAYMENT_REQUIRED_FOR_ARTIFACT_DELIVERY",
+                "message": "Analysis results were generated but the billing charge did not post, so artifacts are not deliverable.",
+            },
+        )
+    if task.status != "completed" or task.queue_status != "completed":
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "TASK_ARTIFACTS_NOT_READY",
+                "message": "Artifacts are available only after the analysis task completes.",
+                "task_status": task.status,
+            },
+        )
+    raise HTTPException(
+        status_code=402,
+        detail={
+            "code": "TASK_CHARGE_REQUIRED_FOR_ARTIFACT_DELIVERY",
+            "message": "Completed task artifacts require a posted billing transaction before delivery.",
+        },
+    )
+
+
+def assert_artifact_download_allowed(artifact: ArtifactRead | dict, task: AnalysisTaskRead | None = None) -> None:
+    if task is not None:
+        assert_task_artifacts_deliverable(task)
+    if is_artifact_download_allowed(artifact, task):
+        return
+    raise HTTPException(
+        status_code=409,
+        detail={
+            "code": "FORMAL_EPILEPSY_EVIDENCE_REQUIRES_REAL_WAVEFORM_WINDOWS",
+            "message": "Synthetic or legacy epilepsy evidence package artifacts are not source waveform evidence.",
+            "suggested_action": "Use real EDF waveform-window extraction before delivering formal epilepsy evidence packages.",
+        },
+    )
+
+
+def _data_preparation_artifact_records(task: AnalysisTaskRead, artifact_root: Path) -> list[ArtifactRead]:
+    records: list[ArtifactRead] = []
     for relative, label in (
         ("reproducibility/data_preparation_plan.json", "Data preparation plan"),
         ("reproducibility/data_preparation_task_reference.json", "Data preparation task reference"),
@@ -254,19 +346,20 @@ def _register_data_preparation_artifacts(task: AnalysisTaskRead, artifact_root: 
         path = artifact_root / relative
         if not path.exists():
             continue
-        artifact = ArtifactRead(
-            task_id=task.id,
-            organization_id=task.organization_id,
-            project_id=task.project_id,
-            input_file_id=task.input_file_id,
-            artifact_type="json",
-            label=label,
-            path=path,
-            mime_type="application/json",
-            **_artifact_file_metadata(path, task.project_id, task.id),
+        records.append(
+            ArtifactRead(
+                task_id=task.id,
+                organization_id=task.organization_id,
+                project_id=task.project_id,
+                input_file_id=task.input_file_id,
+                artifact_type="json",
+                label=label,
+                path=path,
+                mime_type="application/json",
+                **_artifact_file_metadata(path, task.project_id, task.id),
+            )
         )
-        _artifacts[artifact.id] = artifact
-        state_store.upsert_item("artifacts", artifact)
+    return records
 
 
 def _channel_name(value) -> str | None:
@@ -341,6 +434,37 @@ def _merge_plan_into_task_parameters(module_name: str, parameters: dict, plan) -
     return merged
 
 
+def _canonical_json_hash(payload: dict) -> str:
+    serialized = json.dumps(payload or {}, sort_keys=True, separators=(",", ":"), default=str)
+    return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+
+
+def _effective_idempotency_key(payload: AnalysisTaskCreate) -> str:
+    if payload.idempotency_key:
+        return f"client:{payload.idempotency_key}"
+    fingerprint = {
+        "project_id": payload.project_id,
+        "input_file_id": payload.input_file_id,
+        "module_name": payload.module_name,
+        "workflow_id": payload.workflow_id,
+        "parameters_json_sha256": _canonical_json_hash(payload.parameters_json),
+    }
+    return f"generated:{_canonical_json_hash(fingerprint)}"
+
+
+def _find_idempotent_task(payload: AnalysisTaskCreate) -> AnalysisTaskRead | None:
+    idempotency_key = payload.idempotency_key
+    if not idempotency_key:
+        return None
+    _refresh_tasks()
+    for existing_task in _tasks.values():
+        if existing_task.owner_user_id != payload.owner_user_id:
+            continue
+        if existing_task.idempotency_key == idempotency_key:
+            return existing_task
+    return None
+
+
 def create_task(payload: AnalysisTaskCreate, requesting_user_id: str | None = None) -> AnalysisTaskRead:
     if requesting_user_id is not None and payload.owner_user_id != requesting_user_id:
         raise HTTPException(status_code=403, detail="Task owner must match the authenticated user")
@@ -354,26 +478,6 @@ def create_task(payload: AnalysisTaskCreate, requesting_user_id: str | None = No
                 "message": "The selected EEG file belongs to a different project.",
             },
         )
-    
-    # P0-TASK-01 FIX: Implement idempotency key to prevent duplicate charges
-    # Generate idempotency key from task parameters
-    idempotency_data = f"{payload.project_id}:{payload.input_file_id}:{payload.module_name}:{payload.workflow_id}:{hashlib.sha256(str(payload.parameters_json).encode()).hexdigest()}"
-    idempotency_key = hashlib.sha256(idempotency_data.encode()).hexdigest()
-    
-    # Check for existing task with same idempotency key within last hour
-    from datetime import timedelta
-    one_hour_ago = utc_now() - timedelta(hours=1)
-    _refresh_tasks()
-    for existing_task in _tasks.values():
-        if (existing_task.owner_user_id == payload.owner_user_id and 
-            existing_task.created_at > one_hour_ago):
-            # Generate idempotency key for existing task
-            existing_data = f"{existing_task.project_id}:{existing_task.input_file_id}:{existing_task.module_name}:{existing_task.workflow_id}:{hashlib.sha256(str(existing_task.parameters_json).encode()).hexdigest()}"
-            existing_key = hashlib.sha256(existing_data.encode()).hexdigest()
-            if existing_key == idempotency_key:
-                # Return existing task to prevent duplicate charge
-                return existing_task
-    
     strict_workflow = _STRICT_WORKFLOW_BY_MODULE.get(payload.module_name)
     if strict_workflow and payload.workflow_id != strict_workflow:
         raise HTTPException(
@@ -397,8 +501,21 @@ def create_task(payload: AnalysisTaskCreate, requesting_user_id: str | None = No
                 "suggested_action": "Open Data Preparation, confirm the preparation plan, then start this analysis again.",
             },
         )
-    data_preparation_plan = data_preparation_service.validate_task_parameters(payload.module_name, payload.parameters_json)
+    data_preparation_plan = data_preparation_service.validate_task_parameters(
+        payload.module_name,
+        payload.parameters_json,
+        requesting_user_id=payload.owner_user_id,
+    )
     if data_preparation_plan is not None:
+        if data_preparation_plan.owner_user_id != payload.owner_user_id:
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "code": "DATA_PREPARATION_PLAN_PERMISSION_DENIED",
+                    "message": "The data preparation plan belongs to a different user.",
+                    "suggested_action": "Use a preparation plan owned by the task owner.",
+                },
+            )
         if data_preparation_plan.status != "confirmed":
             raise HTTPException(
                 status_code=422,
@@ -406,6 +523,15 @@ def create_task(payload: AnalysisTaskCreate, requesting_user_id: str | None = No
                     "code": "DATA_PREPARATION_PLAN_NOT_CONFIRMED",
                     "message": "Formal analysis requires a confirmed data preparation plan.",
                     "suggested_action": "Confirm the data preparation plan before starting analysis.",
+                },
+            )
+        if data_preparation_plan.delivery_scope == "lab_preview_only" and not payload.parameters_json.get("lab_preview_run"):
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "code": "LAB_PREVIEW_PLAN_NOT_FORMAL_DELIVERY",
+                    "message": "This data preparation plan was created for Module Lab preview and cannot be used as a formal delivery source.",
+                    "suggested_action": "Create a formal data preparation plan, or mark the task as a lab preview run.",
                 },
             )
         if data_preparation_plan.input_file_id != payload.input_file_id:
@@ -428,6 +554,10 @@ def create_task(payload: AnalysisTaskCreate, requesting_user_id: str | None = No
             )
     effective_parameters = _merge_plan_into_task_parameters(payload.module_name, payload.parameters_json, data_preparation_plan)
     payload = payload.model_copy(update={"parameters_json": effective_parameters})
+    payload = payload.model_copy(update={"idempotency_key": _effective_idempotency_key(payload)})
+    existing_task = _find_idempotent_task(payload)
+    if existing_task is not None:
+        return existing_task
     estimate = quota_service.task_resource_estimate(payload.module_name, eeg_file.size_bytes, payload.parameters_json)
     quota_preview = quota_service.task_quota_preview(estimate)
     billing_account_id = billing_service.normalize_account_id(payload.owner_user_id)
@@ -459,6 +589,7 @@ def create_task(payload: AnalysisTaskCreate, requesting_user_id: str | None = No
         },
     )
     task.audit_trace_id = queued_audit.audit_trace_id
+    data_preparation_artifacts: list[ArtifactRead] = []
     if data_preparation_plan is not None:
         data_preparation_reference = data_preparation_service.create_task_reference(
             data_preparation_plan.id,
@@ -468,8 +599,9 @@ def create_task(payload: AnalysisTaskCreate, requesting_user_id: str | None = No
                 expected_revision=data_preparation_plan.revision,
                 task_id=task.id,
             ),
+            requesting_user_id=payload.owner_user_id,
         )
-        _register_data_preparation_artifacts(task, data_preparation_reference.artifact_root)
+        data_preparation_artifacts = _data_preparation_artifact_records(task, data_preparation_reference.artifact_root)
     _tasks[task.id] = task
     state_store.upsert_item("tasks", task)
     task.status = "running"
@@ -567,48 +699,36 @@ def create_task(payload: AnalysisTaskCreate, requesting_user_id: str | None = No
     try:
         registered_object_keys: set[str] = set()
         registered_paths: set[str] = set()
-        registered_artifact_count = 0
-        for label, path in result_paths.items():
+        artifact_records: list[ArtifactRead] = list(data_preparation_artifacts)
+        for label, raw_path in result_paths.items():
+            path = Path(raw_path)
             metadata = _artifact_file_metadata(path, task.project_id, task.id)
             object_key = str(metadata.get("object_key") or "")
-            path_key = str(Path(path).resolve())
+            path_key = str(path.resolve())
             if (object_key and object_key in registered_object_keys) or path_key in registered_paths:
                 continue
             if object_key:
                 registered_object_keys.add(object_key)
             registered_paths.add(path_key)
-            artifact = ArtifactRead(
-                task_id=task.id,
-                organization_id=task.organization_id,
-                project_id=task.project_id,
-                input_file_id=task.input_file_id,
-                artifact_type=path.suffix.lstrip(".") or "file",
-                label=label,
-                path=path,
-                mime_type=_guess_mime(path),
-                **metadata,
+            artifact_records.append(
+                ArtifactRead(
+                    task_id=task.id,
+                    organization_id=task.organization_id,
+                    project_id=task.project_id,
+                    input_file_id=task.input_file_id,
+                    artifact_type=path.suffix.lstrip(".") or "file",
+                    label=label,
+                    path=path,
+                    mime_type=_guess_mime(path),
+                    **metadata,
+                )
             )
-            _artifacts[artifact.id] = artifact
-            state_store.upsert_item("artifacts", artifact)
-            registered_artifact_count += 1
 
         task.actual_resource_usage_json = {
-            "artifact_count": registered_artifact_count,
-            "output_storage_bytes": sum(Path(path).stat().st_size for path in {Path(p).resolve() for p in result_paths.values()} if Path(path).exists()),
+            "artifact_count": len(artifact_records),
+            "output_storage_bytes": sum(int(artifact.size_bytes or 0) for artifact in artifact_records),
             "worker_id": task.worker_id,
         }
-        quota_service.record_usage(
-            resource_type="analysis_task",
-            action="analysis_task.completed",
-            quantity=1,
-            unit="task",
-            source_type="analysis_task",
-            source_id=task.id,
-            organization_id=task.organization_id,
-            project_id=task.project_id,
-            owner_user_id=task.owner_user_id,
-            metadata_json=task.actual_resource_usage_json,
-        )
         billing_transaction = billing_service.charge_analysis_task(
             account_id=task.quota_charge_preview_json.get("billing_account_id"),
             task_id=task.id,
@@ -619,6 +739,22 @@ def create_task(payload: AnalysisTaskCreate, requesting_user_id: str | None = No
         charged = True
         task.actual_resource_usage_json["billing_transaction_id"] = billing_transaction.id
         task.actual_resource_usage_json["charged_credits"] = task.quota_charge_preview_json.get("estimated_credits")
+        for artifact in artifact_records:
+            _artifacts[artifact.id] = artifact
+        state_store.upsert_items("artifacts", artifact_records)
+        quota_service.record_usage(
+            resource_type="analysis_task",
+            action="analysis_task.completed",
+            quantity=1,
+            unit="task",
+            source_type="analysis_task",
+            source_id=task.id,
+            organization_id=task.organization_id,
+            project_id=task.project_id,
+            owner_user_id=task.owner_user_id,
+            quota_account_id=task.quota_charge_preview_json.get("billing_account_id"),
+            metadata_json=task.actual_resource_usage_json,
+        )
         task.status = "completed"
         task.queue_status = "completed"
         task.progress = 100
@@ -639,18 +775,52 @@ def create_task(payload: AnalysisTaskCreate, requesting_user_id: str | None = No
         except Exception:
             pass
         return task
+    except HTTPException as exc:
+        if not charged and exc.status_code == 402:
+            task.status = "payment_failed"
+            task.queue_status = "payment_failed"
+            task.progress = 100
+            task.error_code = "TASK_PAYMENT_FAILED"
+            task.error_message = "Analysis task finished but billing charge failed; no completed usage was recorded."
+            task.finished_at = utc_now()
+            task.updated_at = task.finished_at
+            _tasks[task.id] = task
+            state_store.upsert_item("tasks", task)
+            audit_service.record_event(
+                action="analysis_task.payment_failed",
+                object_type="analysis_task",
+                object_id=task.id,
+                organization_id=task.organization_id,
+                project_id=task.project_id,
+                actor_user_id=task.owner_user_id,
+                metadata_json={"error_code": task.error_code, "message": task.error_message},
+            )
+        raise
     except Exception as exc:
         if charged:
-            task.status = "completed"
-            task.queue_status = "completed"
+            task.status = "delivery_failed_after_charge"
+            task.queue_status = "failed"
             task.progress = 100
-            task.error_code = None
-            task.error_message = None
+            task.error_code = "TASK_DELIVERY_FAILED_AFTER_CHARGE"
+            task.error_message = "Analysis task was charged, but artifact delivery finalization failed. Contact support with the task_id."
             task.finished_at = task.finished_at or utc_now()
             task.updated_at = utc_now()
             _tasks[task.id] = task
             state_store.upsert_item("tasks", task)
-            return task
+            audit_service.record_event(
+                action="analysis_task.delivery_failed_after_charge",
+                object_type="analysis_task",
+                object_id=task.id,
+                organization_id=task.organization_id,
+                project_id=task.project_id,
+                actor_user_id=task.owner_user_id,
+                metadata_json={
+                    "error_code": task.error_code,
+                    "message": task.error_message,
+                    "billing_transaction_id": task.actual_resource_usage_json.get("billing_transaction_id"),
+                },
+            )
+            raise HTTPException(status_code=422, detail={"task_id": task.id, "error_code": task.error_code, "message": task.error_message}) from exc
         task.status = "failed"
         task.queue_status = "failed"
         task.progress = 100
@@ -732,7 +902,9 @@ def get_artifact_download_descriptor(artifact_id: str) -> dict:
         "task_id": artifact.task_id,
         "project_id": artifact.project_id,
         "label": artifact.label,
+        "artifact_type": artifact.artifact_type,
         "path": str(artifact.path),
+        "object_key": artifact.object_key,
         "mime_type": artifact.mime_type,
     }
 

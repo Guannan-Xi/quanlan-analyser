@@ -11,10 +11,24 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+os.environ.setdefault("QLANALYSER_ENV", "test")
+os.environ.setdefault("QLANALYSER_SANDBOX_MODE", "true")
 os.environ["QLANALYSER_STATE_ROOT"] = tempfile.mkdtemp(prefix="qlanalyser-report-gate-state-")
 
+from backend.models.analysis_task import AnalysisTaskRead
+from backend.models.governance import BillingTransactionRead
 from backend.models.report import ReportRead
 from backend.services import audit_service, report_service, state_store
+
+ACCEPTANCE_BILLING_ACCOUNT_ID = "demo-customer"
+ACCEPTANCE_CHARGE_CREDITS = 1.0
+
+
+def charge_preview() -> dict:
+    return {
+        "billing_account_id": ACCEPTANCE_BILLING_ACCOUNT_ID,
+        "estimated_credits": ACCEPTANCE_CHARGE_CREDITS,
+    }
 
 
 def expect_http_error(name: str, status_code: int, fn) -> dict:
@@ -68,6 +82,45 @@ def main() -> None:
         actor_user_id=owner_user_id,
         metadata_json={"source": "acceptance_report_release_gate"},
     )
+    checks.append(
+        expect_http_error(
+            "customer report blocked when source task is missing after review",
+            409,
+            lambda: report_service.get_report(report.id, requesting_user_id=owner_user_id),
+        )
+    )
+
+    state_store.upsert_item(
+        "tasks",
+        AnalysisTaskRead(
+            id=task_id,
+            organization_id=report.organization_id,
+            project_id=project_id,
+            input_file_id="eeg_report_gate",
+            module_name="psd",
+            workflow_id="resting_psd",
+            owner_user_id=owner_user_id,
+            created_by=owner_user_id,
+            status="completed",
+            queue_status="completed",
+            progress=100,
+            quota_charge_preview_json=charge_preview(),
+        ),
+    )
+    state_store.upsert_item(
+        "billing_transactions",
+        BillingTransactionRead(
+            id=f"billtx_{task_id}",
+            account_id=ACCEPTANCE_BILLING_ACCOUNT_ID,
+            direction="debit",
+            amount_credits=ACCEPTANCE_CHARGE_CREDITS,
+            balance_after_credits=99.0,
+            source_type="analysis_task",
+            source_id=task_id,
+            description="PSD acceptance posted charge",
+            metadata_json={"module_name": "psd"},
+        ),
+    )
 
     released_report = report_service.get_report(report.id, requesting_user_id=owner_user_id)
     released_html = report_service.get_report_file(report.id, "html", requesting_user_id=owner_user_id)
@@ -96,6 +149,37 @@ def main() -> None:
         project_id=outside_report.project_id,
         actor_user_id=owner_user_id,
         metadata_json={"source": "acceptance_report_release_gate"},
+    )
+    state_store.upsert_item(
+        "tasks",
+        AnalysisTaskRead(
+            id=outside_report.task_id,
+            organization_id=outside_report.organization_id,
+            project_id=outside_report.project_id,
+            input_file_id="eeg_report_gate",
+            module_name="psd",
+            workflow_id="resting_psd",
+            owner_user_id=owner_user_id,
+            created_by=owner_user_id,
+            status="completed",
+            queue_status="completed",
+            progress=100,
+            quota_charge_preview_json=charge_preview(),
+        ),
+    )
+    state_store.upsert_item(
+        "billing_transactions",
+        BillingTransactionRead(
+            id=f"billtx_{outside_report.task_id}",
+            account_id=ACCEPTANCE_BILLING_ACCOUNT_ID,
+            direction="debit",
+            amount_credits=ACCEPTANCE_CHARGE_CREDITS,
+            balance_after_credits=98.0,
+            source_type="analysis_task",
+            source_id=outside_report.task_id,
+            description="PSD acceptance posted charge",
+            metadata_json={"module_name": "psd"},
+        ),
     )
     checks.append(
         expect_http_error(
