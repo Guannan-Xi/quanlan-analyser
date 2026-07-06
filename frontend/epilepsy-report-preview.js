@@ -46,14 +46,15 @@
 
   function hydrateFromReviewPreview() {
     try {
-      const raw = window.localStorage.getItem("qlanalyser.epilepsy.review_preview.latest");
+      const storageKey = "qlanalyser.epilepsy.review_preview.latest";
+      const raw = window.sessionStorage.getItem(storageKey) || window.localStorage.getItem(storageKey);
       if (!raw) return;
       const parsed = JSON.parse(raw);
       if (parsed && (parsed.schema_version === REVIEW_SCHEMA || parsed.reviewed_events || parsed.all_reviewed_events || parsed.confirmed_events || parsed.event_reviews)) {
         state.payload = parsed;
       }
     } catch {
-      // Keep the built-in sample report when the browser blocks localStorage or the saved draft is malformed.
+      // Keep the built-in sample report when browser storage is blocked or the saved draft is malformed.
     }
   }
 
@@ -147,7 +148,9 @@
         evidence_grade: item.evidence_grade || uiReview.grade || "C",
         artifact_reason: item.artifact_reason || uiReview.artifact_reason || "",
         status,
-        score: Number(item.score || item.probability || 0),
+        preview_rms_ptp_rank_score: Number(item.preview_rms_ptp_rank_score || item.score || item.probability || 0),
+        score_kind: item.score_kind || "preview_rank_not_probability",
+        score_note: item.score_note || "预览排序值不是临床概率、检测置信度或诊断结论。",
         note: item.note || review.note || uiReview.note || "",
       };
     });
@@ -530,8 +533,9 @@
       ["evidence_grade", "evidence_grade"],
       ["artifact_reason", "artifact_reason"],
       ["review_status", "status"],
-      ["algorithm_candidate_score_not_clinical_confidence", "score"],
-      ["score_note", () => "算法候选分数，仅用于排序或复核优先级，不代表临床置信度"],
+      ["preview_rms_ptp_rank_score", "preview_rms_ptp_rank_score"],
+      ["score_kind", "score_kind"],
+      ["score_note", "score_note"],
       ["review_note", "note"],
     ];
     const csv = [
@@ -623,7 +627,7 @@
   }
 
   function representativeEvent() {
-    return confirmedEvents().sort((a, b) => (b.score || 0) - (a.score || 0))[0] || state.payload.reviewed_events[0];
+    return confirmedEvents().sort((a, b) => (b.preview_rms_ptp_rank_score || 0) - (a.preview_rms_ptp_rank_score || 0))[0] || state.payload.reviewed_events[0];
   }
 
   function normalizeStatus(status) {

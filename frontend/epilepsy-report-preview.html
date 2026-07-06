@@ -3,8 +3,8 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>癫痫样事件筛查报告预览 - QLanalyser</title>
-    <meta name="description" content="QLanalyser 癫痫样事件筛查与人工复核后的报告预览。" />
+    <title>癫痫样候选事件复核草稿预览 - QLanalyser</title>
+    <meta name="description" content="QLanalyser 癫痫样候选事件人工复核后的草稿预览。" />
     <link rel="stylesheet" href="./epilepsy-report-preview.css?v=20260706-preview" />
     <script src="./vendor/lucide.min.js"></script>
   </head>
@@ -14,9 +14,9 @@
         <div class="ep-brand">
           <div class="ep-kicker">
             <i data-lucide="file-chart-column" aria-hidden="true"></i>
-            <span>癫痫样事件筛查报告</span>
+            <span>癫痫样候选事件复核草稿</span>
           </div>
-          <h1>复核后报告预览</h1>
+          <h1>复核草稿预览</h1>
           <p id="reportSubtitle">科研筛查支持，不作为临床诊断结论。</p>
         </div>
         <div class="ep-top-actions">
@@ -38,7 +38,7 @@
 
       <section class="ep-report-banner" aria-label="报告边界">
         <strong id="overallStatement">已载入示例复核数据。</strong>
-        <span>报告只统计人工保留事件；排除、存疑和未复核候选保留在追溯记录中。</span>
+        <span>草稿只汇总人工保留候选；排除、存疑和未复核候选保留在追溯记录中。</span>
       </section>
 
       <section class="ep-summary-grid" aria-label="报告摘要">
@@ -121,7 +121,7 @@
               </figure>
               <figure class="ep-figure">
                 <canvas id="densityFigure" width="760" height="320"></canvas>
-                <figcaption>已复核人工保留候选负荷：按记录小时统计已复核保留候选密度。</figcaption>
+                <figcaption>已复核人工保留候选数（预览，按记录小时归一化）：不代表发作频率、疾病活动度或完整事件负荷。</figcaption>
               </figure>
               <figure class="ep-figure">
                 <canvas id="qcFigure" width="760" height="320"></canvas>
@@ -180,7 +180,7 @@
               </article>
               <article>
                 <h3>报告规则</h3>
-                <p>仅人工保留候选进入负荷统计、代表图和结果摘要；排除候选不进入统计；存疑和未复核候选单列为待确认，不扩展为临床结论。</p>
+                <p>仅人工保留候选进入草稿摘要、代表图和预览归一化统计；排除候选不进入统计；存疑和未复核候选单列为待确认，不扩展为临床结论。</p>
               </article>
               <article>
                 <h3>局限性</h3>

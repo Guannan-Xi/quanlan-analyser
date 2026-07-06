@@ -31,7 +31,7 @@
       duration_sec: 69.78 * 3600,
       sfreq: 1000,
       channels: ["EEG1", "EEG2", "EMG", "ACC"],
-      source_path_hint: "D:\\Quanlan\\Data\\HE脑电\\HE脑电\\HE-105.edf",
+      safe_source_path: "work/sample_data/epilepsy/HE-105.edf",
       model: {
         workflow_id: "epilepsy_ml_xgboost",
         detector_version: "preview-local-he-v1",
@@ -55,7 +55,7 @@
       duration_sec: 69.79 * 3600,
       sfreq: 1000,
       channels: ["EEG1", "EEG2", "EMG", "ACC"],
-      source_path_hint: "D:\\Quanlan\\Data\\HE脑电\\HE脑电\\HE-106.edf",
+      safe_source_path: "work/sample_data/epilepsy/HE-106.edf",
       model: {
         workflow_id: "epilepsy_ml_xgboost",
         detector_version: "preview-local-he-v1",
@@ -76,7 +76,7 @@
       duration_sec: 69.72 * 3600,
       sfreq: 1000,
       channels: ["EEG1", "EEG2", "EMG", "ACC"],
-      source_path_hint: "D:\\Quanlan\\Data\\HE脑电\\HE脑电\\HE-118.edf",
+      safe_source_path: "work/sample_data/epilepsy/HE-118.edf",
       model: {
         workflow_id: "epilepsy_ml_xgboost",
         detector_version: "preview-local-he-v1",
@@ -106,7 +106,7 @@
 
   const dom = {};
 
-  function makeCandidate(id, startSec, endSec, priority, aiType, channels, score, qcHint) {
+  function makeCandidate(id, startSec, endSec, priority, aiType, channels, previewRankScore, qcHint) {
     return {
       id,
       start_sec: round1(startSec),
@@ -115,7 +115,9 @@
       priority,
       ai_type: aiType,
       channels,
-      score,
+      preview_rms_ptp_rank_score: previewRankScore,
+      score_kind: "preview_rank_not_probability",
+      score_note: "预览排序值不是临床概率、检测置信度或诊断结论。",
       qc_hint: qcHint,
       emg_sync: aiType === "artifact_suspect" ? "present" : "absent",
       acc_motion: aiType === "artifact_suspect" ? "possible" : "absent",
@@ -318,7 +320,7 @@
             </div>
             <div class="er-candidate-meta">
               <span>${h(candidate.channels.join("/"))}</span>
-              <span>${Math.round(candidate.score * 100)}%</span>
+              <span>预览排序 ${candidate.preview_rms_ptp_rank_score.toFixed(2)}（非概率）</span>
             </div>
           </button>
         `;
@@ -568,7 +570,7 @@
 
     ctx.fillStyle = "#18201c";
     ctx.font = "700 13px Inter, Microsoft YaHei, sans-serif";
-    ctx.fillText(`${candidate.id} · ${round1(end - start)}s · score ${Math.round(candidate.score * 100)}%`, layout.left, 25);
+    ctx.fillText(`${candidate.id} · ${round1(end - start)}s · 预览排序 ${candidate.preview_rms_ptp_rank_score.toFixed(2)}（非概率）`, layout.left, 25);
     ctx.fillStyle = "#68736b";
     ctx.font = "12px Inter, Microsoft YaHei, sans-serif";
     ctx.fillText(`${candidate.qc_hint} · ${candidate.channels.join("/")}`, layout.left, 43);
@@ -756,7 +758,8 @@
         duration_sec: round1(record.duration_sec),
         sfreq: record.sfreq,
         channels: record.channels,
-        source_path_hint: record.source_path_hint,
+        safe_source_path: record.safe_source_path,
+        path_visibility: "safe_relative",
       },
       context: {
         workflow_id: record.model.workflow_id,
@@ -801,7 +804,9 @@
           ai_type: candidate.ai_type,
           reviewed_type: candidate.review.event_type,
           priority: candidate.priority,
-          score: candidate.score,
+          preview_rms_ptp_rank_score: candidate.preview_rms_ptp_rank_score,
+          score_kind: candidate.score_kind,
+          score_note: candidate.score_note,
           channels: candidate.channels,
           review_status: candidate.review.status,
           backend_status: STATUS_TO_BACKEND[candidate.review.status],
@@ -833,9 +838,9 @@
 
   function openReportPreview() {
     try {
-      window.localStorage.setItem("qlanalyser.epilepsy.review_preview.latest", JSON.stringify(reviewPayload()));
+      window.sessionStorage.setItem("qlanalyser.epilepsy.review_preview.latest", JSON.stringify(reviewPayload()));
     } catch {
-      // The report page still has its sample fallback if localStorage is unavailable.
+      // The report page still has its sample fallback if sessionStorage is unavailable.
     }
     window.location.href = "./epilepsy-report-preview.html?source=review-preview";
   }
