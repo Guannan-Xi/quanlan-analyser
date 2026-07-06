@@ -1027,7 +1027,7 @@
     const payload = buildReportPayload();
     const stats = payload.summary;
     dom.reportStatusBadge.textContent = reportStatusLabel(stats);
-    dom.reportStatusBadge.classList.toggle("ready", stats.report_status === "complete_review_preview");
+    dom.reportStatusBadge.classList.toggle("ready", stats.report_status === "review_draft_ready");
     dom.reportStatusBadge.classList.toggle("partial", stats.report_status === "partial_review_draft");
     dom.reportSummary.innerHTML = [
       ["候选事件", stats.auto_candidates, "候选总数"],
@@ -1621,7 +1621,7 @@
 
   function reportStatusLabel(stats) {
     const value = stats.report_status || buildReportPayload().summary.report_status;
-    if (value === "complete_review_preview") return "完整复核预览";
+    if (value === "review_draft_ready") return "复核草稿完整";
     if (value === "partial_review_draft") return "部分复核草稿";
     return "未生成";
   }
