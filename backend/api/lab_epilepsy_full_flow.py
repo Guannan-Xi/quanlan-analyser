@@ -102,6 +102,19 @@ def _local_paths_allowed(request: Request) -> bool:
     return _is_local_request(request) and _env_flag(SHOW_LOCAL_PATHS_ENV)
 
 
+def _sanitized_record(record: dict[str, Any]) -> dict[str, Any]:
+    cleaned = {
+        key: value
+        for key, value in record.items()
+        if key not in {"source_path", "source_path_display", "local_source_path", "absolute_path", "root"}
+    }
+    filename = cleaned.get("filename")
+    if filename:
+        cleaned["safe_source_path"] = f"{SAFE_SAMPLE_ROOT}{filename}"
+    cleaned["path_visibility"] = "safe_relative"
+    return cleaned
+
+
 def _record_id_from_path(path: Path) -> str:
     return path.stem.lower().replace("_", "-")
 
@@ -151,6 +164,11 @@ def _record_payload(path: Path, request: Request, include_metadata: bool = False
         "safe_source_path": safe_source_path,
         "path_visibility": "local_absolute" if _local_paths_allowed(request) else "safe_relative",
         "candidate_seed_count": len(HE_CANDIDATE_SEEDS.get(record_id, [])),
+        "limitations": [
+            "候选时间来自内置科研演示种子，后端只计算对应真实 EDF 小窗口指标。",
+            "尚未运行全记录训练模型扫描，不能估计检测器灵敏度、特异性或漏检率。",
+            "正式交付必须替换为真实 evidence package、可追溯人工复核层和导出 manifest。",
+        ],
         "non_medical_scope": "research_screening_support_only",
     }
     if _local_paths_allowed(request):
@@ -325,6 +343,11 @@ def generate_he_candidates(record_id: str, request: Request) -> dict[str, Any]:
             "尚未完成全记录训练模型扫描，不能估计敏感性或特异性。",
             "正式报告仍需 evidence package 和人工复核层。",
         ],
+        "candidate_boundary_notes": [
+            "候选时间来自内置科研演示种子，后端只计算对应真实 EDF 小窗口指标。",
+            "尚未运行全记录训练模型扫描，不能估计检测器灵敏度、特异性或漏检率。",
+            "正式交付必须替换为真实 evidence package、可追溯人工复核层和导出 manifest。",
+        ],
         "non_medical_scope": "research_screening_support_only",
     }
 
@@ -359,12 +382,13 @@ def save_lab_review_session(payload: dict[str, Any] = Body(...)) -> dict[str, An
         "schema_version": payload.get("schema_version"),
         "review_session_schema_version": payload.get("review_session_schema_version"),
         "non_medical_scope": payload.get("non_medical_scope"),
-        "record": record,
+        "record": _sanitized_record(record),
         "summary": payload.get("summary") or {},
         "event_reviews": payload.get("event_reviews") or {},
         "reviewed_events": events,
         "actions": payload.get("actions") or [],
-        "source": "lab_epilepsy_full_flow_backend_memory",
+        "source": "lab_epilepsy_full_flow_backend_memory_sanitized",
+        "storage": "volatile_lab_memory",
     }
     LAB_REVIEW_SESSIONS[session_id] = stored
     return {
