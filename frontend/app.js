@@ -999,6 +999,25 @@ function applyTeachingDataset(dataset, options = {}) {
   return { project, file, plan };
 }
 
+function preserveTeachingWorkspaceSelection() {
+  if (!state.teaching.active) return;
+  const project = state.real.project;
+  const file = state.real.eegFile;
+  const plan = state.real.plan;
+  if (project?.id && isTeachingDemoProject(project) && !state.workspace.projects.some((item) => item.id === project.id)) {
+    state.workspace.projects.unshift(project);
+  }
+  if (file?.id && isTeachingDemoFile(file) && !state.workspace.files.some((item) => item.id === file.id)) {
+    state.workspace.files.unshift(file);
+  }
+  if (plan?.id && !state.workspace.plans.some((item) => item.id === plan.id)) {
+    state.workspace.plans.unshift(plan);
+  }
+  if (project?.id && isTeachingDemoProject(project)) state.workspace.selectedProjectId = project.id;
+  if (file?.id && isTeachingDemoFile(file)) state.workspace.selectedFileId = file.id;
+  if (plan?.id) state.workspace.selectedPlanId = plan.id;
+}
+
 async function loadTeachingDatasetForModule(moduleName = "") {
   const endpoint = moduleName === "epilepsy_ml" ? "/lab/demo/epilepsy" : "/lab/demo/dataset";
   const dataset = await apiJson(endpoint);
@@ -3716,6 +3735,7 @@ async function refreshProjectWorkspace() {
   ]);
   state.workspace.projects = Array.isArray(projects) ? projects : [];
   state.workspace.files = Array.isArray(files) ? files : [];
+  preserveTeachingWorkspaceSelection();
   const selectedProjectId = state.workspace.selectedProjectId || null;
   let project = selectedProjectId
     ? state.workspace.projects.find((item) => item.id === selectedProjectId) || (state.real.project?.id === selectedProjectId ? state.real.project : null)
@@ -3748,12 +3768,21 @@ async function refreshProjectWorkspace() {
   state.real.project = project;
   state.real.eegFile = file;
   if (file?.id) {
-    const [plans, epochSets] = await Promise.all([
-      apiJson(`/data-preparation/plans?input_file_id=${encodeURIComponent(file.id)}`),
-      apiJson(`/eeg/files/${encodeURIComponent(file.id)}/epoch-sets`),
-    ]);
+    let plans = [];
+    let epochSets = [];
+    try {
+      [plans, epochSets] = await Promise.all([
+        apiJson(`/data-preparation/plans?input_file_id=${encodeURIComponent(file.id)}`),
+        apiJson(`/eeg/files/${encodeURIComponent(file.id)}/epoch-sets`),
+      ]);
+    } catch (error) {
+      if (!isTeachingDemoFile(file)) throw error;
+      plans = state.real.plan?.input_file_id === file.id ? [state.real.plan] : [];
+      epochSets = state.real.epochSet?.input_file_id === file.id ? [state.real.epochSet] : [];
+    }
     state.workspace.plans = Array.isArray(plans) ? plans : [];
     state.workspace.epochSets = Array.isArray(epochSets) ? epochSets : [];
+    preserveTeachingWorkspaceSelection();
     const selectedPlanId = state.workspace.selectedPlanId || state.real.plan?.id || null;
     const plan = selectedPlanId
       ? state.workspace.plans.find((item) => item.id === selectedPlanId) || (state.real.plan?.id === selectedPlanId ? state.real.plan : null)
@@ -3772,6 +3801,7 @@ async function refreshProjectWorkspace() {
   state.workspace.selectedProjectId = project?.id || null;
   state.workspace.selectedFileId = file?.id || null;
   state.workspace.selectedPlanId = state.real.plan?.id || null;
+  preserveTeachingWorkspaceSelection();
   renderProjectDataManagement();
   renderRealPlanState();
   renderRealFlowSummary();
