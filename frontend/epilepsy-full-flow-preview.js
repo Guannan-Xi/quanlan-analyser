@@ -392,12 +392,27 @@
   }
 
   async function runPreflight() {
+    if (state.busy.preflight) return;
     if (!currentRecord()) {
       toast("请先选择 HE 示例或上传 EDF。");
       setStep("upload");
       return;
     }
     const record = currentRecord();
+    state.busy.preflight = true;
+    renderActions();
+    if (record.upload_only) {
+      state.preflightDone = true;
+      state.reviewSaved = false;
+      addAudit("upload_preflight_limited", "浏览器上传文件只完成文件名/大小登记；未完成后端 EDF 元数据解析。");
+      runAdversarialReview({ silent: true });
+      setStep("candidates");
+      render();
+      toast("上传文件尚未完成后端解析，候选生成已被阻断。");
+      state.busy.preflight = false;
+      renderActions();
+      return;
+    }
     if (record.backend_record) {
       try {
         const data = await apiFetch(`/lab/epilepsy-full-flow/records/${encodeURIComponent(record.id)}/preflight`);
@@ -415,29 +430,46 @@
     setStep("candidates");
     render();
     toast("预检完成，可以生成候选事件包。");
+    state.busy.preflight = false;
+    renderActions();
   }
 
   async function generateCandidates() {
+    if (state.busy.candidates) return;
     if (!state.preflightDone) {
       toast("请先运行数据预检。");
       setStep("preflight");
       return;
     }
     const record = currentRecord();
+    if (record?.upload_only) {
+      state.candidatesGenerated = false;
+      addAudit("uploaded_candidates_blocked", "浏览器上传文件尚未完成后端解析，已阻断示例候选套用。");
+      runAdversarialReview({ silent: true });
+      render();
+      toast("上传文件不能套用 HE 示例候选，请接入后端任务服务或选择 HE 示例。");
+      return;
+    }
+    state.busy.candidates = true;
     state.candidateProgress = 12;
     state.candidatesGenerated = false;
     renderCandidateRunner("读取预检结果并准备候选包", 12);
+    renderActions();
     if (record?.backend_record) {
       try {
-        renderCandidateRunner("后端读取真实 EDF 小窗口并计算候选指标", 38);
-        const data = await apiFetch(`/lab/epilepsy-full-flow/records/${encodeURIComponent(record.id)}/candidates`, { method: "POST" });
+        renderCandidateRunner("后端读取真实 EDF 小窗口并计算候选指标，首次可能需要 20-40 秒", 38);
+        const data = state.candidateCache[record.id] || await apiFetch(
+          `/lab/epilepsy-full-flow/records/${encodeURIComponent(record.id)}/candidates`,
+          { method: "POST", timeoutMs: LONG_REQUEST_TIMEOUT_MS }
+        );
+        state.candidateCache[record.id] = data;
         const nextRecord = normalizeBackendRecord({
           ...record,
           ...(data.record || {}),
           candidates: Array.isArray(data.candidates) ? data.candidates : record.candidates,
           backend_candidate_source: data.candidate_source,
           backend_algorithm_status: data.algorithm_status,
-          backend_limitations: data.limitations || [],
+          backend_limitations: data.candidate_boundary_notes || data.limitations || [],
         });
         replaceAvailableRecord(nextRecord);
         state.candidateProgress = 100;
@@ -451,10 +483,15 @@
         setStep("review");
         render();
         toast("后端候选事件包已生成，请进行人工复核。");
+        state.busy.candidates = false;
+        renderActions();
         return;
       } catch (error) {
-        addAudit("backend_candidates_failed", `后端候选生成失败，降级前端候选包：${error.message}`);
-        toast("后端候选生成失败，已降级前端预览候选。");
+        addAudit("backend_candidates_failed", `后端候选生成失败：${error.message}`);
+        toast("后端候选生成失败，未自动降级为示例候选。");
+        state.busy.candidates = false;
+        renderActions();
+        return;
       }
     }
     window.setTimeout(() => renderCandidateRunner("构建 70 小时记录的候选时间轴", 48), 160);
@@ -470,6 +507,8 @@
       setStep("review");
       render();
       toast("候选事件包已生成，请进行人工复核。");
+      state.busy.candidates = false;
+      renderActions();
     }, 520);
   }
 
@@ -573,11 +612,14 @@
   }
 
   async function saveReviewLayer() {
+    if (state.busy.saveReview) return false;
     if (!candidates().length) {
       toast("请先生成候选事件。");
       setStep("candidates");
       return false;
     }
+    state.busy.saveReview = true;
+    renderActions();
     const payload = buildReviewPayload();
     try {
       window.localStorage.setItem(REVIEW_STORAGE_KEY, JSON.stringify(payload));
@@ -603,8 +645,11 @@
       toast("复核层已保存。");
       return true;
     } catch {
-      toast("浏览器阻止 localStorage，仍可导出 JSON。");
+      toast("浏览器阻止 localStorage，请先修复存储权限再导出草稿包。");
       return false;
+    } finally {
+      state.busy.saveReview = false;
+      renderActions();
     }
   }
 
