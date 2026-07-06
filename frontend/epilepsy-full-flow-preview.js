@@ -558,7 +558,7 @@
       };
     });
     state.reviewSaved = false;
-    addAudit("example_review_filled", "填充示例人工复核结果，用于端到端报告预览。");
+    addAudit("demo_review_filled", "填充演示人工复核结果，仅用于端到端流程试跑，不能用于真实报告。");
     runAdversarialReview({ silent: true });
     render();
     toast("示例复核已填充，可保存复核层并评审。");
@@ -658,23 +658,23 @@
     const record = currentRecord();
     const gates = [];
 
-    gates.push(makeGate("input", "输入与隐私", record ? "pass" : "fail", [
+    gates.push(makeGate("input", "输入与隐私", record && !record.upload_only ? "pass" : record ? "warn" : "fail", [
       record ? `已选择 ${record.filename}。` : "未选择 EDF 数据。",
-      isLocalHost() ? "本机访问可显示绝对路径。" : "非本机访问隐藏服务器绝对路径。",
-      record?.upload_only ? "浏览器上传文件缺少后端 EDF 元数据，正式分析需后端解析。" : "HE 示例目录来自本地开发样本。",
-    ], record ? [] : ["阻断：必须先选择 HE 示例或上传 EDF。"]));
+      "前端默认只显示安全相对路径；导出包会移除 source_path/local_source_path/root 等绝对路径字段。",
+      record?.upload_only ? "浏览器上传文件仅登记文件名和大小，尚未完成后端 EDF 解析。" : "HE 示例由本地实验接口或内置预览包提供。",
+    ], record ? (record.upload_only ? ["P1：上传文件尚未接入后端解析，不能生成候选或报告。"] : []) : ["阻断：必须先选择 HE 示例或上传 EDF。"]));
 
     gates.push(makeGate("preflight", "数据预检", state.preflightDone ? (record?.upload_only ? "warn" : "pass") : "fail", [
       state.preflightDone ? "已确认文件规模、通道策略和长记录处理边界。" : "尚未运行预检。",
       "70 小时 EDF 不在浏览器全量读取，正式态需使用 preload=False 和 waveform-window。",
-      record?.upload_only ? "上传 EDF 的采样率/通道/时长当前为预览占位。" : "HE 样本元数据已知：1000 Hz，EEG1/EEG2/EMG/ACC。",
+      record?.upload_only ? "上传 EDF 的采样率/通道/时长当前为未知，不能写入学术报告。" : "HE 样本元数据由后端预检或内置预览给出。",
     ], state.preflightDone ? [] : ["阻断：候选生成前必须完成预检。"]));
 
     gates.push(makeGate("candidate", "候选生成", state.candidatesGenerated ? "warn" : "fail", [
-      state.candidatesGenerated ? `已生成 ${candidates().length} 个预览候选。` : "尚未生成候选事件包。",
-      record?.backend_candidate_source ? `候选由后端生成：${record.backend_candidate_source}。` : "当前候选用于流程试用，不声明算法外部验证性能。",
-      "正式报告需记录检测器版本、阈值、候选表 checksum 和 source artifact id。",
-    ], state.candidatesGenerated ? ["P1：当前为预览候选，正式交付需接真实算法产物。"] : ["阻断：复核前必须有候选包。"]));
+      state.candidatesGenerated ? `已生成 ${candidates().length} 个候选事件。` : "尚未生成候选事件包。",
+      record?.backend_candidate_source ? `后端候选边界：${record.backend_candidate_source}。` : "内置候选只用于流程试用，不声明算法外部验证性能。",
+      "正式报告需记录检测器版本、阈值、候选表 checksum 和 source artifact id；当前不是已验证检测器输出。",
+    ], state.candidatesGenerated ? ["P1：当前为候选复核草稿，正式交付需接真实算法产物和 evidence package。"] : ["阻断：复核前必须有候选包。"]));
 
     gates.push(makeGate("review", "人工复核", reviewGateStatus(stats), [
       `${stats.reviewed}/${stats.total} 个候选已复核。`,
@@ -684,7 +684,7 @@
 
     gates.push(makeGate("report", "报告与证据", reportGateStatus(stats), [
       state.reviewSaved ? "复核层已保存，可被报告预览页读取。" : "复核层尚未保存到预览存储。",
-      "图表来自预览流程数据；代表波形证据需正式接入 EDF waveform-window。",
+      "图表来自候选复核草稿；代表波形证据需正式接入 EDF waveform-window。",
       "报告措辞保持科研筛查支持，不使用确诊、排除疾病或治疗建议。",
     ], reportBlocks(stats)));
 
@@ -726,15 +726,39 @@
     if (!state.reviewSaved) blocks.push("P1：复核层未保存，外部报告页无法复现当前结果。");
     if (stats.reviewed === 0) blocks.push("阻断：没有人工复核结果，不能生成报告结论。");
     if (stats.unreviewed + stats.needs_review > 0) blocks.push("P1：报告状态必须标为 partial_review_draft。");
-    blocks.push("P1：正式学术报告需替换真实 EDF waveform-window/evidence package。");
+    blocks.push("P1：正式学术报告需替换真实 EDF waveform-window/evidence package，并生成 manifest/audit trail。");
     return blocks;
   }
 
   function setStep(step) {
     if (!STEPS.includes(step)) return;
+    if (!canEnterStep(step)) {
+      toast(stepLockReason(step));
+      return;
+    }
     state.currentStep = step;
     render();
     window.requestAnimationFrame(redrawVisibleFigures);
+  }
+
+  function canEnterStep(step) {
+    const stats = reviewStats();
+    if (step === "upload") return true;
+    if (step === "preflight") return Boolean(currentRecord());
+    if (step === "candidates") return state.preflightDone;
+    if (step === "review") return state.candidatesGenerated;
+    if (step === "adversarial") return stats.reviewed > 0;
+    if (step === "report") return state.reviewSaved && stats.reviewed > 0 && !hasFailingGate();
+    return false;
+  }
+
+  function stepLockReason(step) {
+    if (step === "preflight") return "请先选择或上传 EDF。";
+    if (step === "candidates") return "请先完成数据预检。";
+    if (step === "review") return "请先生成候选事件包。";
+    if (step === "adversarial") return "请先完成至少一条人工复核。";
+    if (step === "report") return "请先保存复核层，并通过阻断项评审。";
+    return "当前步骤还未解锁。";
   }
 
   async function runNextAction() {
@@ -758,13 +782,15 @@
     const stats = reviewStats();
     if (!currentRecord()) return { action: "select_sample", title: "上传或选择 HE 示例数据", text: "选择 HE-105、HE-106、HE-118，或从本地目录上传 EDF 文件。", label: "选择 HE-105" };
     if (!state.preflightDone) return { action: "preflight", title: "运行数据预检", text: "先确认文件规模、通道和长记录读取策略，再进入候选生成。", label: "运行预检" };
-    if (!state.candidatesGenerated) return { action: "candidates", title: "生成候选事件包", text: "创建用于人工复核和报告预览的候选事件队列。", label: "生成候选" };
-    if (stats.reviewed === 0) return { action: "auto_review", title: "进行人工复核", text: "可逐条复核，也可先填充示例复核走完整流程。", label: "填充示例复核" };
+    if (currentRecord()?.upload_only && state.preflightDone) return { action: "select_sample", title: "上传文件待后端解析", text: "当前上传文件不能套用 HE 示例候选；请选择 HE 示例，或接入正式后端任务服务后再生成候选。", label: "选择 HE 示例" };
+    if (!state.candidatesGenerated) return { action: "candidates", title: "生成候选事件包", text: "创建用于人工复核的候选事件队列；HE 后端首次读取真实 EDF 小窗口可能需要 20-40 秒。", label: "生成候选" };
+    if (stats.reviewed === 0) return { action: "auto_review", title: "进行人工复核", text: "可逐条复核，也可填充演示复核以试走流程；演示复核不能用于真实报告。", label: "填充演示复核" };
+    if (stats.needs_review > 0) return { action: "review", title: `处理 ${stats.needs_review} 个存疑候选`, text: "存疑候选必须单列待确认，不能进入正式结论。", label: "回到复核" };
     if (stats.unreviewed > 0) return { action: "review", title: "补齐未复核候选", text: "未复核候选不能进入最终报告结论。", label: "回到复核" };
     if (!state.reviewSaved) return { action: "save_review", title: "保存复核层", text: "把人工复核结果写入本地预览存储，供报告页读取。", label: "保存复核层" };
     if (hasFailingGate()) return { action: "adversarial", title: "完成对抗性评审", text: "重新检查输入、候选、复核和报告证据边界。", label: "运行评审" };
-    if (state.currentStep !== "report") return { action: "report", title: "查看高价值报告", text: "报告包含摘要、图表、事件表、方法、限制和追溯信息。", label: "查看报告" };
-    return { action: "export_report", title: "导出报告 JSON", text: "导出当前可复现报告包，正式态可进一步生成 PDF/HTML。", label: "导出报告 JSON" };
+    if (state.currentStep !== "report") return { action: "report", title: "查看草稿报告预览", text: "报告包含摘要、图表、事件表、方法、限制和追溯信息；仍不是正式科研结论。", label: "查看草稿报告" };
+    return { action: "export_report", title: "导出草稿 JSON", text: "导出当前可复现草稿包；正式态还需要 PDF/HTML、图表、manifest 和 audit trail。", label: "导出草稿 JSON" };
   }
 
   function render() {
@@ -782,14 +808,27 @@
     syncIcons();
   }
 
+  function renderActions() {
+    renderTopActions();
+    renderNextAction();
+    renderStepper();
+    syncIcons();
+  }
+
   function renderTopActions() {
     const stats = reviewStats();
     const canOpenReview = state.candidatesGenerated;
-    const canOpenReport = stats.reviewed > 0;
+    const canOpenReport = state.reviewSaved && stats.reviewed > 0 && !hasFailingGate();
     dom.openReviewBtn.disabled = !canOpenReview;
     dom.openReviewBtn.title = canOpenReview ? "打开详细人工复核预览页" : "请先完成候选生成";
     dom.openReportBtn.disabled = !canOpenReport;
-    dom.openReportBtn.title = canOpenReport ? "保存复核层并打开报告预览页" : "请先完成人工复核";
+    dom.openReportBtn.title = canOpenReport ? "打开草稿报告预览页" : "请先保存复核层并处理阻断项";
+    dom.runPreflightBtn.disabled = state.busy.preflight || !currentRecord();
+    dom.generateCandidatesBtn.disabled = state.busy.candidates || !state.preflightDone || Boolean(currentRecord()?.upload_only);
+    dom.autoReviewBtn.disabled = !state.candidatesGenerated;
+    dom.saveReviewBtn.disabled = state.busy.saveReview || !state.candidatesGenerated;
+    dom.exportReportJsonBtn.disabled = hasFailingGate() || !state.reviewSaved;
+    dom.exportReportJsonBtn.title = dom.exportReportJsonBtn.disabled ? "存在阻断项或复核层未保存，不能导出报告包。" : "导出草稿 JSON 包。";
   }
 
   function renderStepper() {
@@ -797,6 +836,8 @@
     dom.steps.forEach((button, index) => {
       button.classList.toggle("is-active", button.dataset.step === state.currentStep);
       button.classList.toggle("is-done", index < activeIndex || stepComplete(button.dataset.step));
+      button.disabled = !canEnterStep(button.dataset.step);
+      button.title = button.disabled ? stepLockReason(button.dataset.step) : "";
     });
     dom.stages.forEach((stage) => {
       stage.classList.toggle("is-active", stage.dataset.stage === state.currentStep);
@@ -819,9 +860,9 @@
     dom.sampleGrid.innerHTML = rows.map((record) => `
       <button class="ep-flow-sample-card ${record.id === state.selectedRecordId ? "is-selected" : ""}" type="button" data-record-id="${h(record.id)}">
         <strong>${h(record.filename)}</strong>
-        <small>${formatBytes(record.size_bytes)} · ${record.duration_sec ? `${formatHours(record.duration_sec)} h` : "后端待解析"} · ${h((record.channels || []).join(" / "))}</small>
-        <small>${record.upload_only ? "浏览器上传：仅预览流程" : record.backend_record ? "后端 HE 示例：真实 EDF 元数据/窗口" : "HE 示例：癫痫开发样本"}</small>
-      </button>
+          <small>${formatBytes(record.size_bytes)} · ${record.duration_sec ? `${formatHours(record.duration_sec)} h` : "后端待解析"} · ${h((record.channels || []).join(" / ") || "通道待解析")}</small>
+          <small>${record.upload_only ? "浏览器上传：仅登记，未分析" : record.backend_record ? "本地实验接口：真实 EDF 元数据/窗口指标" : "内置科研开发演示样本"}</small>
+        </button>
     `).join("");
     dom.sampleGrid.querySelectorAll("[data-record-id]").forEach((button) => {
       button.addEventListener("click", () => selectRecord(button.dataset.recordId));
@@ -861,8 +902,8 @@
       { label: "文件格式", value: record.filename.toLowerCase().endsWith(".edf") ? "EDF" : "待确认", detail: `${record.filename} · ${formatBytes(record.size_bytes)}` },
       { label: "记录规模", value: record.duration_sec ? `${formatHours(record.duration_sec)} h` : "后端待解析", detail: "约 70 小时记录需后台分块处理，禁止浏览器全量加载。" },
       { label: "采样率", value: record.sfreq ? `${record.sfreq} Hz` : "后端待解析", detail: "HE 示例预期为 1000 Hz；上传文件以 EDF reader 返回为准。" },
-      { label: "通道", value: (record.channels || []).join(" / "), detail: "EEG1/EEG2 为主要证据，EMG/ACC 用于伪迹解释。" },
-      { label: "隐私路径", value: isLocalHost() ? "本机绝对路径" : "安全相对路径", detail: isLocalHost() ? record.source_path || LOCAL_SAMPLE_FOLDER : "非本机访问不展示服务器绝对路径。" },
+      { label: "通道", value: (record.channels || []).join(" / ") || "后端待解析", detail: "EEG 通道用于候选展示，EMG/ACC 只能作为伪迹线索，不能单独作为排除依据。" },
+      { label: "隐私路径", value: record.path_visibility === "local_absolute" ? "本机实验路径" : "安全相对路径", detail: record.source_path_display || record.safe_source_path || SAFE_SAMPLE_FOLDER },
       { label: "正式接口", value: "/waveform-window", detail: "正式报告代表图必须来自真实 EDF 窗口或导出的 evidence package。" },
     ];
   }
@@ -877,7 +918,7 @@
         <article class="ep-flow-candidate-mini">
           <strong>${h(event.event_id)} · ${h(TYPE_LABEL[event.event_type])}</strong>
           <span>${formatClock(event.start_sec)} · ${event.duration_sec.toFixed(1)} s · ${h(event.channels.join(" / "))}</span>
-          <span>优先级 ${h(event.priority)} · 算法候选分数 ${event.score.toFixed(2)}</span>
+          <span>优先级 ${h(event.priority)} · 预览排序值 ${event.score.toFixed(2)}</span>
         </article>
       `).join("")
       : `<article class="ep-flow-candidate-mini"><strong>暂无候选</strong><span>完成预检后生成预览候选事件包。</span></article>`;
@@ -890,7 +931,7 @@
         <button class="ep-flow-event-card ${index === state.activeEventIndex ? "is-active" : ""}" type="button" data-event-index="${index}">
           <strong><span>${h(event.event_id)}</span><span>${h(STATUS_LABEL[statusFor(event)])}</span></strong>
           <span>${formatClock(event.start_sec)} · ${event.duration_sec.toFixed(1)} s · ${h(TYPE_LABEL[event.event_type])}</span>
-          <span>${h(event.channels.join(" / "))} · priority ${h(event.priority)} · score ${event.score.toFixed(2)}</span>
+          <span>${h(event.channels.join(" / "))} · priority ${h(event.priority)} · 排序值 ${event.score.toFixed(2)}</span>
         </button>
       `).join("")
       : `<article class="ep-flow-event-card"><strong><span>暂无候选</span></strong><span>生成候选后在这里逐条复核。</span></article>`;
@@ -976,7 +1017,7 @@
     if (issue.includes("选择")) return "回到上传样本步骤。";
     if (issue.includes("预检")) return "运行数据预检。";
     if (issue.includes("候选")) return "生成候选事件包。";
-    if (issue.includes("未复核")) return "逐条复核或填充示例复核。";
+      if (issue.includes("未复核")) return "逐条复核或填充演示复核。";
     if (issue.includes("保存")) return "保存复核层。";
     if (issue.includes("waveform")) return "正式态接入后端真实证据图。";
     return "保留为报告限制或待办。";
@@ -989,11 +1030,11 @@
     dom.reportStatusBadge.classList.toggle("ready", stats.report_status === "complete_review_preview");
     dom.reportStatusBadge.classList.toggle("partial", stats.report_status === "partial_review_draft");
     dom.reportSummary.innerHTML = [
-      ["自动候选", stats.auto_candidates, "算法候选总数"],
+      ["候选事件", stats.auto_candidates, "候选总数"],
       ["已复核", stats.reviewed, "人工处理覆盖"],
       ["人工保留", stats.confirmed, "进入负荷统计"],
       ["存疑/未复核", stats.needs_review + stats.unreviewed, "不写作结论"],
-      ["保留负荷", `${stats.confirmed_rate_per_hour.toFixed(3)} / h`, "按记录小时"],
+      ["人工保留候选率", `${stats.confirmed_rate_per_hour.toFixed(3)} / h`, "非诊断频率"],
     ].map(([label, value, hint]) => `
       <article>
         <span>${h(label)}</span>
@@ -1010,7 +1051,7 @@
           <td>${h(formatClock(event.start_sec))}<br><small>${h(event.duration_sec.toFixed(1))} s</small></td>
           <td>${h(TYPE_LABEL[event.event_type] || event.event_type)}</td>
           <td>${h(event.channels.join(" / "))}</td>
-          <td>${h(event.evidence_grade || "-")}<br><small>score ${h(event.score.toFixed(2))}</small></td>
+          <td>${h(event.evidence_grade || "-")}<br><small>排序值 ${h(event.score.toFixed(2))}</small></td>
           <td>${h(STATUS_LABEL[event.status] || event.status)}</td>
           <td>${h(event.review_note || "-")}</td>
         </tr>
@@ -1057,20 +1098,21 @@
         duration_sec: effectiveDurationSec(record),
         sfreq: record?.sfreq || null,
         channels: record?.channels || [],
-        source_path_display: sampleFolderForDisplay(),
+        safe_source_path: record?.safe_source_path || `${SAFE_SAMPLE_FOLDER}${record?.filename || ""}`,
+        path_visibility: "safe_relative",
       },
       context: {
         workflow_id: "epilepsy_full_flow_preview",
         task_id: `preview_${record?.id || "none"}`,
         input_file_id: record?.file_id || "",
         review_session_id: `preview_session_${record?.id || "none"}`,
-        source_algorithm_artifact_id: "preview_candidate_package",
+        source_algorithm_artifact_id: record?.backend_candidate_source || "preview_candidate_package",
         source_page: "epilepsy-full-flow-preview",
       },
       model: {
-        detector_version: "preview_candidate_package_he_v1",
-        threshold: 0.72,
-        note: "Preview candidates for product workflow validation; not an externally validated detector output.",
+        detector_version: record?.backend_algorithm_status || "preview_candidate_package_he_v1",
+        threshold: null,
+        note: "候选包用于产品流程验证；当前不是外部验证过的癫痫检测器输出。",
       },
       summary: reviewStats(),
       event_reviews: Object.fromEntries(events.map((event) => [event.event_id, {
