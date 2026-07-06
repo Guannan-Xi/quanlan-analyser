@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import os
 from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
@@ -15,8 +16,10 @@ from eeg_core.io.readers import read_raw
 
 router = APIRouter()
 
-HE_SAMPLE_ROOT = Path(r"D:\Quanlan\Data\HE脑电\HE脑电")
-SAFE_SAMPLE_ROOT = "HE脑电/HE脑电/"
+LAB_API_ENV = "QLANALYSER_LAB_EPILEPSY_FULL_FLOW_ENABLED"
+SAMPLE_ROOT_ENV = "QLANALYSER_LAB_HE_SAMPLE_ROOT"
+SHOW_LOCAL_PATHS_ENV = "QLANALYSER_LAB_SHOW_LOCAL_PATHS"
+SAFE_SAMPLE_ROOT = "work/sample_data/epilepsy/"
 SUPPORTED_SUFFIXES = {".edf", ".bdf", ".fif", ".fiff"}
 MAX_WAVEFORM_DURATION_SEC = 120.0
 MAX_WAVEFORM_POINTS = 4000
@@ -69,9 +72,34 @@ HE_CANDIDATE_SEEDS: dict[str, list[dict[str, Any]]] = {
 LAB_REVIEW_SESSIONS: dict[str, dict[str, Any]] = {}
 
 
+def _env_flag(name: str) -> bool:
+    return os.getenv(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
 def _is_local_request(request: Request) -> bool:
     host = (request.client.host if request.client else "") or ""
     return host in {"127.0.0.1", "::1", "localhost"}
+
+
+def require_lab_local_request(request: Request) -> None:
+    if not _env_flag(LAB_API_ENV):
+        raise HTTPException(status_code=404, detail="Lab epilepsy full-flow API is disabled")
+    if not _is_local_request(request):
+        raise HTTPException(status_code=403, detail="Lab epilepsy full-flow API is local-only")
+
+
+def _sample_root() -> Path:
+    configured = os.getenv(SAMPLE_ROOT_ENV, "").strip()
+    if not configured:
+        raise HTTPException(status_code=503, detail=f"{SAMPLE_ROOT_ENV} is not configured")
+    root = Path(configured).expanduser()
+    if not root.exists() or not root.is_dir():
+        raise HTTPException(status_code=503, detail=f"{SAMPLE_ROOT_ENV} is not a readable directory")
+    return root
+
+
+def _local_paths_allowed(request: Request) -> bool:
+    return _is_local_request(request) and _env_flag(SHOW_LOCAL_PATHS_ENV)
 
 
 def _record_id_from_path(path: Path) -> str:
@@ -79,11 +107,10 @@ def _record_id_from_path(path: Path) -> str:
 
 
 def _sample_paths() -> list[Path]:
-    if not HE_SAMPLE_ROOT.exists():
-        return []
+    root = _sample_root()
     return [
         path
-        for path in sorted(HE_SAMPLE_ROOT.iterdir())
+        for path in sorted(root.iterdir())
         if path.is_file() and path.suffix.lower() in SUPPORTED_SUFFIXES
     ]
 
@@ -113,17 +140,21 @@ def _metadata_for_path(path_text: str) -> dict[str, Any]:
 
 def _record_payload(path: Path, request: Request, include_metadata: bool = False) -> dict[str, Any]:
     record_id = _record_id_from_path(path)
+    safe_source_path = f"{SAFE_SAMPLE_ROOT}{path.name}"
     payload: dict[str, Any] = {
         "id": record_id,
         "file_id": f"he_sample_{record_id.replace('-', '_')}",
         "filename": path.name,
         "format": path.suffix.lower().lstrip("."),
         "size_bytes": path.stat().st_size,
-        "source_path_display": str(path) if _is_local_request(request) else f"{SAFE_SAMPLE_ROOT}{path.name}",
-        "safe_source_path": f"{SAFE_SAMPLE_ROOT}{path.name}",
+        "source_path_display": str(path) if _local_paths_allowed(request) else safe_source_path,
+        "safe_source_path": safe_source_path,
+        "path_visibility": "local_absolute" if _local_paths_allowed(request) else "safe_relative",
         "candidate_seed_count": len(HE_CANDIDATE_SEEDS.get(record_id, [])),
         "non_medical_scope": "research_screening_support_only",
     }
+    if _local_paths_allowed(request):
+        payload["local_source_path"] = str(path)
     if include_metadata:
         payload.update(_metadata_for_path(str(path)))
     return payload
@@ -196,9 +227,20 @@ def _window_data(path: Path, start_sec: float, duration_sec: float, channels: st
     }
 
 
+@lru_cache(maxsize=96)
+def _cached_window_data(path_text: str, start_sec: float, duration_sec: float, channels: str, max_points: int) -> dict[str, Any]:
+    return _window_data(
+        Path(path_text),
+        start_sec=round(float(start_sec), 3),
+        duration_sec=round(float(duration_sec), 3),
+        channels=channels,
+        max_points=int(max_points),
+    )
+
+
 def _candidate_metrics(path: Path, event: dict[str, Any]) -> dict[str, Any]:
-    window = _window_data(
-        path,
+    window = _cached_window_data(
+        str(path),
         start_sec=max(0.0, float(event["start_sec"]) - 1.0),
         duration_sec=min(20.0, float(event["duration_sec"]) + 2.0),
         channels=",".join(event["channels"]),
@@ -293,7 +335,7 @@ def he_waveform_window(
     max_points: int = Query(2000, ge=100, le=MAX_WAVEFORM_POINTS),
 ) -> dict[str, Any]:
     path = _sample_path(record_id)
-    return _window_data(path, start_sec=start_sec, duration_sec=duration_sec, channels=channels, max_points=max_points)
+    return _cached_window_data(str(path), start_sec=start_sec, duration_sec=duration_sec, channels=channels, max_points=max_points)
 
 
 @router.post("/lab/epilepsy-full-flow/review-sessions")
