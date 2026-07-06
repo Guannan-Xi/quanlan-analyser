@@ -950,7 +950,7 @@
     if (!state.candidatesGenerated) return { action: "candidates", title: "生成候选事件包", text: "创建用于人工复核的候选事件队列；HE 后端首次读取真实 EDF 小窗口可能需要 20-40 秒。", label: "生成候选" };
     if (stats.reviewed === 0) return { action: "auto_review", title: "进行人工复核", text: "可逐条复核，也可填充演示复核以试走流程；演示复核不能用于真实报告。", label: "填充演示复核" };
     if (stats.unreviewed === 0 && !state.reviewSaved) return { action: "save_review", title: "保存复核层", text: "将人工复核结果写入本地预览存储，供草稿页面读取。", label: "保存复核层" };
-    if (state.reviewSaved && stats.unreviewed === 0) return { action: "report", title: stats.needs_review > 0 ? "查看部分复核草稿" : "查看复核草稿预览", text: "存疑候选会保留为草稿风险提示，不会升级为正式结论。", label: "查看草稿" };
+    if (state.reviewSaved && stats.unreviewed === 0 && !hasFailingGate()) return { action: "report", title: stats.needs_review > 0 ? "查看部分复核草稿" : "查看复核草稿预览", text: "存疑候选会保留为草稿风险提示，不会升级为正式结论。", label: "查看草稿" };
     if (stats.needs_review > 0) return { action: "review", title: `处理 ${stats.needs_review} 个存疑候选`, text: "存疑候选必须单列待确认，不能进入正式结论。", label: "回到复核" };
     if (stats.unreviewed > 0) return { action: "review", title: "补齐未复核候选", text: "未复核候选不能进入最终报告结论。", label: "回到复核" };
     if (!state.reviewSaved) return { action: "save_review", title: "保存复核层", text: "把人工复核结果写入本地预览存储，供草稿页读取。", label: "保存复核层" };
