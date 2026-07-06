@@ -107,7 +107,7 @@ demo.customer@quanlan.cn / demo123456
 Current public review links:
 
 ```text
-Customer: http://39.97.248.225/?customer_demo=login&api=http://39.97.248.225/api
+Customer: http://39.97.248.225/?customer_demo=auto&api=http://39.97.248.225/api
 Lab:      http://39.97.248.225/module-lab.html?api=http://39.97.248.225/api
 API:      http://39.97.248.225/api/health
 Admin:    use the top-right management entry, ops@quanlan.cn

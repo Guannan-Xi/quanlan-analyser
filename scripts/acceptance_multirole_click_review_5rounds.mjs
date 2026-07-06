@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 
-const DEFAULT_URL = "http://127.0.0.1:4174/?customer_demo=login&api=http://127.0.0.1:8001/api";
+const DEFAULT_URL = "http://127.0.0.1:4174/?customer_demo=auto&api=http://127.0.0.1:8001/api";
 const TARGET_URL = process.env.QLANALYSER_TARGET_URL || process.env.QLANALYSER_FRONTEND_URL || DEFAULT_URL;
 const OUT_DIR = process.env.QLANALYSER_MULTIROLE_REVIEW_DIR || path.resolve("work/release_evidence/multirole_click_review_5rounds");
 const EVIDENCE_PATH = path.join(OUT_DIR, "multirole_click_review_5rounds.json");

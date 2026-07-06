@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 
-const DEFAULT_TARGET_URL = "http://127.0.0.1:4174/?customer_demo=login&api=http://127.0.0.1:8001/api";
+const DEFAULT_TARGET_URL = "http://127.0.0.1:4174/?customer_demo=auto&api=http://127.0.0.1:8001/api";
 const TARGET_URL = process.env.QLANALYSER_TARGET_URL || process.env.QLANALYSER_FRONTEND_URL || DEFAULT_TARGET_URL;
 const EVIDENCE_PATH = process.env.QLANALYSER_CUSTOMER_LOGIN_EVIDENCE_PATH || "";
 const CUSTOMER_EMAIL = process.env.QLANALYSER_DEMO_EMAIL || "demo.customer@quanlan.cn";
@@ -223,6 +223,7 @@ async function run() {
       if (message.type() === "error") mobileConsoleErrors.push(message.text());
     });
     let mobileEvidence;
+    let mobileDataEvidence;
     try {
       await loginWithCustomer(mobilePage);
       mobileEvidence = await collectWorkspaceEvidence(mobilePage);
@@ -238,8 +239,11 @@ async function run() {
       check("mobile top method-validation shortcut is hidden", !mobileEvidence.methodTopLink?.visible, {
         methodTopLink: mobileEvidence.methodTopLink,
       });
-      check("mobile file picker uses localized button", Boolean(mobileEvidence.filePicker?.visible && /选择\s*(EEG|脑电)\s*数据/.test(mobileEvidence.filePicker.text)), {
-        filePicker: mobileEvidence.filePicker,
+      await mobilePage.locator('[data-view="storage"]').click();
+      await mobilePage.waitForSelector("#storage.view.active", { timeout: TIMEOUT_MS });
+      mobileDataEvidence = await collectWorkspaceEvidence(mobilePage);
+      check("mobile data page exposes localized file picker", Boolean(/选择\s*(EEG|脑电)\s*(文件|数据)/.test(mobileDataEvidence.filePicker?.text || "")), {
+        filePicker: mobileDataEvidence.filePicker,
       });
       check("no page errors during mobile login", mobilePageErrors.length === 0, { mobilePageErrors });
     } finally {
@@ -250,6 +254,7 @@ async function run() {
     report.evidence = {
       desktop: desktopEvidence,
       mobile: mobileEvidence,
+      mobileData: mobileDataEvidence,
       consoleErrors,
       mobileConsoleErrors,
     };

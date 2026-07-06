@@ -5,7 +5,7 @@ const { chromium } = await import("playwright");
 
 const TARGET_URL =
   process.env.QLANALYSER_FRONTEND_URL ||
-  "http://127.0.0.1:4174/?customer_demo=login&api=http://127.0.0.1:8001/api";
+  "http://127.0.0.1:4174/?customer_demo=auto&api=http://127.0.0.1:8001/api";
 const OUT_DIR =
   process.env.QLANALYSER_DATA_PREP_ENTRY_E2E_DIR ||
   path.resolve("work/release_evidence/07-full-product-e2e-pdca/13_data_prep_analysis_entry_consistency/05_browser_e2e");

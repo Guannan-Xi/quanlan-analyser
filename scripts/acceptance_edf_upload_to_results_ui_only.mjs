@@ -9,7 +9,7 @@ import path from "node:path";
 import { execFileSync } from "node:child_process";
 
 
-const FRONTEND_URL = process.env.QLANALYSER_FRONTEND_URL || "http://127.0.0.1:4174/?customer_demo=login&api=http://127.0.0.1:8001/api";
+const FRONTEND_URL = process.env.QLANALYSER_FRONTEND_URL || "http://127.0.0.1:4174/?customer_demo=auto&api=http://127.0.0.1:8001/api";
 const SAMPLE_EDF = process.env.QLANALYSER_UI_SAMPLE_EDF || path.resolve("frontend/assets/teaching_oddball.edf");
 const OUT_DIR = process.env.QLANALYSER_EDF_E2E_DIR || path.resolve("work/release_evidence/edf_upload_to_results_ui_only");
 const EVIDENCE_PATH = path.join(OUT_DIR, "edf_upload_to_results_ui_only.json");

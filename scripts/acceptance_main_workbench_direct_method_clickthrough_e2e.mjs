@@ -3,7 +3,7 @@ import path from "node:path";
 
 const { chromium } = await import("playwright");
 
-const FRONTEND_URL = process.env.QLANALYSER_FRONTEND_URL || "http://127.0.0.1:4174/?customer_demo=login&api=http://127.0.0.1:8001/api";
+const FRONTEND_URL = process.env.QLANALYSER_FRONTEND_URL || "http://127.0.0.1:4174/?customer_demo=auto&api=http://127.0.0.1:8001/api";
 const SAMPLE_EDF = process.env.QLANALYSER_UI_SAMPLE_EDF || path.resolve("frontend/assets/teaching_oddball.edf");
 const OUT_DIR = process.env.QLANALYSER_MAIN_WORKBENCH_CLICK_E2E_DIR
   || path.resolve("work/release_evidence/07-mainline-productization/main_workbench_clickthrough_e2e");

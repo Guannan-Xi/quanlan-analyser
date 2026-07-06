@@ -6,7 +6,7 @@ import path from "node:path";
 const API_BASE = process.env.QLANALYSER_API_BASE_URL || "http://127.0.0.1:8001/api";
 const TARGET_URL =
   process.env.QLANALYSER_FRONTEND_URL ||
-  `http://127.0.0.1:4174/?customer_demo=login&api=${encodeURIComponent(API_BASE)}`;
+  `http://127.0.0.1:4174/?customer_demo=auto&api=${encodeURIComponent(API_BASE)}`;
 const OUT_DIR =
   process.env.QLANALYSER_PROJECT_WAVEFORM_E2E_DIR ||
   path.resolve("work/release_evidence/07-full-product-e2e-pdca/14_waveform_preprocessing_project_cleanup/03_browser_e2e");

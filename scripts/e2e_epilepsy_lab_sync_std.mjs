@@ -5,7 +5,7 @@ import path from "node:path";
 
 const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1")), "..");
 const CHROME_EXE = "C:/Users/XGN/AppData/Local/Google/Chrome/Application/chrome.exe";
-const FRONTEND_URL = process.env.QLANALYSER_FRONTEND_URL || "http://127.0.0.1:4174/module-lab.html?customer_demo=login&api=http://127.0.0.1:8001/api";
+const FRONTEND_URL = process.env.QLANALYSER_FRONTEND_URL || "http://127.0.0.1:4174/module-lab.html?customer_demo=auto&api=http://127.0.0.1:8001/api";
 const RAW_PATH = process.env.QLANALYSER_EPILEPSY_LAB_SAMPLE || path.join(ROOT, "work/e2e_epilepsy_std_demo/epilepsy_std_demo_high_amplitude_raw.fif");
 const OUT_DIR = process.env.QLANALYSER_EPILEPSY_LAB_EVIDENCE_DIR || path.join(ROOT, "work/e2e_epilepsy_lab_sync_std/ui_e2e");
 const EVIDENCE_PATH = path.join(OUT_DIR, "epilepsy_lab_sync_std_e2e.json");

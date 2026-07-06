@@ -56,7 +56,7 @@ analysis, billing, invoice, or admin workflows.
 ## Public Review Links
 
 ```text
-Customer: http://39.97.248.225/?customer_demo=login&api=http://39.97.248.225/api
+Customer: http://39.97.248.225/?customer_demo=auto&api=http://39.97.248.225/api
 Lab:      http://39.97.248.225/module-lab.html?api=http://39.97.248.225/api
 API:      http://39.97.248.225/api/health
 ```

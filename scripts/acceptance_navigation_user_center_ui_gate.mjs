@@ -9,16 +9,7 @@ const EVIDENCE_PATH = path.join(OUT_DIR, "navigation_user_center_gate.json");
 const CUSTOMER_EMAIL = process.env.QLANALYSER_DEMO_EMAIL || "demo.customer@quanlan.cn";
 const CUSTOMER_PASSWORD = process.env.QLANALYSER_DEMO_PASSWORD || "demo123456";
 
-const expectedCustomerNav = [
-  "项目管理",
-  "数据管理",
-  "数据准备",
-  "分析任务",
-  "结果查看",
-  "报告交付",
-  "评审验证",
-  "个人中心",
-];
+const expectedCustomerNav = ["项目", "数据", "准备", "分析", "结果", "报告", "个人中心"];
 
 const forbiddenVisibleMarkers = [
   "\uFFFD",
@@ -36,8 +27,8 @@ const forbiddenVisibleMarkers = [
   "科研级别流程",
 ];
 
-const financeTerms = ["充值", "发票", "余额"];
-const userCenterRequiredTerms = ["账户", "余额", "充值", "发票", "安全", "通知", "设置"];
+const financeTerms = ["充值", "发票", "余额", "支付"];
+const userCenterRequiredTerms = ["账户", "安全", "通知", "偏好"];
 
 function ensureDir() {
   fs.mkdirSync(OUT_DIR, { recursive: true });
@@ -151,7 +142,7 @@ async function run() {
     const userCenterState = await collectState(page, "user_center", "#userCenter");
     const userCenterText = await visibleText(page, "#userCenter");
     const missingUserCenterTerms = userCenterRequiredTerms.filter((term) => !userCenterText.includes(term));
-    pushIf(missingUserCenterTerms.length > 0, userCenterState.issues, "user center is missing required account/finance/settings surfaces", {
+    pushIf(missingUserCenterTerms.length > 0, userCenterState.issues, "user center is missing required account/security/preference surfaces", {
       missingUserCenterTerms,
     });
     report.states.push(userCenterState);

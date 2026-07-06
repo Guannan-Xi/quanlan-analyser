@@ -3,7 +3,7 @@ import path from "node:path";
 
 const { chromium } = await import("playwright");
 
-const FRONTEND_URL = process.env.QLANALYSER_FRONTEND_URL || "http://127.0.0.1:4174/?customer_demo=login&api=http://127.0.0.1:8001/api";
+const FRONTEND_URL = process.env.QLANALYSER_FRONTEND_URL || "http://127.0.0.1:4174/?customer_demo=auto&api=http://127.0.0.1:8001/api";
 const API_BASE = process.env.QLANALYSER_API_BASE_URL || new URL(FRONTEND_URL).searchParams.get("api") || "http://127.0.0.1:8001/api";
 const ADMIN_EMAIL = process.env.QLANALYSER_ADMIN_EMAIL || "ops@quanlan.cn";
 const ADMIN_PASSWORD = process.env.QLANALYSER_ADMIN_PASSWORD || "ops-demo-2026";

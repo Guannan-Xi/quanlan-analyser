@@ -5,7 +5,7 @@ import path from "node:path";
 
 const TARGET_URL =
   process.env.QLANALYSER_FRONTEND_URL ||
-  "http://127.0.0.1:4174/?customer_demo=login&api=http://127.0.0.1:8001/api";
+  "http://127.0.0.1:4174/?customer_demo=auto&api=http://127.0.0.1:8001/api";
 const OUT_DIR =
   process.env.QLANALYSER_PROJECT_DATA_UX_EVIDENCE_DIR ||
   path.resolve("work/release_evidence/20260625-project-data-entry-ux");

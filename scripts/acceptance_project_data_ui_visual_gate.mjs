@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 
-const FRONTEND_URL = process.env.QLANALYSER_FRONTEND_URL || "http://127.0.0.1:4174/?customer_demo=login&api=http://127.0.0.1:8001/api";
+const FRONTEND_URL = process.env.QLANALYSER_FRONTEND_URL || "http://127.0.0.1:4174/?customer_demo=auto&api=http://127.0.0.1:8001/api";
 const OUT_DIR = process.env.QLANALYSER_PROJECT_DATA_UI_GATE_DIR || path.resolve("work/release_evidence/ui_interaction_review/project_data_ui_gate");
 const EVIDENCE_PATH = path.join(OUT_DIR, "project_data_ui_gate.json");
 const CUSTOMER_EMAIL = process.env.QLANALYSER_DEMO_EMAIL || "demo.customer@quanlan.cn";
