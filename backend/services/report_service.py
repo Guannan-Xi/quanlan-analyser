@@ -377,8 +377,16 @@ def _write_metrics_csv_alias(report_dir: Path, task_output_dir: Path) -> Path | 
         task_output_dir / "tables" / "channel_band_power.csv",
         task_output_dir / "tables" / "erp_metrics.csv",
         task_output_dir / "tables" / "tfr_summary_table.csv",
+        task_output_dir / "tables" / "multitaper_band_power.csv",
+        task_output_dir / "tables" / "multitaper_psd_by_channel_frequency.csv",
+        task_output_dir / "tables" / "connectivity_edges_long.csv",
+        task_output_dir / "tables" / "connectivity_matrix.csv",
+        task_output_dir / "tables" / "reference_channels.csv",
+        task_output_dir / "tables" / "bipolar_pairs.csv",
         task_output_dir / "tables" / "pac_channel_summary.csv",
         task_output_dir / "tables" / "pac_dynamic_curve.csv",
+        task_output_dir / "tables" / "pac_v2_channel_summary.csv",
+        task_output_dir / "tables" / "pac_v2_long.csv",
     ]
     source = next((candidate for candidate in candidates if candidate.exists()), None)
     if source is None:
@@ -411,7 +419,16 @@ def _readable_artifact_labels(artifacts: list[dict]) -> list[str]:
 def _sibling_completed_analyses(task: dict) -> list[dict]:
     project_id = task.get("project_id")
     input_file_id = task.get("input_file_id")
-    supported = {"psd", "erp", "epilepsy", "tfr", "pac", "reference_csd", "connectivity"}
+    supported = {
+        "psd",
+        "erp",
+        "tfr",
+        "multitaper_psd_tfr",
+        "pac",
+        "pac_v2",
+        "reference_csd",
+        "connectivity",
+    }
     analyses: list[dict] = []
     for candidate in task_service.list_tasks():
         if candidate.project_id != project_id or candidate.input_file_id != input_file_id or candidate.status != "completed":
