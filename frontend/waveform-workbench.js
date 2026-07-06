@@ -4,11 +4,11 @@ const params = new URLSearchParams(window.location.search);
 const api = createWaveformApi(params.get("api") || "http://127.0.0.1:8001/api");
 const workbenchModeParam = String(params.get("workbench") || params.get("workbench_mode") || params.get("preview_mode") || "basic").toLowerCase();
 const modeSwitchParam = String(params.get("mode_switch") || params.get("switch") || "").toLowerCase();
-const customerModeParam = String(params.get("customer_mode") || params.get("ui_mode") || "").toLowerCase();
+const customerModeParam = String(params.get("customer_mode") || params.get("ui_mode") || "clean").toLowerCase();
 const workbenchConfig = {
   mode: ["epoch", "epoch_review", "epilepsy", "sleep", "sleep_stage", "sleep_staging"].includes(workbenchModeParam) ? "epoch" : "basic",
   showModeSwitch: !["0", "false", "hidden", "off"].includes(modeSwitchParam),
-  customerMode: ["clean", "customer", "release"].includes(customerModeParam) ? "clean" : "default",
+  customerMode: ["default", "full", "dev"].includes(customerModeParam) ? "default" : "clean",
 };
 const isEpochWorkbench = () => workbenchConfig.mode === "epoch";
 const constants = Object.freeze({
@@ -828,8 +828,10 @@ function draw() {
   const ctx = canvas.getContext("2d");
   const rect = canvas.getBoundingClientRect();
   const dpr = window.devicePixelRatio || 1;
-  canvas.width = Math.max(800, Math.floor(rect.width * dpr));
-  canvas.height = Math.max(520, Math.floor(rect.height * dpr));
+  const targetWidth = Math.max(800, Math.floor(rect.width * dpr));
+  const targetHeight = Math.max(360, Math.floor(rect.height * dpr));
+  if (canvas.width !== targetWidth) canvas.width = targetWidth;
+  if (canvas.height !== targetHeight) canvas.height = targetHeight;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   const w = rect.width;
   const h = rect.height;

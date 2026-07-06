@@ -11274,3 +11274,456 @@ body.workspace-active .method-group-grid {
   }
 }
 /* ===== End Workspace UI Upgrade v4 ===== */
+
+/* ===== Workspace Spacious Pass 2026-07-06 ===== */
+body.workspace-active {
+  --app-shell-sidebar-width: 176px;
+  --workspace-padding-x: 18px;
+  --panel-gap: 12px;
+  --btn-height: 28px;
+  --btn-height-compact: 24px;
+  --compact-row-height: 32px;
+}
+
+@media (min-width: 1800px) {
+  body.workspace-active {
+    --app-shell-sidebar-width: 176px;
+    --workspace-padding-x: 24px;
+    --panel-gap: 14px;
+  }
+}
+
+body.workspace-active .shell {
+  grid-template-columns: var(--app-shell-sidebar-width) minmax(0, 1fr);
+}
+
+body.workspace-active .main {
+  padding: 10px var(--workspace-padding-x) 22px;
+}
+
+body.workspace-active .sidebar {
+  width: var(--app-shell-sidebar-width);
+  padding: 10px 8px;
+  gap: 12px;
+}
+
+body.workspace-active .brand {
+  min-height: 34px;
+  gap: 7px;
+  margin-bottom: 8px;
+}
+
+body.workspace-active .brand-mark {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  font-size: 12px;
+}
+
+body.workspace-active .brand-copy strong {
+  font-size: 13px;
+}
+
+body.workspace-active .brand-copy span,
+body.workspace-active .account-panel small {
+  font-size: 10.5px;
+  line-height: 1.25;
+}
+
+body.workspace-active .nav {
+  gap: 3px;
+}
+
+body.workspace-active .nav-item {
+  min-height: 27px;
+  padding: 0 7px;
+  gap: 6px;
+  font-size: 11.5px;
+  border-radius: 6px;
+}
+
+body.workspace-active .nav-item svg,
+body.workspace-active .nav-item [data-lucide],
+body.workspace-active button svg,
+body.workspace-active button [data-lucide] {
+  width: 12px !important;
+  height: 12px !important;
+  flex: 0 0 12px;
+  stroke-width: 1.75;
+}
+
+body.workspace-active .account-panel {
+  padding: 8px;
+  border-radius: 8px;
+}
+
+body.workspace-active .account-panel strong {
+  font-size: 12px;
+}
+
+body.workspace-active .topbar {
+  min-height: 32px;
+  margin-bottom: 7px;
+  gap: 12px;
+}
+
+body.workspace-active .topbar h1 {
+  margin-top: 2px;
+  font-size: 18px;
+  line-height: 1.15;
+}
+
+body.workspace-active .eyebrow {
+  font-size: 10.5px;
+}
+
+body.workspace-active .top-actions {
+  gap: 6px;
+}
+
+body.workspace-active .icon-btn {
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
+  box-shadow: none;
+}
+
+body.workspace-active .primary-btn,
+body.workspace-active .ghost-btn,
+body.workspace-active .file-picker-btn,
+body.workspace-active .lab-entry-btn,
+body.workspace-active .segmented button {
+  min-height: var(--btn-height);
+  padding: 0 8px;
+  gap: 5px;
+  font-size: 11.5px;
+  border-radius: 6px;
+}
+
+body.workspace-active .primary-btn.mini,
+body.workspace-active .ghost-btn.mini,
+body.workspace-active .file-picker-btn.mini {
+  min-height: var(--btn-height-compact);
+  padding: 0 6px;
+  font-size: 11px;
+}
+
+body.workspace-active .workspace-progress-bar {
+  min-height: 28px;
+  margin-bottom: 7px;
+  padding: 3px 6px;
+}
+
+body.workspace-active .progress-step {
+  min-height: 19px;
+  padding: 0 5px;
+  gap: 4px;
+  font-size: 10px;
+}
+
+body.workspace-active .progress-step .step-num {
+  width: 11px;
+  height: 11px;
+  font-size: 7.5px;
+}
+
+body.workspace-active .panel,
+body.workspace-active .metric,
+body.workspace-active #dashboard [data-testid="project-crud-panel"],
+body.workspace-active .nested-panel,
+body.workspace-active .ia-method-card,
+body.workspace-active .storage-file-ledger,
+body.workspace-active .storage-file-detail {
+  border-radius: 8px;
+  box-shadow: none;
+}
+
+body.workspace-active .panel,
+body.workspace-active .metric {
+  padding: 9px;
+}
+
+body.workspace-active .panel-head {
+  gap: 8px;
+  margin-bottom: 7px;
+}
+
+body.workspace-active .panel-head h2,
+body.workspace-active .panel h2 {
+  font-size: 14px;
+  line-height: 1.25;
+}
+
+body.workspace-active .panel-head p,
+body.workspace-active .panel p,
+body.workspace-active .customer-note {
+  font-size: 11.5px;
+  line-height: 1.38;
+}
+
+body.workspace-active .metric-grid,
+body.workspace-active .work-grid,
+body.workspace-active .storage-workspace-grid,
+body.workspace-active .delivery-grid,
+body.workspace-active .user-center-grid,
+body.workspace-active .user-center-product-grid,
+body.workspace-active .review-gate-grid,
+body.workspace-active .method-group-grid {
+  gap: var(--panel-gap);
+}
+
+body.workspace-active .table-row {
+  min-height: var(--compact-row-height);
+  padding: 0 8px;
+  gap: 8px;
+  font-size: 12px;
+}
+
+body.workspace-active #dashboard .project-management-only,
+body.workspace-active #storage .work-grid,
+body.workspace-active #workflow,
+body.workspace-active #statistics,
+body.workspace-active #publication {
+  max-width: none;
+}
+
+body.workspace-active .ia-prep-layout {
+  grid-template-columns: 196px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+
+body.workspace-active .ia-prep-layout > .ia-data-queue {
+  position: sticky;
+  top: 54px;
+  max-height: calc(100vh - 78px);
+  overflow: auto;
+}
+
+body.workspace-active .ia-prep-main {
+  gap: 10px;
+}
+
+body.workspace-active .ia-prep-steps {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+  margin-bottom: 0;
+}
+
+body.workspace-active .ia-step-card {
+  min-height: 38px;
+  padding: 6px 7px;
+  gap: 5px;
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
+body.workspace-active .ia-step-card b {
+  width: 17px;
+  height: 17px;
+  border-radius: 999px;
+  font-size: 10px;
+}
+
+body.workspace-active .ia-step-card strong {
+  font-size: 11.5px;
+  line-height: 1.15;
+}
+
+body.workspace-active .ia-step-card span {
+  display: none;
+}
+
+body.workspace-active #analysis [data-testid="single-file-preview-panel"] > .panel-head p {
+  display: none;
+}
+
+body.workspace-active #analysis .eeg-toolbar {
+  grid-template-columns: repeat(6, minmax(118px, 1fr));
+  gap: 7px;
+  margin-bottom: 8px;
+}
+
+body.workspace-active #analysis .eeg-toolbar label,
+body.workspace-active #analysis .eeg-tool-group {
+  min-height: 54px;
+  padding: 6px 7px;
+  gap: 4px;
+}
+
+body.workspace-active #analysis .tool-group-title,
+body.workspace-active #analysis .eeg-toolbar label span {
+  font-size: 10.5px;
+}
+
+body.workspace-active #analysis .eeg-toolbar input[type="number"],
+body.workspace-active #analysis .eeg-toolbar select {
+  min-height: 26px;
+  font-size: 11.5px;
+}
+
+body.workspace-active #analysis .eeg-toolbar > .eeg-tool-group:nth-child(1),
+body.workspace-active #analysis .eeg-toolbar > .eeg-tool-group:nth-child(2),
+body.workspace-active #analysis .eeg-toolbar > .preprocessing-shortcuts {
+  grid-column: span 2;
+}
+
+body.workspace-active #analysis .tool-button-row,
+body.workspace-active #analysis .eeg-tool-group .tool-button-row {
+  gap: 5px;
+}
+
+body.workspace-active #analysis .waveform-prep-layout {
+  grid-template-columns: minmax(0, 1fr) minmax(230px, 300px);
+  gap: 10px;
+}
+
+body.workspace-active #analysis .preprocessing-side-panel {
+  top: 54px;
+  padding: 9px;
+  gap: 8px;
+}
+
+body.workspace-active #analysis .prep-filter-grid {
+  gap: 6px;
+}
+
+body.workspace-active #analysis .eeg-viewer canvas {
+  height: min(58vh, 620px);
+  min-height: 440px;
+}
+
+body.workspace-active #analysis .waveform-workbench-status,
+body.workspace-active #analysis .eeg-events {
+  margin-top: 6px;
+}
+
+body.workspace-active #analysis .preprocessing-note,
+body.workspace-active #analysis .inline-edit-summary,
+body.workspace-active #analysis .segment-summary {
+  padding: 8px 9px;
+  font-size: 11.5px;
+}
+
+body.workspace-active #analysis [data-testid="preprocessing-readiness-panel"],
+body.workspace-active #analysis [data-testid="event-epoch-panel"],
+body.workspace-active #analysis [data-testid="data-preparation-submit-last"] {
+  display: none !important;
+}
+
+body.workspace-active #workflow [data-testid="analysis-task-workbench"] {
+  max-width: 980px;
+}
+
+body.workspace-active #workflow .analysis-context-strip {
+  padding: 8px 10px;
+  font-size: 11.5px;
+}
+
+body.workspace-active #workflow .workflow-primary-action {
+  max-width: 760px;
+  padding: 10px;
+  margin: 8px 0 0;
+}
+
+body.workspace-active #workflow .workflow-primary-action strong {
+  font-size: 15px;
+}
+
+body.workspace-active #workflow [data-testid="analysis-method-scope-panel"] {
+  max-width: 980px;
+}
+
+body.workspace-active #workflow .method-group-grid {
+  grid-template-columns: repeat(2, minmax(220px, 1fr));
+  max-width: 760px;
+}
+
+body.workspace-active #workflow .method-group[data-method-group="recommended"] .method-group-grid {
+  grid-template-columns: minmax(300px, 420px);
+}
+
+body.workspace-active #workflow .method-group[data-method-group="advanced"],
+body.workspace-active #workflow .method-group[data-method-group="special"] {
+  max-width: 760px;
+}
+
+body.workspace-active #workflow .ia-method-card {
+  min-height: 68px;
+  padding: 8px;
+}
+
+body.workspace-active #workflow .ia-method-card.recommended {
+  min-height: 88px;
+  border-color: #8ab9e4;
+  background: #f3f9ff;
+}
+
+body.workspace-active #workflow .ia-method-card.recommended strong {
+  font-size: 14.5px;
+}
+
+body.workspace-active .analysis-empty-placeholder {
+  gap: 8px;
+  min-height: 220px;
+  padding: 18px 16px;
+}
+
+body.workspace-active .analysis-empty-placeholder .primary-btn,
+body.workspace-active .analysis-empty-placeholder .ghost-btn,
+body.workspace-active .workbench-status-placeholder.single-empty-action .primary-btn,
+body.workspace-active .workbench-status-placeholder.single-empty-action .ghost-btn,
+body.workspace-active .result-empty-state .primary-btn,
+body.workspace-active .result-empty-state .ghost-btn {
+  min-height: 28px;
+  padding: 0 10px;
+  align-self: center;
+}
+
+body.workspace-active #workflow .method-group-title {
+  font-size: 12px;
+}
+
+body.workspace-active #workflow .method-group-count {
+  font-size: 10px;
+}
+
+@media (min-width: 1800px) {
+  body.workspace-active #analysis .eeg-viewer canvas {
+    height: min(62vh, 680px);
+  }
+
+  body.workspace-active #analysis .ia-prep-layout {
+    grid-template-columns: 188px minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 1536px) {
+  body.workspace-active .ia-prep-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  body.workspace-active .ia-prep-layout > .ia-data-queue {
+    position: static;
+    max-height: none;
+  }
+
+  body.workspace-active #analysis .waveform-prep-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  body.workspace-active #analysis .preprocessing-side-panel {
+    position: static;
+  }
+}
+
+@media (max-width: 1366px) {
+  body.workspace-active {
+    --app-shell-sidebar-width: 168px;
+    --workspace-padding-x: 12px;
+  }
+
+  body.workspace-active #analysis .eeg-toolbar {
+    grid-template-columns: repeat(3, minmax(120px, 1fr));
+  }
+}
+/* ===== End Workspace Spacious Pass 2026-07-06 ===== */

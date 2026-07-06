@@ -1,7 +1,23 @@
 export function createWaveformApi(apiBase) {
   const base = String(apiBase || "http://127.0.0.1:8001/api").replace(/\/$/, "");
+  const authKey = "qlanalyser_auth_session";
+  function authToken() {
+    try {
+      const session = JSON.parse(localStorage.getItem(authKey) || sessionStorage.getItem(authKey) || "{}");
+      return session.token || "";
+    } catch {
+      return "";
+    }
+  }
+  function withAuthHeaders(headers = {}) {
+    const token = authToken();
+    return token && !headers.Authorization ? { ...headers, Authorization: `Bearer ${token}` } : headers;
+  }
   async function apiJson(path, options = {}) {
-    const response = await fetch(`${base}${path}`, options);
+    const response = await fetch(`${base}${path}`, {
+      ...options,
+      headers: withAuthHeaders(options.headers || {}),
+    });
     const contentType = response.headers.get("content-type") || "";
     const data = contentType.includes("application/json") ? await response.json() : await response.text();
     if (!response.ok) {
@@ -34,7 +50,9 @@ export function createWaveformApi(apiBase) {
   async function fetchArtifactJson(artifact) {
     const id = artifact?.id;
     if (!id) throw new Error("Artifact id is missing");
-    const response = await fetch(`${base}/artifacts/${encodeURIComponent(id)}/download`);
+    const response = await fetch(`${base}/artifacts/${encodeURIComponent(id)}/download`, {
+      headers: withAuthHeaders(),
+    });
     if (!response.ok) throw new Error(`Artifact download failed: ${response.status}`);
     return response.json();
   }

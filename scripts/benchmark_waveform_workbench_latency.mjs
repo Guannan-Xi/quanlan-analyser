@@ -8,8 +8,10 @@ const evidenceDir = process.env.QLANALYSER_WAVEFORM_BENCH_DIR
   || path.join(repoRoot, "work", "release_evidence", "20260628-waveform-chunk-api-benchmark");
 const apiBase = (process.env.QLANALYSER_API_BASE || "http://127.0.0.1:8001/api").replace(/\/$/, "");
 const frontendUrl = process.env.QLANALYSER_WAVEFORM_WORKBENCH_URL
-  || `http://127.0.0.1:4174/waveform-workbench.html?teaching_demo=auto&api=${encodeURIComponent(apiBase)}&v=chunk-api-latency`;
+  || `http://127.0.0.1:4174/waveform-workbench.html?customer_demo=auto&teaching_demo=auto&api=${encodeURIComponent(apiBase)}&v=chunk-api-latency`;
 const includeLegacyTaskBench = process.env.QLANALYSER_INCLUDE_LEGACY_TASK_BENCH === "1";
+const demoEmail = process.env.QLANALYSER_DEMO_EMAIL || "demo.customer@quanlan.cn";
+const demoPassword = process.env.QLANALYSER_DEMO_PASSWORD || "demo123456";
 
 fs.mkdirSync(evidenceDir, { recursive: true });
 
@@ -32,6 +34,31 @@ async function jsonFetch(url, options) {
   return { data, bytes: Buffer.byteLength(text, "utf8"), status: response.status };
 }
 
+function authHeaders(token, extra = {}) {
+  return {
+    ...extra,
+    Authorization: `Bearer ${token}`,
+  };
+}
+
+async function loginDemoCustomer() {
+  const result = await jsonFetch(`${apiBase}/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email: demoEmail, password: demoPassword }),
+  });
+  const token = result.data?.access_token || result.data?.token;
+  if (!token) throw new Error("Demo login did not return an access token.");
+  return {
+    token,
+    account: {
+      id: result.data?.account?.id,
+      email: result.data?.account?.email,
+      role: result.data?.account?.role,
+    },
+  };
+}
+
 function waveformArtifactFromList(artifacts = []) {
   return artifacts.find((artifact) => {
     const key = `${artifact.label || ""} ${artifact.artifact_type || ""} ${artifact.object_key || ""} ${artifact.path || ""}`.toLowerCase();
@@ -42,12 +69,14 @@ function waveformArtifactFromList(artifacts = []) {
   }) || null;
 }
 
-async function waitForArtifact(taskId, timeoutMs = 90000) {
+async function waitForArtifact(taskId, token, timeoutMs = 90000) {
   const started = performance.now();
   let polls = 0;
   while (performance.now() - started < timeoutMs) {
     polls += 1;
-    const result = await jsonFetch(`${apiBase}/tasks/${encodeURIComponent(taskId)}/artifacts`);
+    const result = await jsonFetch(`${apiBase}/tasks/${encodeURIComponent(taskId)}/artifacts`, {
+      headers: authHeaders(token),
+    });
     const artifact = waveformArtifactFromList(result.data);
     if (artifact) return { artifact, polls };
     await new Promise((resolve) => setTimeout(resolve, 700));
@@ -72,10 +101,17 @@ function summarizePayload(payload, bytes) {
   };
 }
 
-async function browserBench() {
+async function browserBench(authSession) {
   const browser = await chromium.launch(chromiumLaunchOptions({ headless: true }));
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
   try {
+    if (authSession?.token) {
+      await page.addInitScript((session) => {
+        try {
+          window.localStorage.setItem("qlanalyser_auth_session", JSON.stringify(session));
+        } catch (_) {}
+      }, authSession);
+    }
     const nav = await timed("browser.page.goto_domcontentloaded", () => page.goto(frontendUrl, { waitUntil: "domcontentloaded", timeout: 30000 }));
     const loaded = await timed("browser.wait_loaded", () => page.waitForFunction(
       () => document.querySelector("[data-testid='waveform-workbench-shell']")?.dataset.loaded === "true",
@@ -165,12 +201,22 @@ async function main() {
     qc_preview_task_created_at: demoData.qc_preview_task?.created_at,
   };
 
+  const login = await timed("api.auth_login_demo_customer", loginDemoCustomer);
+  result.timings.push({ label: login.label, ok: login.ok, ms: login.ms, error: login.error });
+  if (!login.ok) throw new Error(login.error);
+  const authToken = login.value.token;
+  result.summaries.auth = login.value.account;
+
   const chunkUrl = `${apiBase}/eeg/files/${encodeURIComponent(demoData.file.id)}/waveform/chunk?start_sec=0&duration_sec=24&channel_limit=8&display_sfreq=200&mode=minmax&width_px=1440`;
-  const chunkFirst = await timed("api.waveform_chunk_0_24_first", () => jsonFetch(chunkUrl));
+  const chunkFirst = await timed("api.waveform_chunk_0_24_first", () => jsonFetch(chunkUrl, {
+    headers: authHeaders(authToken),
+  }));
   result.timings.push({ label: chunkFirst.label, ok: chunkFirst.ok, ms: chunkFirst.ms, error: chunkFirst.error });
   if (chunkFirst.ok) result.summaries.waveform_chunk_first = summarizePayload(chunkFirst.value.data, chunkFirst.value.bytes);
 
-  const chunkWarm = await timed("api.waveform_chunk_0_24_warm", () => jsonFetch(chunkUrl));
+  const chunkWarm = await timed("api.waveform_chunk_0_24_warm", () => jsonFetch(chunkUrl, {
+    headers: authHeaders(authToken),
+  }));
   result.timings.push({ label: chunkWarm.label, ok: chunkWarm.ok, ms: chunkWarm.ms, error: chunkWarm.error });
   if (chunkWarm.ok) result.summaries.waveform_chunk_warm = summarizePayload(chunkWarm.value.data, chunkWarm.value.bytes);
 
@@ -190,16 +236,18 @@ async function main() {
     };
     const task = await timed("api.create_qc_preview_task_0_24_legacy", () => jsonFetch(`${apiBase}/tasks`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: authHeaders(authToken, { "Content-Type": "application/json" }),
       body: JSON.stringify(taskParams),
     }));
     result.timings.push({ label: task.label, ok: task.ok, ms: task.ms, error: task.error });
     if (task.ok) {
       result.summaries.created_task = { id: task.value.data.id, status: task.value.data.status };
-      const artifactWait = await timed("api.wait_waveform_artifact_legacy", () => waitForArtifact(task.value.data.id));
+      const artifactWait = await timed("api.wait_waveform_artifact_legacy", () => waitForArtifact(task.value.data.id, authToken));
       result.timings.push({ label: artifactWait.label, ok: artifactWait.ok, ms: artifactWait.ms, error: artifactWait.error, polls: artifactWait.value?.polls });
       if (artifactWait.ok) {
-        const download = await timed("api.download_waveform_json_legacy", () => jsonFetch(`${apiBase}/artifacts/${encodeURIComponent(artifactWait.value.artifact.id)}/download`));
+        const download = await timed("api.download_waveform_json_legacy", () => jsonFetch(`${apiBase}/artifacts/${encodeURIComponent(artifactWait.value.artifact.id)}/download`, {
+          headers: authHeaders(authToken),
+        }));
         result.timings.push({ label: download.label, ok: download.ok, ms: download.ms, error: download.error });
         if (download.ok) result.summaries.waveform_payload_legacy = summarizePayload(download.value.data, download.value.bytes);
       }
@@ -211,7 +259,13 @@ async function main() {
     };
   }
 
-  const browser = await timed("browser.workbench", browserBench);
+  const browser = await timed("browser.workbench", () => browserBench({
+    role: login.value.account.role || "customer",
+    token: authToken,
+    accountId: login.value.account.id,
+    account_id: login.value.account.id,
+    email: login.value.account.email,
+  }));
   result.timings.push({ label: browser.label, ok: browser.ok, ms: browser.ms, error: browser.error });
   if (browser.ok) result.summaries.browser = browser.value;
 

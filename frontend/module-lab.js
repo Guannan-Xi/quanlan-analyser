@@ -472,13 +472,13 @@ async function loadDemo数据集() {
 
 async function ensureProject() {
   if (state.project) return state.project;
-  const name = document.querySelector("#labProjectName")?.value?.trim() || "分析方法预览项目";
+  const name = document.querySelector("#labProjectName")?.value?.trim() || "分析方法库试跑项目";
   state.project = await apiJson("/projects", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       name,
-      description: "分析方法预览项目",
+      description: "分析方法库试跑项目",
       research_type: "analysis_lab",
       owner_id: "local-user",
       owner_user_id: "local-user",
@@ -496,14 +496,19 @@ async function uploadLabFile() {
   const project = await ensureProject();
   const form = new FormData();
   form.append("file", file);
-  const uploaded = await apiJson(`/eeg/upload?project_id=${encodeURIComponent(project.id)}`, {
+  const uploadParams = new URLSearchParams({
+    project_id: project.id,
+    upload_authorization_confirmed: "true",
+    upload_authorization_text: "本地开发试跑：用户确认有权上传该 EEG 文件用于 QLanalyser 分析方法预览。",
+  });
+  const uploaded = await apiJson(`/eeg/upload?${uploadParams.toString()}`, {
     method: "POST",
     body: form,
   });
   state.selectedFileId = uploaded.id;
   state.files = [uploaded, ...state.files.filter((file) => file.id !== uploaded.id)];
   renderFileOptions();
-  renderDataSourceStatus(`已上传并选中： ${uploaded.filename || uploaded.id}`, "ok");
+  renderDataSourceStatus(`已上传试跑数据： ${uploaded.filename || uploaded.id}`, "ok");
   return uploaded;
 }
 
@@ -835,7 +840,7 @@ function renderPacModulePanel(id, module, hidden = false) {
         <legend>输入数据</legend>
         <label>数据集<select name="dataset" data-file-select data-testid="pac-dataset-select"><option value="">内置 Oddball 教学 EEG</option></select></label>
         <label>预处理方案<select name="preparation_plan" data-testid="preparation-plan-select"><option value="">当前预处理方案</option><option value="prep_demo">演示预处理方案</option></select></label>
-        <small>选择已上传客户文件会直接开始分析；不选择则使用内置教学数据。</small>
+        <small>选择试跑数据会执行所选方法；不选择则使用内置教学数据。</small>
       </fieldset>
       <fieldset>
         <legend>常用参数</legend>
@@ -857,9 +862,9 @@ function renderPacModulePanel(id, module, hidden = false) {
         </fieldset>
         <label>可选 PAC 输入上传<input type="file" data-testid="pac-file-upload" /></label>
       </details>
-      <button class="btn primary" type="submit" data-testid="pac-run">${icon("play")}运行 ${h(module.title)}</button>
+      <button class="btn primary" type="submit" data-testid="pac-run">${icon("play")}试跑 ${h(module.title)}</button>
     </form>
-    <div class="demo-result" data-result="${h(id)}" data-testid="method-summary"><div class="empty-run-state"><strong>等待运行</strong><span>提交后会创建分析任务，并在这里显示进度、参数记录和可下载结果。</span></div></div>
+    <div class="demo-result" data-result="${h(id)}" data-testid="method-summary"><div class="empty-run-state"><strong>等待试跑</strong><span>试跑后会显示任务进度、参数记录和可下载示例产物。</span></div></div>
     <div class="artifact-grid compact" data-testid="artifact-download-list"><div class="empty">暂无输出文件。</div></div>
     <div data-testid="pac-comodulogram" class="demo-status">运行后这里会显示 PAC 耦合图预览。</div>
     <div data-testid="pac-phase-bins" class="demo-status">运行后这里会显示 PAC 相位分箱预览。</div>
@@ -882,15 +887,15 @@ function renderModulePanel(id, module, hidden = false) {
       <fieldset>
         <legend>输入数据</legend>
         <label>数据集<select name="dataset" data-file-select><option value="">内置 Oddball 教学 EEG</option></select></label>
-        <small>选择已上传客户文件会直接开始分析；不选择则使用内置教学数据。</small>
+        <small>选择试跑数据会执行所选方法；不选择则使用内置教学数据。</small>
       </fieldset>
       <fieldset>
         <legend>参数</legend>
         ${renderParameterFields(module.fields, id === "tfr" ? module.fields.length : 8)}
       </fieldset>
-      <button class="btn primary" type="submit">${icon("play")}运行 ${h(module.title)}</button>
+      <button class="btn primary" type="submit">${icon("play")}试跑 ${h(module.title)}</button>
     </form>
-    <div class="demo-result" data-result="${h(id)}"><div class="empty-run-state"><strong>等待运行</strong><span>提交后会创建分析任务，并在这里显示进度、参数记录和可下载结果。</span></div></div>
+    <div class="demo-result" data-result="${h(id)}"><div class="empty-run-state"><strong>等待试跑</strong><span>试跑后会显示任务进度、参数记录和可下载示例产物。</span></div></div>
   </section>`;
 }
 
@@ -941,7 +946,7 @@ function renderArtifacts(task, artifacts, parameters) {
 async function runModule(moduleId, form, resultBox) {
   const backendModuleId = MODULES[moduleId].backendModule || moduleId;
   const parameters = collect参数(moduleId, form);
-  resultBox.innerHTML = `<div class="demo-status">正在运行 ${h(moduleId.toUpperCase())}。后端正在读取 EEG、执行分析并写入结果文件……</div>`;
+  resultBox.innerHTML = `<div class="demo-status">正在试跑 ${h(moduleId.toUpperCase())}。后端正在读取 EEG、执行分析并写入结果文件……</div>`;
   const selectedFileId = form.elements.dataset?.value || "";
   let task;
   if (selectedFileId) {
@@ -1074,16 +1079,16 @@ function renderModuleSection({ title, eyebrow, description, groups, className })
 function renderPage() {
   return `<header class="lab-hero detail-top">
     <nav class="lab-nav compact">
-      <a class="brand" href="./index.html?customer_demo=login&api=${encodeURIComponent(API_BASE)}"><span class="brand-mark">QL</span><span><strong>QLanalyser</strong><small>分析方法库</small></span></a>
-      <a class="pill" href="./index.html?customer_demo=login&api=${encodeURIComponent(API_BASE)}">${icon("arrow-left")}返回项目分析</a>
+      <a class="brand" href="./index.html?customer_demo=auto&api=${encodeURIComponent(API_BASE)}"><span class="brand-mark">QL</span><span><strong>QLanalyser</strong><small>分析方法库</small></span></a>
+      <a class="pill" href="./index.html?customer_demo=auto&api=${encodeURIComponent(API_BASE)}">${icon("arrow-left")}返回项目分析</a>
     </nav>
   </header>
   <main class="lab-wrap">
     <section class="module-hero">
       <div class="hero-kicker"><span class="status enabled">科研分析底座</span><span class="status glass">教学数据可试跑</span><span class="status glass">稳定能力 + 实验室预览入口</span></div>
       <p class="eyebrow">分析方法库</p>
-      <h1>上传一份 EEG，查看稳定方法和实验室预览入口</h1>
-      <p>这里帮助科研用户先确认数据可分析性，再分别查看 PSD、ERP 与实验室预览方法。稳定方法可用于 V01 科研流程；预览方法只验证参数、产物和解释边界。</p>
+      <h1>分析方法库：查看方法边界和示例产物</h1>
+      <p>这里帮助科研用户先确认数据可分析性，再分别查看 PSD、ERP 与实验室预览方法。稳定方法可试跑；预览方法只验证参数、产物和解释边界。</p>
       <div class="hero-proof-grid" aria-label="分析方法能力概览">
         <div><strong>01</strong><span>数据准备与 QC 保留</span></div>
         <div><strong>02</strong><span>按科学目的拆分方法</span></div>
@@ -1115,14 +1120,14 @@ function renderPage() {
     <section class="panel lab-source-panel">
       <div class="source-copy">
         <p class="eyebrow">数据来源</p>
-        <h2>上传或选择分析数据集</h2>
-        <p>无需先建立正式项目。你可以上传本地 EDF/FIF，也可以使用内置教学数据；稳定方法按科研分析流程试跑，实验室预览入口仅验证流程和边界。</p>
+        <h2>选择数据，试跑方法</h2>
+        <p>默认使用内置教学数据。如需验证本地文件，可上传 EDF/FIF 作为试跑数据；这里不是正式客户上传入口。</p>
       </div>
       <form class="runner-form source-form" onsubmit="return false;">
-        <label>项目名称<input id="labProjectName" type="text" value="分析方法预览项目" /></label>
+        <label>项目名称<input id="labProjectName" type="text" value="分析方法库试跑项目" /></label>
         <label>EEG 文件<input id="labEegFile" type="file" /></label>
         <div class="source-actions">
-          <button id="labUploadButton" class="btn primary" type="button">${icon("upload")}上传并选中</button>
+          <button id="labUploadButton" class="btn primary" type="button">${icon("upload")}上传试跑数据</button>
           <button id="labRefreshFiles" class="btn" type="button">${icon("refresh-cw")}刷新文件列表</button>
         </div>
       </form>

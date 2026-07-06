@@ -6,9 +6,10 @@
     <title>癫痫样候选事件全流程预览 - QLanalyser</title>
     <meta
       name="description"
-      content="QLanalyser 癫痫样候选事件上传、预检、候选生成、人工复核、对抗评审与复核草稿输出的端到端预览。"
+      content="QLanalyser 癫痫样候选事件选择、预检、候选生成、人工复核、质量评审与复核草稿输出的端到端预览。"
     />
-    <link rel="stylesheet" href="./epilepsy-full-flow-preview.css?v=20260706-flow" />
+    <link rel="stylesheet" href="./epilepsy-full-flow-preview.css?v=20260706-spacious-v1" />
+    <link rel="stylesheet" href="./workbench-spacious-overrides.css?v=20260706-spacious-v1" />
     <script src="./vendor/lucide.min.js"></script>
   </head>
   <body>
@@ -21,39 +22,39 @@
         <div class="ep-flow-top-actions">
           <button class="ep-flow-btn ep-flow-btn-ghost" type="button" id="copyFlowBtn">
             <i data-lucide="copy" aria-hidden="true"></i>
-            <span>复制流程 JSON</span>
+            <span>开发导出</span>
           </button>
           <button class="ep-flow-btn ep-flow-btn-ghost" type="button" id="openReviewBtn" disabled>
             <i data-lucide="square-pen" aria-hidden="true"></i>
-            <span>详细复核台</span>
+            <span>复核预览</span>
           </button>
           <button class="ep-flow-btn ep-flow-btn-primary" type="button" id="openReportBtn" disabled>
             <i data-lucide="file-chart-column" aria-hidden="true"></i>
-            <span>草稿预览</span>
+            <span>查看草稿</span>
           </button>
         </div>
       </header>
 
       <section class="ep-flow-hero" aria-label="流程目标">
         <div>
-          <p class="ep-flow-kicker">本地 HE 示例 EDF 入口</p>
-          <h1>从上传样本到复核草稿，一条线走完</h1>
+          <p class="ep-flow-kicker">HE 示例 EDF 复核流程</p>
+          <h1>选择示例 EDF，生成可复核草稿</h1>
           <p>
-            面向科研筛查支持：上传或选择 HE 示例 EDF，完成数据预检、候选包生成、人工复核、对抗性评审和复核草稿输出。
-            页面不会把候选事件写成临床诊断，也不会在浏览器中全量读取 2GB EDF。
+            面向科研筛查支持：先做数据预检，再生成候选事件，最后由人工复核形成草稿记录。
+            候选事件不等于临床诊断，浏览器也不会全量读取 2GB EDF。
           </p>
         </div>
         <div class="ep-flow-scope" aria-label="非医疗边界">
           <span>边界</span>
           <strong>科研筛查支持，不作为临床诊断依据</strong>
-          <small>正式交付需接入后端 waveform-window / evidence package，并保留审阅与导出 manifest。</small>
+          <small>当前用于流程预览和复核演示；正式交付需由后端生成可追溯证据包。</small>
         </div>
       </section>
 
       <nav class="ep-flow-stepper" aria-label="端到端步骤">
         <button class="is-active" type="button" data-step="upload">
           <span>1</span>
-          <strong>上传样本</strong>
+          <strong>选择示例 EDF</strong>
         </button>
         <button type="button" data-step="preflight" disabled>
           <span>2</span>
@@ -69,11 +70,11 @@
         </button>
         <button type="button" data-step="adversarial" disabled>
           <span>5</span>
-          <strong>对抗评审</strong>
+          <strong>质量评审</strong>
         </button>
         <button type="button" data-step="report" disabled>
           <span>6</span>
-          <strong>草稿报告</strong>
+          <strong>草稿输出</strong>
         </button>
       </nav>
 
@@ -95,7 +96,7 @@
           <strong id="contextReview">0%</strong>
         </article>
         <article>
-          <span>报告状态</span>
+          <span>草稿状态</span>
           <strong id="contextReport">未生成</strong>
         </article>
       </section>
@@ -177,8 +178,8 @@
             <div class="ep-flow-callout">
               <i data-lucide="info" aria-hidden="true"></i>
               <p>
-                这里生成的是可试用候选复核草稿，用来试跑产品流程、人工复核和报告口径；不表示候选算法或科研结论已验证。正式版本如接入
-                待验证的 <code>epilepsy_ml_xgboost</code> 或任务服务产物；当前页面不承诺模型性能，并应为代表事件绑定真实 evidence package 与 manifest。
+                这里生成的是可试用候选复核草稿，用来试跑产品流程和人工复核口径；不表示候选算法、科研结论或临床判断已经验证。
+                正式版本必须绑定真实数据窗口、检测器版本、参数和审阅记录。
               </p>
             </div>
           </section>
@@ -255,11 +256,11 @@
             <div class="ep-flow-section-head">
               <div>
                 <span>Step 5</span>
-                <h2>关键节点对抗性评审</h2>
+                <h2>关键节点质量评审</h2>
               </div>
               <button class="ep-flow-btn ep-flow-btn-primary" type="button" id="runAdversarialBtn">
                 <i data-lucide="shield-check" aria-hidden="true"></i>
-                <span>重新评审</span>
+                <span>重新检查</span>
               </button>
             </div>
             <div class="ep-flow-gate-grid" id="gateGrid"></div>
@@ -362,7 +363,7 @@
           <section class="ep-flow-panel">
             <div class="ep-flow-side-head">
               <span>Gate</span>
-              <strong>对抗评审总览</strong>
+              <strong>质量评审总览</strong>
             </div>
             <div class="ep-flow-gate-list" id="gateSummary"></div>
           </section>
@@ -380,6 +381,6 @@
       <div class="ep-flow-toast" id="toast" role="status" aria-live="polite"></div>
     </main>
 
-    <script src="./epilepsy-full-flow-preview.js?v=20260706-flow"></script>
+    <script src="./epilepsy-full-flow-preview.js?v=20260706-spacious-v1"></script>
   </body>
 </html>

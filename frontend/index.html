@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>QLanalyser Online</title>
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob: https:; media-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' http://127.0.0.1:* http://localhost:* ws://127.0.0.1:* ws://localhost:*; font-src 'self' data:;" />
-    <link rel="stylesheet" href="./styles.css?v=20260706-ui-upgrade-complete-v7" />
+    <link rel="stylesheet" href="./styles.css?v=20260706-spacious-pass-v2" />
     <script src="./vendor/lucide.min.js" defer></script>
   </head>
   <body class="login-active">
@@ -114,8 +114,8 @@
                 <p>先创建或打开项目，再选择项目内 EEG 数据。</p>
               </div>
               <div class="real-actions compact-actions">
-                <button class="primary-btn" type="button" data-real-action="create-project"><i data-lucide="folder-plus"></i><span>创建项目</span></button>
-                <button class="ghost-btn mini starter-demo" type="button" data-teaching-action="quickstart" title="载入示例 EEG 数据并进入数据准备"><i data-lucide="graduation-cap"></i><span>使用示例 EEG 走一遍</span></button>
+                <button class="primary-btn starter-demo" type="button" data-teaching-action="quickstart" title="载入示例 EEG 数据并进入数据准备"><i data-lucide="graduation-cap"></i><span>使用示例 EEG 走一遍</span></button>
+                <button class="ghost-btn mini" type="button" data-real-action="create-project"><i data-lucide="folder-plus"></i><span>创建项目</span></button>
                 <button class="ghost-btn" type="button" data-view-jump="storage" hidden aria-hidden="true"><i data-lucide="database"></i><span>去选择数据</span></button>
               </div>
             </div>
@@ -171,7 +171,7 @@
                 </div>
               </div>
                 <div class="segment-summary" data-testid="prep-no-upload-boundary">
-                  <span>准备页只处理当前已选 EEG 数据；上传或换数据请回到“数据”。</span>
+                  <span>这里检查当前 EEG。要换文件，请回到“数据”。</span>
                 </div>
                 <div class="segment-summary teaching-protected-note" data-testid="teaching-data-protected" hidden>
                   <span>示例数据 / 受保护：可预览、可练习、可试跑分析，不可删除或覆盖。</span>
@@ -231,7 +231,7 @@
                   <div class="waveform-main-column">
                     <div class="eeg-viewer">
                       <div class="eeg-overview-bar-wrap" data-testid="eeg-overview-bar-wrap" hidden>
-                        <canvas id="eegOverviewBar" width="1280" height="48" aria-label="全时程概览条" title="点击或拖动定位当前波形窗口；红色区域为癫痫初筛发作区"></canvas>
+                        <canvas id="eegOverviewBar" width="1280" height="48" aria-label="全时程概览条" title="点击或拖动定位当前波形窗口；红色区域为需复核的高幅或异常候选区"></canvas>
                       </div>
                       <canvas id="eegCanvas" width="1280" height="520" aria-label="脑电波形预览"></canvas>
                       <div class="eeg-empty" id="eegEmpty">正在等待加载 EEG 数据。</div>
@@ -314,7 +314,7 @@
 
             <section class="panel nested-panel submit-last" data-testid="data-preparation-submit-last">
               <div class="panel-head">
-                <div><h2>确认数据准备后再提交</h2><p>确认数据准备方案、事件分段和质控记录后，再进入分析任务。</p></div>
+                <div><h2>确认数据准备后再提交</h2><p>确认后会保存本次滤波、参考、坏道和事件设置，然后进入分析。</p></div>
               </div>
               <div class="real-actions compact-actions">
                 <button class="primary-btn" type="button" data-real-action="confirm-plan-inline"><i data-lucide="badge-check"></i><span>确认数据准备</span></button>
@@ -488,7 +488,7 @@
               <div class="service-record-list">
                 <span><b>服务状态：</b><em id="balanceMain">试用中</em></span>
                 <span><b>记录状态：</b><em>由运营线下确认后更新</em></span>
-                <span><b>交付记录：</b><em>复核记录生成后在报告页下载</em></span>
+                <span><b>服务记录：</b><em>由运营线下确认后更新</em></span>
               </div>
               <button class="ghost-btn" id="rechargeBtn" type="button"><i data-lucide="clipboard-check"></i><span>提醒运营确认</span></button>
               <div class="notice" id="rechargeNotice"><i data-lucide="badge-check"></i><span>等待线下确认。</span></div>
@@ -608,6 +608,6 @@
         <div id="modalBody"></div>
       </section>
     </div>
-    <script src="./app.js?v=20260706-ui-upgrade-complete-v7"></script>
+    <script src="./app.js?v=20260706-spacious-pass-v2"></script>
   </body>
 </html>

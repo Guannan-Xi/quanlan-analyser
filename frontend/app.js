@@ -2209,7 +2209,7 @@ function hasSavedEpochSetForCurrentFile() {
 }
 
 function moduleAvailability(moduleName) {
-  const customerVisibleModules = new Set(["psd", "erp"]);
+  const customerVisibleModules = new Set(["erp"]);
   if (state.role !== "admin" && !customerVisibleModules.has(moduleName)) {
     return { enabled: false, reason: "该方法属于进阶/内部流程，客户工作区暂不开放。" };
   }
@@ -9636,8 +9636,8 @@ function applyCustomerAnalysisTaskCopy() {
   const moduleOrder = ["psd", "erp", "tfr", "multitaper_psd", "multitaper_tfr", "pac", "connectivity", "reference_csd", "epilepsy_ml"];
   const customerVisibleModules = new Set(["psd", "erp"]);
   const customerMethodCopy = {
-    psd: ["PSD 频谱分析", "查看不同频段的能量分布；结果仅作科研分析参考。", "推荐", "recommended", "run-psd"],
-    erp: ["ERP 事件相关电位", "适合有事件标记的数据。运行前需要确认 target、standard 或其他事件语义。", "需事件", "conditional", "run-erp"],
+    psd: ["PSD 频谱分析", "第一次分析建议先运行 PSD，先看主要频段能量分布。", "推荐首步", "recommended", "run-psd"],
+    erp: ["ERP 事件相关电位", "适合已有事件标记的数据；运行前先确认事件语义。", "需事件", "conditional", "run-erp"],
     tfr: ["TFR 时频分析", "需要事件、时间窗和基线设置，适合进阶研究。", "进阶", "advanced", "run-tfr"],
     multitaper_psd: ["Multitaper PSD", "用于对频谱结果做参数化比较，不作为第一次分析首选。", "进阶", "advanced", "run-multitaper-psd"],
     multitaper_tfr: ["Multitaper TFR", "需要事件锁定和窗参数，适合进阶时频分析。", "进阶", "advanced", "run-multitaper-tfr"],
@@ -9676,6 +9676,11 @@ function applyCustomerAnalysisTaskCopy() {
     if (strong) strong.textContent = title;
     if (span) span.textContent = body;
     if (badge) badge.textContent = status;
+  });
+  qsa('[data-testid="analysis-method-scope-panel"] .method-group').forEach((group) => {
+    const hasVisibleCard = qsa(".ia-method-card", group).some((card) => !card.hidden && card.getAttribute("aria-hidden") !== "true");
+    group.hidden = !hasVisibleCard;
+    group.setAttribute("aria-hidden", hasVisibleCard ? "false" : "true");
   });
 }
 

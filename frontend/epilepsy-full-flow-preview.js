@@ -19,7 +19,7 @@
     preflight: "数据预检",
     candidates: "生成候选",
     review: "人工复核",
-    adversarial: "对抗评审",
+    adversarial: "质量评审",
     report: "草稿输出",
   };
 
@@ -654,7 +654,7 @@
     if (event?.score_kind?.includes("not_probability")) {
       return "预览候选；排序值不是概率";
     }
-    return "预览候选；需正式 evidence package 复核";
+    return "预览候选；需正式证据包复核";
   }
 
   function activeCandidate() {
@@ -818,7 +818,7 @@
 
     gates.push(makeGate("preflight", "数据预检", state.preflightDone ? (record?.upload_only ? "warn" : "pass") : "fail", [
       state.preflightDone ? "已确认文件规模、通道策略和长记录处理边界。" : "尚未运行预检。",
-      "70 小时 EDF 不在浏览器全量读取，正式态需使用 preload=False 和 waveform-window。",
+      "70 小时 EDF 不在浏览器全量读取，正式态需使用后端窗口数据。",
       record?.upload_only ? "上传 EDF 的采样率/通道/时长当前为未知，不能写入学术报告。" : "HE 样本元数据由后端预检或内置预览给出。",
     ], state.preflightDone ? [] : ["阻断：候选生成前必须完成预检。"]));
 
@@ -826,7 +826,7 @@
       state.candidatesGenerated ? `已生成 ${candidates().length} 个候选事件。` : "尚未生成候选事件包。",
       record?.backend_candidate_source ? `后端候选边界：${record.backend_candidate_source}。` : "内置候选只用于流程试用，不声明算法外部验证性能。",
       "正式报告需记录检测器版本、阈值、候选表 checksum 和 source artifact id；当前不是经外部验证的检测器输出。",
-    ], state.candidatesGenerated ? ["P1：当前为候选复核草稿，正式交付需接真实算法产物和 evidence package。"] : ["阻断：复核前必须有候选包。"]));
+    ], state.candidatesGenerated ? ["P1：当前为候选复核草稿，正式交付需接真实算法产物和证据包。"] : ["阻断：复核前必须有候选包。"]));
 
     gates.push(makeGate("review", "人工复核", reviewGateStatus(stats), [
       `${stats.reviewed}/${stats.total} 个候选已复核。`,
@@ -836,7 +836,7 @@
 
     gates.push(makeGate("report", "报告与证据", reportGateStatus(stats), [
       state.reviewSaved ? "复核层已保存，可被草稿预览页读取。" : "复核层尚未保存到预览存储。",
-      "图表来自候选复核草稿；代表波形证据需正式接入 EDF waveform-window。",
+      "图表来自候选复核草稿；代表波形证据需正式接入 EDF 窗口数据。",
       "草稿措辞保持科研筛查支持，不使用确诊、排除疾病或治疗建议。",
     ], reportBlocks(stats)));
 
@@ -878,7 +878,7 @@
     if (!state.reviewSaved) blocks.push("P1：复核层未保存，外部报告页无法复现当前结果。");
     if (stats.reviewed === 0) blocks.push("阻断：没有人工复核结果，不能生成复核草稿结论。");
     if (stats.unreviewed + stats.needs_review > 0) blocks.push("P1：报告状态必须标为 partial_review_draft。");
-    blocks.push("P1：正式学术报告需替换真实 EDF waveform-window/evidence package，并生成 manifest/audit trail。");
+    blocks.push("P1：正式学术报告需替换真实 EDF 窗口证据，并生成追溯清单和审计记录。");
     return blocks;
   }
 
@@ -946,7 +946,7 @@
     if (!state.reviewSaved) return { action: "save_review", title: "保存复核层", text: "把人工复核结果写入本地预览存储，供草稿页读取。", label: "保存复核层" };
     if (hasFailingGate()) return { action: "adversarial", title: "完成对抗性评审", text: "重新检查输入、候选、复核和草稿证据边界。", label: "运行评审" };
     if (state.currentStep !== "report") return { action: "report", title: "查看复核草稿预览", text: "草稿包含摘要、图表、事件表、方法、限制和追溯信息；仍不是正式科研结论。", label: "查看复核草稿" };
-    return { action: "export_report", title: "导出草稿 JSON", text: "导出当前可复现草稿包；正式态还需要 PDF/HTML、图表、manifest 和 audit trail。", label: "导出草稿 JSON" };
+    return { action: "export_report", title: "导出草稿 JSON", text: "导出当前可复现草稿包；正式态还需要 PDF/HTML、图表、追溯清单和审计记录。", label: "导出草稿 JSON" };
   }
 
   function render() {
@@ -1072,7 +1072,7 @@
       { label: "采样率", value: record.sfreq ? `${record.sfreq} Hz` : "后端待解析", detail: "HE 示例预期为 1000 Hz；上传文件以 EDF reader 返回为准。" },
       { label: "通道", value: (record.channels || []).join(" / ") || "后端待解析", detail: "EEG 通道用于候选展示，EMG/ACC 只能作为伪迹线索，不能单独作为排除依据。" },
       { label: "隐私路径", value: "安全相对路径", detail: record.safe_source_path || SAFE_SAMPLE_FOLDER },
-      { label: "正式接口", value: "/waveform-window", detail: "正式报告代表图必须来自真实 EDF 窗口或导出的 evidence package。" },
+      { label: "代表波形", value: "后端窗口数据", detail: "正式报告代表图必须来自真实 EDF 窗口或导出的证据包。" },
     ];
   }
 
@@ -1420,12 +1420,12 @@
     const candidateSource = record.backend_candidate_source
       ? `候选时间由后端从 seeded 列表载入，来源为 ${record.backend_candidate_source}；后端对对应候选窗口读取真实 EDF 数据并计算 RMS/PTP/预览排序值，该排序值不是概率。`
       : "当前页面使用前端 seeded 预览候选包试跑产品流程，不表示候选算法或科研结论已验证。";
-    return `输入为 ${record.filename}，通道为 ${(record.channels || []).join("、") || "后端待解析"}，采样率 ${sfreq}，记录时长约 ${formatHours(effectiveDurationSec(record))} 小时。${candidateSource} 正式分析应记录检测器版本、阈值、预处理、窗口策略、候选表 checksum、人工复核标准和导出 manifest。证据等级 A/B/C/X 仅表示展示证据充分、展示证据有限、证据很有限和不可判读；排除原因包括肌电、运动、接触不良、断线、饱和、噪声、重复候选或非癫痫样生理活动。本草稿不估计敏感性或特异性，不确认或排除癫痫发作。`;
+    return `输入为 ${record.filename}，通道为 ${(record.channels || []).join("、") || "后端待解析"}，采样率 ${sfreq}，记录时长约 ${formatHours(effectiveDurationSec(record))} 小时。${candidateSource} 正式分析应记录检测器版本、阈值、预处理、窗口策略、候选表校验值、人工复核标准和导出追溯清单。证据等级 A/B/C/X 仅表示展示证据充分、展示证据有限、证据很有限和不可判读；排除原因包括肌电、运动、接触不良、断线、饱和、噪声、重复候选或非癫痫样生理活动。本草稿不估计敏感性或特异性，不确认或排除癫痫发作。`;
   }
 
   function figureManifest() {
     return [
-      { id: "timelineFigure", title: "候选事件时间轴", source: "preview_review_layer", provenance: "preview_only", limitation: "正式报告需绑定真实 EDF evidence package。" },
+      { id: "timelineFigure", title: "候选事件时间轴", source: "preview_review_layer", provenance: "preview_only", limitation: "正式报告需绑定真实 EDF 证据包。" },
       { id: "funnelFigure", title: "复核漏斗", source: "manual_review_layer", provenance: "review_state" },
       { id: "densityFigure", title: "人工保留候选数（预览，按记录小时归一化）", source: "manual_review_layer", provenance: "review_state", limitation: "仅为已复核候选的预览统计，不代表发作频率、疾病活动度或完整事件负荷。" },
       { id: "qcFigure", title: "通道证据参与概览", source: "preview_candidates", provenance: "preview_only" },
@@ -1461,7 +1461,7 @@
 
   function copyFlowJson() {
     if (hasFailingGate()) {
-      toast("存在阻断项，不能复制完整流程包；请先查看对抗评审。");
+      toast("存在阻断项，不能复制完整流程包；请先查看质量评审。");
       setStep("adversarial");
       return;
     }
@@ -1644,7 +1644,7 @@
     if (!ctx) return;
     const { width, height } = canvas._epSize;
     ctx.clearRect(0, 0, width, height);
-    drawCanvasTitle(ctx, "真实 EDF waveform-window（uV，后端窗口读取）", width);
+    drawCanvasTitle(ctx, "真实 EDF 窗口波形（uV，后端读取）", width);
     const channels = Array.isArray(payload.channels) ? payload.channels : [];
     if (!channels.length) {
       drawEmptyCanvas(canvas, "后端窗口未返回通道数据");

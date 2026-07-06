@@ -92,10 +92,10 @@ If the frontend is opened directly at `http://127.0.0.1:4174/`, pass the API bas
 http://127.0.0.1:4174/?api=http://127.0.0.1:8001/api
 ```
 
-Customer demo review link with the demo account prefilled/logged in:
+Customer demo review link with the demo account automatically opened:
 
 ```text
-http://127.0.0.1:4174/?customer_demo=login&api=http://127.0.0.1:8001/api
+http://127.0.0.1:4174/?customer_demo=auto&api=http://127.0.0.1:8001/api
 ```
 
 Demo credentials:
