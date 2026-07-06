@@ -5,10 +5,14 @@ from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from backend.api import accounts, admin, artifacts, billing, data_crud, data_preparation, eeg_files, epilepsy_workbench, health, lab_demo, lab_edf_reviewer, lab_epilepsy_full_flow, projects, reports, subjects, tasks, teaching_data, templates, workflow
+from backend.api import accounts, admin, artifacts, billing, data_crud, data_preparation, eeg_files, epilepsy_workbench, health, lab_demo, lab_edf_reviewer, projects, reports, subjects, tasks, teaching_data, templates, workflow
 from backend.services import account_service
 
 FRONTEND_DIR = Path(__file__).resolve().parents[1] / "frontend"
+
+
+def _env_flag(name: str) -> bool:
+    return os.getenv(name, "").strip().lower() in {"1", "true", "yes", "on"}
 
 app = FastAPI(
     title="QuanLan Analyser API",
@@ -27,7 +31,6 @@ DEFAULT_CORS_ORIGINS = [
     "http://127.0.0.1:4173",
     "http://127.0.0.1:8765",
     "http://localhost:8765",
-    "http://39.97.248.225",
     "http://127.0.0.1:8001",
     "http://localhost:8001",
 ]
@@ -54,7 +57,15 @@ app.include_router(health.router, prefix="/api", tags=["health"])
 app.include_router(accounts.router, prefix="/api", tags=["accounts"])
 app.include_router(lab_demo.router, prefix="/api", tags=["lab-demo"])
 app.include_router(lab_edf_reviewer.router, prefix="/api", tags=["lab-edf-reviewer"])
-app.include_router(lab_epilepsy_full_flow.router, prefix="/api", tags=["lab-epilepsy-full-flow"])
+if _env_flag("QLANALYSER_LAB_EPILEPSY_FULL_FLOW_ENABLED"):
+    from backend.api import lab_epilepsy_full_flow
+
+    app.include_router(
+        lab_epilepsy_full_flow.router,
+        prefix="/api",
+        tags=["lab-epilepsy-full-flow"],
+        dependencies=[Depends(lab_epilepsy_full_flow.require_lab_local_request)],
+    )
 app.include_router(teaching_data.router, prefix="/api", tags=["teaching-data"])
 
 # 需认证端点
