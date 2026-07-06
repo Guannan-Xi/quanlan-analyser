@@ -7,8 +7,10 @@
   const REPORT_SCHEMA = "qlanalyser.epilepsy.full_flow_report_preview.v1";
   const REVIEW_STORAGE_KEY = "qlanalyser.epilepsy.review_preview.latest";
   const FLOW_STORAGE_KEY = "qlanalyser.epilepsy.full_flow.latest";
-  const LOCAL_SAMPLE_FOLDER = "D:\\Quanlan\\Data\\HE脑电\\HE脑电";
-  const SAFE_SAMPLE_FOLDER = "HE脑电/HE脑电/";
+  const SAFE_SAMPLE_FOLDER = "work/sample_data/epilepsy/";
+  const REQUEST_TIMEOUT_MS = 30_000;
+  const LONG_REQUEST_TIMEOUT_MS = 75_000;
+  const MAX_WAVEFORM_CACHE_ITEMS = 12;
   const API_BASE = resolveApiBase();
   const STEPS = ["upload", "preflight", "candidates", "review", "adversarial", "report"];
 
@@ -51,7 +53,7 @@
       duration_sec: 69.78 * 3600,
       sfreq: 1000,
       channels: ["EEG1", "EEG2", "EMG", "ACC"],
-      source_path: `${LOCAL_SAMPLE_FOLDER}\\HE-105.edf`,
+      safe_source_path: `${SAFE_SAMPLE_FOLDER}HE-105.edf`,
       candidates: [
         candidate("HE105-E001", 14 * 60 + 18.4, 1.7, "ied", "high", ["EEG1", "EEG2"], 0.86),
         candidate("HE105-E002", 4 * 3600 + 26 * 60 + 8.2, 12.6, "seizure_like", "high", ["EEG1", "EEG2"], 0.91),
@@ -71,7 +73,7 @@
       duration_sec: 69.8 * 3600,
       sfreq: 1000,
       channels: ["EEG1", "EEG2", "EMG", "ACC"],
-      source_path: `${LOCAL_SAMPLE_FOLDER}\\HE-106.edf`,
+      safe_source_path: `${SAFE_SAMPLE_FOLDER}HE-106.edf`,
       candidates: [
         candidate("HE106-E001", 1 * 3600 + 10 * 60 + 4.5, 6.9, "rhythmic", "high", ["EEG2"], 0.81),
         candidate("HE106-E002", 6 * 3600 + 49 * 60 + 2.0, 1.1, "ied", "medium", ["EEG1"], 0.69),
@@ -90,7 +92,7 @@
       duration_sec: 69.72 * 3600,
       sfreq: 1000,
       channels: ["EEG1", "EEG2", "EMG", "ACC"],
-      source_path: `${LOCAL_SAMPLE_FOLDER}\\HE-118.edf`,
+      safe_source_path: `${SAFE_SAMPLE_FOLDER}HE-118.edf`,
       candidates: [
         candidate("HE118-E001", 38 * 60 + 14.1, 1.4, "ied", "medium", ["EEG1"], 0.66),
         candidate("HE118-E002", 3 * 3600 + 22 * 60 + 7.4, 11.4, "seizure_like", "high", ["EEG1", "EEG2"], 0.87),
@@ -120,7 +122,14 @@
     audit: [],
     reviewSaved: false,
     waveformCache: {},
+    candidateCache: {},
     backendReviewSession: null,
+    busy: {
+      preflight: false,
+      candidates: false,
+      saveReview: false,
+    },
+    lastError: "",
   };
 
   function candidate(event_id, start_sec, duration_sec, event_type, priority, channels, score) {
@@ -145,25 +154,38 @@
   }
 
   async function apiFetch(path, options = {}) {
-    const response = await fetch(`${API_BASE}${path}`, {
-      ...options,
-      headers: {
-        Accept: "application/json",
-        ...(options.headers || {}),
-      },
-    });
-    if (!response.ok) {
-      const detail = await response.text().catch(() => "");
-      throw new Error(`${response.status} ${response.statusText} ${detail}`.trim());
+    const { timeoutMs = REQUEST_TIMEOUT_MS, ...fetchOptions } = options;
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetch(`${API_BASE}${path}`, {
+        ...fetchOptions,
+        signal: controller.signal,
+        headers: {
+          Accept: "application/json",
+          ...(fetchOptions.headers || {}),
+        },
+      });
+      if (!response.ok) {
+        const detail = await response.text().catch(() => "");
+        throw new Error(`${response.status} ${response.statusText} ${detail}`.trim());
+      }
+      return response.json();
+    } catch (error) {
+      if (error?.name === "AbortError") {
+        throw new Error(`请求超过 ${Math.round(timeoutMs / 1000)} 秒未返回，请稍后重试或检查后端任务队列。`);
+      }
+      throw error;
+    } finally {
+      window.clearTimeout(timer);
     }
-    return response.json();
   }
 
   async function loadBackendRecords() {
     try {
       const data = await apiFetch("/lab/epilepsy-full-flow/records");
       state.backendRecords = Array.isArray(data.records) ? data.records.map(normalizeBackendRecord) : [];
-      state.backendRoot = data.root || "";
+      state.backendRoot = data.root || data.safe_root || SAFE_SAMPLE_FOLDER;
       state.backendAvailable = state.backendRecords.length > 0;
       if (state.backendAvailable) {
         addAudit("backend_records_loaded", `后端已发现 ${state.backendRecords.length} 个 HE 示例 EDF。`);
@@ -183,7 +205,8 @@
       ...(fallback || {}),
       ...record,
       backend_record: true,
-      source_path: record.source_path_display || record.safe_source_path || record.filename,
+      source_path_display: record.source_path_display || record.safe_source_path || `${SAFE_SAMPLE_FOLDER}${record.filename}`,
+      safe_source_path: record.safe_source_path || `${SAFE_SAMPLE_FOLDER}${record.filename}`,
       candidates: Array.isArray(record.candidates) ? record.candidates : (fallback?.candidates || []),
     };
   }
@@ -315,7 +338,7 @@
 
   function sampleFolderForDisplay() {
     if (state.backendRoot) return state.backendRoot;
-    return isLocalHost() ? LOCAL_SAMPLE_FOLDER : SAFE_SAMPLE_FOLDER;
+    return SAFE_SAMPLE_FOLDER;
   }
 
   function currentRecord() {
@@ -348,7 +371,6 @@
   function handleFileSelect(event) {
     const file = event.target.files && event.target.files[0];
     if (!file) return;
-    const base = availableRecords()[0] || SAMPLE_RECORDS[0];
     state.uploadedRecord = {
       id: `uploaded_${Date.now()}`,
       file_id: "browser_uploaded_edf_preview",
@@ -356,16 +378,17 @@
       size_bytes: file.size,
       duration_sec: null,
       sfreq: null,
-      channels: ["EEG1", "EEG2", "EMG", "ACC"],
-      source_path: file.name,
+      channels: [],
+      source_path_display: file.name,
+      safe_source_path: file.name,
       upload_only: true,
-      candidates: base.candidates.map((item, index) => ({
-        ...item,
-        event_id: `UPLOADED-E${String(index + 1).padStart(3, "0")}`,
-      })),
+      candidates: [],
     };
     selectRecord(state.uploadedRecord.id);
-    addAudit("browser_file_selected", `浏览器选择文件 ${file.name}，大小 ${formatBytes(file.size)}。`);
+    state.preflightDone = false;
+    state.candidatesGenerated = false;
+    addAudit("browser_file_selected", `浏览器选择文件 ${file.name}，大小 ${formatBytes(file.size)}；尚未接入后端 EDF 解析，不能套用 HE 示例候选。`);
+    toast("已选择本地 EDF，但需接入后端解析后才能生成候选。");
   }
 
   async function runPreflight() {
