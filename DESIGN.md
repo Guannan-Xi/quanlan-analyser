@@ -9,6 +9,7 @@ This file is the first design reference for QLanalyser UI, API, analysis modules
 Detailed project standards:
 
 - `docs/product/qlanalyser_project_design_standard_20260628.md`
+- `docs/product/epilepsy_research_workbench_design_spec.md` (global constraint for epilepsy research workbench UI, review, report draft, QC, parameters, evidence, and export flows)
 - `docs/product/qlanalyser_design_pattern_debt_scan_20260628.md`
 - `docs/product/qlanalyser_refactor_roadmap_20260628.md`
 - `docs/product/data_preparation_interaction_controls_state_matrix_20260628.md`
@@ -24,6 +25,7 @@ Detailed project standards:
 7. Waveform display must use lightweight chunk/window APIs for browsing. Heavy analysis tasks are not the browsing path.
 8. Every production feature needs requirements, detailed design, E2E or API verification, performance boundaries when relevant, and evidence paths.
 9. Router, Headroom, gateway, IPC, front-route, and model route are protected infrastructure. Do not touch them during product refactors unless explicitly assigned.
+10. Epilepsy-related workbench features must follow `docs/product/epilepsy_research_workbench_design_spec.md`: research analysis only, no clinical diagnosis claims, clear inputs, controllable analysis, interpretable results, traceable methods, and reproducible exports.
 
 ## Design Pattern Mapping
 
@@ -35,4 +37,3 @@ Detailed project standards:
 - Observer/Mediator: UI state refresh and cross-panel coordination.
 - Memento: review history, undo/redo, preparation revisions.
 - Chain of Responsibility: validation, auth, quota, task execution, artifact registration.
-
