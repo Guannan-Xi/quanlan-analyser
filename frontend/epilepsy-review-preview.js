@@ -3,11 +3,16 @@
 
   const CONTRACT_VERSION = "qlanalyser.epilepsy.manual_correction_preview.v1";
   const REVIEW_SESSION_VERSION = "epilepsy_review_session.v1";
+  const REQUEST_TIMEOUT_MS = 30_000;
+  const MAX_WAVEFORM_CACHE_ITEMS = 10;
+  const REVIEW_STORAGE_KEY = "qlanalyser.epilepsy.review_preview.latest";
+  const FLOW_STORAGE_KEY = "qlanalyser.epilepsy.full_flow.latest";
+  const API_BASE = resolveApiBase();
   const STATUS_LABEL = {
     unreviewed: "未复核",
     kept: "纳入草稿候选",
     excluded: "不纳入草稿",
-    uncertain: "存疑",
+    uncertain: "存疑/需二次复核",
   };
   const STATUS_TO_BACKEND = {
     unreviewed: "unreviewed",
@@ -17,9 +22,9 @@
   };
   const TYPE_LABEL = {
     ied: "棘波样候选",
-    seizure_like: "疑似节律性候选",
-    rhythmic: "疑似节律性候选",
-    artifact_suspect: "伪迹疑似",
+    seizure_like: "节律性片段候选（待复核）",
+    rhythmic: "节律性片段候选（待复核）",
+    artifact_suspect: "伪迹候选",
     candidate_window: "候选窗口 / 未分类",
   };
   const PRIORITY_WEIGHT = { high: 0, medium: 1, low: 2 };
@@ -63,7 +68,7 @@
         threshold: 0.72,
       },
       candidates: [
-        makeCandidate("HE106-E001", 8 * 60 + 36.8, 8 * 60 + 39.6, "high", "seizure_like", ["EEG1", "EEG2"], 0.9, "发作样短程节律"),
+        makeCandidate("HE106-E001", 8 * 60 + 36.8, 8 * 60 + 39.6, "high", "seizure_like", ["EEG1", "EEG2"], 0.9, "节律性短程片段候选（待复核）"),
         makeCandidate("HE106-E002", 1 * 3600 + 6 * 60 + 12.0, 1 * 3600 + 6 * 60 + 13.2, "medium", "ied", ["EEG1"], 0.7, "单发尖慢波"),
         makeCandidate("HE106-E003", 4 * 3600 + 44 * 60 + 4.5, 4 * 3600 + 44 * 60 + 6.9, "high", "artifact_suspect", ["EEG2"], 0.81, "EMG 同步突增"),
         makeCandidate("HE106-E004", 13 * 3600 + 28 * 60 + 51.3, 13 * 3600 + 28 * 60 + 53.0, "medium", "ied", ["EEG1", "EEG2"], 0.74, "双导短暂异常"),
@@ -88,7 +93,7 @@
         makeCandidate("HE118-E002", 2 * 3600 + 18 * 60 + 31.6, 2 * 3600 + 18 * 60 + 35.8, "high", "seizure_like", ["EEG1", "EEG2"], 0.89, "双导节律演变"),
         makeCandidate("HE118-E003", 7 * 3600 + 52 * 60 + 24.0, 7 * 3600 + 52 * 60 + 26.2, "medium", "artifact_suspect", ["EEG2"], 0.64, "ACC 同步变化"),
         makeCandidate("HE118-E004", 28 * 3600 + 4 * 60 + 55.0, 28 * 3600 + 4 * 60 + 57.0, "low", "ied", ["EEG1", "EEG2"], 0.59, "边界尖波"),
-        makeCandidate("HE118-E005", 63 * 3600 + 7 * 60 + 8.4, 63 * 3600 + 7 * 60 + 11.1, "high", "ied", ["EEG2"], 0.86, "高优先尖慢波"),
+        makeCandidate("HE118-E005", 63 * 3600 + 7 * 60 + 8.4, 63 * 3600 + 7 * 60 + 11.1, "high", "ied", ["EEG2"], 0.86, "优先复核尖慢波候选"),
       ],
     },
   ];
@@ -103,6 +108,8 @@
     audit: [],
     history: [],
     drag: null,
+    waveformCache: {},
+    backendReviewSession: null,
   };
 
   const dom = {};
@@ -118,7 +125,7 @@
       channels,
       preview_rms_ptp_rank_score: previewRankScore,
       score_kind: "preview_rank_not_probability",
-      score_note: "预览排序值不是临床概率、检测置信度或诊断结论。",
+      score_note: "复核优先级排序值不是临床概率、检测置信度或诊断结论。",
       qc_hint: qcHint,
       emg_sync: aiType === "artifact_suspect" ? "present" : "absent",
       acc_motion: aiType === "artifact_suspect" ? "possible" : "absent",
@@ -151,7 +158,7 @@
 
   function hydrateFromFullFlowSession() {
     try {
-      const raw = window.sessionStorage.getItem("qlanalyser.epilepsy.review_preview.latest");
+      const raw = window.sessionStorage.getItem(REVIEW_STORAGE_KEY) || window.localStorage.getItem(REVIEW_STORAGE_KEY);
       if (!raw) return;
       const payload = JSON.parse(raw);
       if (!Array.isArray(payload?.reviewed_events) || !payload.reviewed_events.length) return;
@@ -182,7 +189,7 @@
           channels: Array.isArray(event.channels) ? event.channels : [],
           preview_rms_ptp_rank_score: Number(event.preview_rms_ptp_rank_score ?? 0.5),
           score_kind: event.score_kind || "preview_rank_not_probability",
-          score_note: event.score_note || "预览排序值不是概率。",
+          score_note: event.score_note || "复核优先级排序值不是概率。",
           qc_hint: event.qc_hint || "来自全流程复核草稿。",
           emg_sync: aiType === "artifact_suspect" ? "present" : "absent",
           acc_motion: aiType === "artifact_suspect" ? "possible" : "absent",
@@ -211,6 +218,8 @@
         sfreq: Number(record.sfreq || 0),
         channels: Array.isArray(record.channels) ? record.channels : [],
         safe_source_path: record.safe_source_path || "work/sample_data/epilepsy/",
+        backend_record: Boolean(record.backend_record || payload.context?.backend_record || /^he-\d+$/i.test(record.id || "")),
+        api_base: payload.context?.api_base || API_BASE,
         model: {
           workflow_id: payload.context?.workflow_id || "epilepsy_full_flow_preview",
           detector_version: model.detector_version || payload.context?.detector_version || "review_preview_from_full_flow",
@@ -218,8 +227,10 @@
         },
         context: payload.context || {},
         metadata,
+        backend_review_session: payload.backend_review_session || null,
         candidates,
       });
+      state.backendReviewSession = payload.backend_review_session || null;
     } catch (error) {
       console.warn("Full-flow review session hydrate skipped", error);
     }
@@ -280,6 +291,7 @@
   function cacheDom() {
     [
       "recordSelect",
+      "backToFlowBtn",
       "copyJsonBtn",
       "reportPreviewBtn",
       "exportJsonBtn",
@@ -327,6 +339,7 @@
   function bindEvents() {
     dom.recordSelect.addEventListener("change", () => selectRecord(Number(dom.recordSelect.value) || 0));
     dom.copyJsonBtn.addEventListener("click", copyJson);
+    dom.backToFlowBtn.addEventListener("click", returnToFullFlow);
     dom.reportPreviewBtn.addEventListener("click", openReportPreview);
     dom.exportJsonBtn.addEventListener("click", exportJson);
     dom.focusQueueBtn.addEventListener("click", focusNextReviewTarget);
@@ -429,7 +442,7 @@
     dom.candidateMetric.textContent = String(candidates.length);
     dom.reviewedMetric.textContent = `${reviewed}/${candidates.length}`;
     dom.keptMetric.textContent = String(kept);
-    dom.contractName.textContent = "复核记录 v1";
+    dom.contractName.textContent = "复核草稿";
     const remaining = Math.max(0, candidates.length - reviewed);
     dom.flowStateTitle.textContent = reviewed === 0
       ? "先复核至少一个候选"
@@ -437,22 +450,22 @@
         ? `还有 ${remaining} 个候选未复核`
         : "复核已覆盖当前预览候选包";
     dom.flowStateText.textContent = reviewed === 0
-      ? "请先把当前候选标记为纳入草稿、存疑或不纳入；未复核的算法候选不能直接进入复核草稿。"
+      ? "请先把当前候选标记为纳入草稿、存疑/需二次复核或不纳入；未标注人工状态的算法候选不能直接进入复核草稿。"
       : remaining
-        ? "已复核部分可以进入事件结果表；复核草稿会标记为部分复核。"
-        : "现在可以查看事件结果表，再生成带边界说明的复核草稿。";
-    dom.focusQueueBtn.querySelector("span").textContent = remaining ? "继续未复核候选" : "查看已复核候选";
+        ? "已有人工状态的部分可以进入候选复核表；复核草稿会标记为部分复核。"
+        : "现在可以查看候选复核表，再生成带边界说明的研究草稿。";
+    dom.focusQueueBtn.querySelector("span").textContent = remaining ? "继续未复核候选" : "查看已有人工状态候选";
     dom.reportPreviewBtn.disabled = reviewed === 0;
     dom.reportPreviewBtn.querySelector("span").textContent = reviewed === 0
       ? "先完成一次复核"
       : remaining
-        ? "查看部分事件结果"
-        : "查看事件结果与复核草稿";
+        ? "查看部分候选复核表"
+        : "查看候选复核表与研究草稿";
     dom.reportPreviewBtn.title = reviewed === 0
-      ? "至少标记一个候选后，才能进入事件结果和复核草稿。"
+      ? "至少标记一个候选后，才能进入候选复核表和研究草稿。"
       : remaining
         ? "当前仍有未复核候选，复核草稿会标记为部分复核。"
-        : "查看事件结果表与复核草稿。";
+        : "查看候选复核表与研究草稿。";
   }
 
   function renderQueue() {
@@ -478,7 +491,7 @@
             </div>
             <div class="er-candidate-meta">
               <span>${h(candidate.channels.join("/"))}</span>
-              <span>预览排序 ${candidate.preview_rms_ptp_rank_score.toFixed(2)}（非概率）</span>
+              <span>复核优先级：${priorityLabel(candidate.priority)}</span>
             </div>
           </button>
         `;
@@ -691,8 +704,24 @@
     drawGrid(ctx, layout, candidate);
 
     const record = currentRecord();
-    const rowH = layout.plotH / record.channels.length;
-    record.channels.forEach((channel, index) => {
+    const realWindow = waveformWindowForCurrentView(record, candidate);
+    const sourceLabel = realWindow?.status === "ready"
+      ? "原始 EDF 窗口已读取（uV）"
+      : realWindow?.status === "loading"
+        ? "正在读取原始 EDF 窗口"
+        : realWindow?.status === "failed"
+          ? "原始窗口暂不可用，显示示意波形"
+          : "示意波形";
+
+    if (realWindow?.status === "ready") {
+      drawRealWaveform(ctx, layout, candidate, realWindow.payload);
+      drawEventLabel(ctx, layout, candidate, sourceLabel);
+      return;
+    }
+
+    const channels = record.channels.length ? record.channels : ["EEG1", "EEG2", "EMG", "ACC"];
+    const rowH = layout.plotH / channels.length;
+    channels.forEach((channel, index) => {
       const yCenter = layout.top + rowH * (index + 0.5);
       const color = channelColor(channel);
       ctx.strokeStyle = "#eef2ea";
@@ -729,7 +758,48 @@
       }
     });
 
-    drawEventLabel(ctx, layout, candidate);
+    drawEventLabel(ctx, layout, candidate, sourceLabel);
+  }
+
+  function drawRealWaveform(ctx, layout, candidate, payload) {
+    const channels = Array.isArray(payload?.channels) ? payload.channels : [];
+    if (!channels.length) return;
+    const rowH = layout.plotH / channels.length;
+    channels.forEach((channel, index) => {
+      const name = String(channel.name || `CH${index + 1}`);
+      const times = Array.isArray(channel.times_sec) ? channel.times_sec.map(Number) : [];
+      const values = Array.isArray(channel.values) ? channel.values.map(Number) : [];
+      const yCenter = layout.top + rowH * (index + 0.5);
+      ctx.strokeStyle = "#eef2ea";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(layout.left, yCenter);
+      ctx.lineTo(layout.rightX, yCenter);
+      ctx.stroke();
+
+      ctx.fillStyle = "#2d352f";
+      ctx.font = "700 13px Inter, Microsoft YaHei, sans-serif";
+      ctx.fillText(name.slice(0, 12), 18, yCenter + 4);
+
+      if (!times.length || times.length !== values.length) return;
+      const scale = robustScale(values);
+      ctx.strokeStyle = channelColor(name);
+      ctx.lineWidth = candidate.channels.includes(name) ? 1.9 : 1.25;
+      ctx.beginPath();
+      let hasPoint = false;
+      values.forEach((value, pointIndex) => {
+        if (!Number.isFinite(value) || !Number.isFinite(times[pointIndex])) return;
+        const x = xFromTime(times[pointIndex], layout);
+        if (x < layout.left - 2 || x > layout.rightX + 2) return;
+        const y = yCenter - clamp(value / scale, -2.1, 2.1) * rowH * 0.28;
+        if (!hasPoint) {
+          ctx.moveTo(x, y);
+          hasPoint = true;
+        }
+        else ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+    });
   }
 
   function drawGrid(ctx, layout, candidate) {
@@ -752,7 +822,7 @@
     ctx.stroke();
   }
 
-  function drawEventLabel(ctx, layout, candidate) {
+  function drawEventLabel(ctx, layout, candidate, sourceLabel = "") {
     const start = candidate.review.adjusted_start_sec ?? candidate.start_sec;
     const end = candidate.review.adjusted_end_sec ?? candidate.end_sec;
     const x1 = xFromTime(start, layout);
@@ -770,10 +840,17 @@
 
     ctx.fillStyle = "#18201c";
     ctx.font = "700 13px Inter, Microsoft YaHei, sans-serif";
-    ctx.fillText(`${candidate.id} · ${round1(end - start)}s · 预览排序 ${candidate.preview_rms_ptp_rank_score.toFixed(2)}（非概率）`, layout.left, 25);
+    ctx.fillText(`${candidate.id} · ${round1(end - start)}s · 复核优先级：${priorityLabel(candidate.priority)}`, layout.left, 25);
     ctx.fillStyle = "#68736b";
     ctx.font = "12px Inter, Microsoft YaHei, sans-serif";
     ctx.fillText(`${candidate.qc_hint} · ${candidate.channels.join("/")}`, layout.left, 43);
+    if (sourceLabel) {
+      ctx.fillStyle = sourceLabel.includes("示意") ? "#a86513" : "#2f7d55";
+      ctx.font = "700 12px Inter, Microsoft YaHei, sans-serif";
+      ctx.textAlign = "right";
+      ctx.fillText(sourceLabel, layout.rightX, 25);
+      ctx.textAlign = "left";
+    }
   }
 
   function drawTimeline() {
@@ -862,6 +939,97 @@
     dom.eventBand.title = `拖动整段候选窗口，时长保持 ${round1(end - start)} 秒`;
     dom.startHandle.style.left = `${left}px`;
     dom.endHandle.style.left = `${right}px`;
+  }
+
+  function waveformWindowForCurrentView(record, candidate) {
+    if (!record || !candidate || !canFetchRealWaveform(record)) return null;
+    const cacheKey = waveformCacheKey(record, state.viewStart, state.viewDuration);
+    const cached = state.waveformCache[cacheKey];
+    if (cached) {
+      cached.at = Date.now();
+      return cached;
+    }
+    loadBackendWaveformWindow(record, cacheKey);
+    return state.waveformCache[cacheKey] || null;
+  }
+
+  function canFetchRealWaveform(record) {
+    return Boolean(record?.id && (record.backend_record || /^he-\d+$/i.test(record.id)));
+  }
+
+  function waveformCacheKey(record, startSec, durationSec) {
+    const channels = waveformChannels(record).join("|");
+    return `${record.id}:${round1(startSec)}:${round1(durationSec)}:${channels}`;
+  }
+
+  function waveformChannels(record) {
+    const channels = Array.isArray(record?.channels) ? record.channels.filter(Boolean) : [];
+    return (channels.length ? channels : ["EEG1", "EEG2", "EMG", "ACC"]).slice(0, 8);
+  }
+
+  async function loadBackendWaveformWindow(record, cacheKey) {
+    state.waveformCache[cacheKey] = { status: "loading", at: Date.now() };
+    pruneWaveformCache();
+    try {
+      const params = new URLSearchParams({
+        start_sec: String(Math.max(0, state.viewStart)),
+        duration_sec: String(Math.max(1, Math.min(120, state.viewDuration))),
+        channels: waveformChannels(record).join(","),
+        max_points: "3200",
+      });
+      const payload = await apiFetch(`/lab/epilepsy-full-flow/records/${encodeURIComponent(record.id)}/waveform-window?${params.toString()}`);
+      if (currentRecord()?.id !== record.id) return;
+      state.waveformCache[cacheKey] = { status: "ready", payload, at: Date.now() };
+      pruneWaveformCache();
+      drawWaveform();
+    } catch (error) {
+      if (currentRecord()?.id !== record.id) return;
+      state.waveformCache[cacheKey] = { status: "failed", error: error.message, at: Date.now() };
+      pruneWaveformCache();
+      addAudit("backend_waveform_failed", "原始 EDF 窗口读取失败", selectedCandidate()?.id || "");
+      drawWaveform();
+    }
+  }
+
+  function pruneWaveformCache() {
+    const entries = Object.entries(state.waveformCache);
+    if (entries.length <= MAX_WAVEFORM_CACHE_ITEMS) return;
+    entries
+      .sort(([, a], [, b]) => (a.at || 0) - (b.at || 0))
+      .slice(0, entries.length - MAX_WAVEFORM_CACHE_ITEMS)
+      .forEach(([key]) => {
+        delete state.waveformCache[key];
+      });
+  }
+
+  async function apiFetch(path, options = {}) {
+    const { timeoutMs = REQUEST_TIMEOUT_MS, ...fetchOptions } = options;
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetch(`${API_BASE}${path}`, {
+        ...fetchOptions,
+        signal: controller.signal,
+        headers: {
+          Accept: "application/json",
+          ...(fetchOptions.headers || {}),
+        },
+      });
+      if (!response.ok) {
+        const detail = await response.text().catch(() => "");
+        throw new Error(`${response.status} ${response.statusText} ${detail}`.trim());
+      }
+      if (response.status === 204) return null;
+      const text = await response.text();
+      return text ? JSON.parse(text) : null;
+    } catch (error) {
+      if (error?.name === "AbortError") {
+        throw new Error(`请求超过 ${Math.round(timeoutMs / 1000)} 秒未返回，请稍后重试。`);
+      }
+      throw error;
+    } finally {
+      window.clearTimeout(timer);
+    }
   }
 
   function startDrag(event, handle) {
@@ -989,9 +1157,11 @@
         channels: record.channels,
         safe_source_path: record.safe_source_path,
         path_visibility: "safe_relative",
+        backend_record: Boolean(record.backend_record),
       },
       metadata,
       context,
+      backend_review_session: state.backendReviewSession,
       model: record.model,
       summary: {
         auto_candidates: record.candidates.length,
@@ -1016,8 +1186,13 @@
       reviewed_events: record.candidates.map((candidate) => {
         const start = candidate.review.adjusted_start_sec ?? candidate.start_sec;
         const end = candidate.review.adjusted_end_sec ?? candidate.end_sec;
+        const backendStatus = STATUS_TO_BACKEND[candidate.review.status] || "unreviewed";
         return {
           event_id: candidate.id,
+          status: backendStatus,
+          event_type: candidate.review.event_type || candidate.ai_type,
+          start_sec: round1(start),
+          end_sec: round1(end),
           original_start_sec: candidate.start_sec,
           original_end_sec: candidate.end_sec,
           reviewed_start_sec: round1(start),
@@ -1031,10 +1206,13 @@
           score_note: candidate.score_note,
           channels: candidate.channels,
           review_status: candidate.review.status,
-          backend_status: STATUS_TO_BACKEND[candidate.review.status],
+          backend_status: backendStatus,
           evidence_grade: candidate.review.grade,
           artifact_reason: candidate.review.artifact_reason,
           include_in_report: candidate.review.include_in_report,
+          review_note: candidate.review.note || "",
+          reviewer: candidate.review.reviewer || "未记录复核人",
+          reviewed_at: candidate.review.reviewed_at || "",
         };
       }),
       actions: state.audit,
@@ -1053,14 +1231,13 @@
         记录时长秒: round1(record.duration_sec || 0),
         采样率Hz: record.sfreq || "",
         通道: record.channels,
-        数据路径显示: record.safe_source_path || "",
       },
       复核摘要: {
         候选总数: record.candidates.length,
-        已复核: reviewed,
+        已有人工状态: reviewed,
         纳入草稿候选: record.candidates.filter((item) => item.review.status === "kept").length,
         不纳入草稿候选: record.candidates.filter((item) => item.review.status === "excluded").length,
-        存疑: record.candidates.filter((item) => item.review.status === "uncertain").length,
+        "存疑/需二次复核": record.candidates.filter((item) => item.review.status === "uncertain").length,
         未复核: record.candidates.filter((item) => item.review.status === "unreviewed").length,
       },
       候选复核表: record.candidates.map(customerCandidateRow),
@@ -1085,8 +1262,6 @@
       候选类型: TYPE_LABEL[review.event_type] || TYPE_LABEL[candidate.ai_type] || "候选窗口",
       通道: candidate.channels,
       复核优先级: priorityLabel(candidate.priority),
-      排序值: candidate.preview_rms_ptp_rank_score,
-      排序值说明: candidate.score_note || "排序值只用于复核优先级，不是临床概率。",
       展示证据等级: review.grade || "",
       伪迹原因: artifactLabel(review.artifact_reason || ""),
       复核备注: review.note || "",
@@ -1104,7 +1279,7 @@
       has_explicit_candidate_denominator: true,
       candidate_denominator: count,
       candidate_set_scope: "current_preview_candidate_package",
-      denominator_note: "当前复核记录包含已载入的预览候选包；这不是全记录完整检测器的事件负荷估计。",
+      denominator_note: "当前复核记录包含已载入的预览候选包；这不是完整检测器的事件负荷估计。",
     };
   }
 
@@ -1118,9 +1293,11 @@
       data_preparation_plan_id: source.data_preparation_plan_id || "preview_unknown",
       data_preparation_revision: source.data_preparation_revision ?? null,
       data_preparation_contract_version: source.data_preparation_contract_version || "preview_unknown",
-      review_session_id: source.review_session_id || "",
+      review_session_id: state.backendReviewSession?.session_id || source.review_session_id || "",
       source_algorithm_artifact_id: source.source_algorithm_artifact_id || "",
       source: source.source || "standalone_review_page",
+      api_base: source.api_base || API_BASE,
+      backend_record: Boolean(record.backend_record),
     };
   }
 
@@ -1141,28 +1318,135 @@
     showToast("复核记录已下载");
   }
 
-  function openReportPreview() {
+  async function openReportPreview() {
     if (!currentRecord().candidates.some((item) => item.review.status !== "unreviewed")) {
       showToast("请先完成至少一个候选的人工复核。");
       return;
     }
-    try {
-      window.sessionStorage.setItem("qlanalyser.epilepsy.review_preview.latest", JSON.stringify(reviewPayload()));
-    } catch (error) {
+    if (!persistLatestReviewPayload()) {
       showToast("无法临时保存复核草稿，已下载客户可读复核记录。");
       saveBlob(JSON.stringify(customerReviewPackage(), null, 2), `${currentRecord().id}_复核记录.json`, "application/json;charset=utf-8");
-      console.warn("Review draft handoff failed", error);
       return;
     }
-    window.location.href = "./epilepsy-report-preview.html?source=review-preview";
+    try {
+      await saveBackendReviewSession();
+    } catch (error) {
+      showToast("复核草稿已保存在浏览器；本地服务同步失败，仍可查看草稿。");
+      console.warn("Backend review session save skipped before report", error);
+    }
+    window.location.href = linkedPreviewUrl("./epilepsy-report-preview.html", "review-preview");
   }
 
   function persistLatestReviewPayload() {
     try {
-      window.sessionStorage.setItem("qlanalyser.epilepsy.review_preview.latest", JSON.stringify(reviewPayload()));
-    } catch {
-      // The explicit "查看事件结果与复核草稿" path reports storage failure before navigation.
+      const payload = reviewPayload();
+      window.sessionStorage.setItem(REVIEW_STORAGE_KEY, JSON.stringify(payload));
+      window.localStorage.setItem(REVIEW_STORAGE_KEY, JSON.stringify(payload));
+      persistFlowSnapshot(payload);
+      return true;
+    } catch (error) {
+      console.warn("Review draft handoff failed", error);
+      return false;
     }
+  }
+
+  async function returnToFullFlow() {
+    if (!persistLatestReviewPayload()) {
+      showToast("无法临时保存复核草稿，已下载客户可读复核记录。");
+      saveBlob(JSON.stringify(customerReviewPackage(), null, 2), `${currentRecord().id}_复核记录.json`, "application/json;charset=utf-8");
+      return;
+    }
+    try {
+      await saveBackendReviewSession();
+    } catch (error) {
+      showToast("复核草稿已保存在浏览器；本地服务同步失败，仍会返回全流程。");
+      console.warn("Backend review session save skipped before full-flow return", error);
+    }
+    window.location.href = linkedPreviewUrl("./epilepsy-full-flow-preview.html", "review-preview");
+  }
+
+  async function saveBackendReviewSession() {
+    const record = currentRecord();
+    if (!record?.backend_record && !/^he-\d+$/i.test(record?.id || "")) return null;
+    const payload = reviewPayload();
+    const saved = await apiFetch("/lab/epilepsy-full-flow/review-sessions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    state.backendReviewSession = saved;
+    addAudit("backend_review_session_saved", "复核记录已同步", saved.session_id || "");
+    persistLatestReviewPayload();
+    return saved;
+  }
+
+  function persistFlowSnapshot(payload) {
+    let existing = {};
+    try {
+      existing = JSON.parse(window.localStorage.getItem(FLOW_STORAGE_KEY) || "{}");
+    } catch {
+      existing = {};
+    }
+    if (!existing || existing.schema_version !== "qlanalyser.epilepsy.full_flow_preview.v1") return;
+    const record = currentRecord();
+    if (!record?.id || existing.selected_record_id !== record.id) return;
+    const reviews = { ...(existing.reviews || {}) };
+    payload.reviewed_events.forEach((event) => {
+      reviews[event.event_id] = {
+        status: normalizeFlowStatus(event.backend_status || event.review_status),
+        event_type: event.reviewed_type || event.event_type || event.ai_type,
+        evidence_grade: event.evidence_grade || "",
+        adjusted_start_sec: event.reviewed_start_sec,
+        adjusted_end_sec: event.reviewed_end_sec,
+        note: event.review_note || "",
+        reviewer: event.reviewer || "",
+        reviewed_at: event.reviewed_at || "",
+      };
+    });
+    const next = {
+      ...existing,
+      current_step: "review",
+      current_record: {
+        ...(existing.current_record || {}),
+        ...record,
+      },
+      candidates: record.candidates.map((candidate) => ({
+        event_id: candidate.id,
+        id: candidate.id,
+        start_sec: candidate.start_sec,
+        end_sec: candidate.end_sec,
+        duration_sec: round1(candidate.end_sec - candidate.start_sec),
+        event_type: candidate.ai_type,
+        priority: candidate.priority,
+        channels: candidate.channels,
+        preview_rms_ptp_rank_score: candidate.preview_rms_ptp_rank_score,
+        score_kind: candidate.score_kind,
+        score_note: candidate.score_note,
+        source: candidate.source || payload.context?.source_algorithm_artifact_id || "review_payload",
+        event_type_scope: candidate.event_type_scope || "candidate_label_only",
+      })),
+      reviews,
+      review_saved: true,
+      backend_review_session: state.backendReviewSession || existing.backend_review_session || null,
+      audit: [...(existing.audit || []), ...state.audit].slice(-80),
+    };
+    window.localStorage.setItem(FLOW_STORAGE_KEY, JSON.stringify(next));
+    window.sessionStorage.setItem(FLOW_STORAGE_KEY, JSON.stringify(next));
+  }
+
+  function normalizeFlowStatus(status) {
+    const value = String(status || "unreviewed");
+    if (value === "kept") return "confirmed";
+    if (value === "excluded") return "rejected";
+    if (value === "uncertain") return "needs_review";
+    if (["confirmed", "rejected", "needs_review", "unreviewed"].includes(value)) return value;
+    return "unreviewed";
+  }
+
+  function linkedPreviewUrl(path, source) {
+    const params = new URLSearchParams({ source });
+    if (isLocalPage() && API_BASE) params.set("api", API_BASE);
+    return `${path}?${params.toString()}`;
   }
 
   function saveBlob(text, filename, type) {
@@ -1212,6 +1496,29 @@
     return state.viewStart + ((x - layout.left) / layout.plotW) * state.viewDuration;
   }
 
+  function resolveApiBase() {
+    const params = new URLSearchParams(window.location.search);
+    const explicit = params.get("api");
+    if (explicit && isLocalPage() && isLocalApiBase(explicit)) return explicit.replace(/\/$/, "");
+    if (window.location.port === "8001") return `${window.location.origin}/api`;
+    if (!isLocalPage()) return `${window.location.origin}/api`;
+    return "http://127.0.0.1:8001/api";
+  }
+
+  function isLocalPage() {
+    const host = window.location.hostname;
+    return !host || host === "localhost" || host === "127.0.0.1" || host === "::1" || host === "[::1]";
+  }
+
+  function isLocalApiBase(value) {
+    try {
+      const url = new URL(value, window.location.origin);
+      return ["localhost", "127.0.0.1", "::1", "[::1]"].includes(url.hostname);
+    } catch {
+      return false;
+    }
+  }
+
   function waveformValue(channel, t, candidate) {
     const seed = hash(`${candidate.id}:${channel}`);
     const base = Math.sin(t * 2.2 + seed) * 0.22 + Math.sin(t * 7.7 + seed * 0.21) * 0.08;
@@ -1250,6 +1557,16 @@
     let value = 0;
     for (let i = 0; i < text.length; i += 1) value = (value * 31 + text.charCodeAt(i)) >>> 0;
     return value / 1000;
+  }
+
+  function robustScale(values) {
+    const sorted = values
+      .map((value) => Math.abs(Number(value)))
+      .filter(Number.isFinite)
+      .sort((a, b) => a - b);
+    if (!sorted.length) return 1;
+    const index = Math.max(0, Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95)));
+    return Math.max(sorted[index], 1);
   }
 
   function channelColor(channel) {

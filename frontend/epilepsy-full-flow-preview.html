@@ -8,7 +8,7 @@
       name="description"
       content="QLanalyser 癫痫样候选事件筛查、人工复核和复核草稿预览。"
     />
-    <link rel="stylesheet" href="./epilepsy-full-flow-preview.css?v=20260706-spacious-v1" />
+    <link rel="stylesheet" href="./epilepsy-full-flow-preview.css?v=20260707-inline-review-v1" />
     <link rel="stylesheet" href="./workbench-spacious-overrides.css?v=20260706-spacious-v1" />
     <script src="./vendor/lucide.min.js"></script>
   </head>
@@ -22,25 +22,25 @@
         <div class="ep-flow-top-actions">
           <button class="ep-flow-btn ep-flow-btn-ghost" type="button" id="copyFlowBtn">
             <i data-lucide="copy" aria-hidden="true"></i>
-            <span>复制流程记录</span>
+            <span>复制试用摘要</span>
           </button>
-          <button class="ep-flow-btn ep-flow-btn-ghost" type="button" id="openReviewBtn" disabled>
+          <button class="ep-flow-btn ep-flow-btn-ghost" type="button" id="openReviewBtn" disabled hidden>
             <i data-lucide="square-pen" aria-hidden="true"></i>
-            <span>候选复核工作台</span>
+            <span>详细复核页</span>
           </button>
           <button class="ep-flow-btn ep-flow-btn-primary" type="button" id="openReportBtn" disabled>
             <i data-lucide="file-chart-column" aria-hidden="true"></i>
-            <span>查看草稿</span>
+            <span>打开草稿详情</span>
           </button>
         </div>
       </header>
 
       <section class="ep-flow-hero" aria-label="流程目标">
         <div>
-          <p class="ep-flow-kicker">HE 示例 EDF 复核流程</p>
-          <h1>选择示例 EDF，生成可复核草稿</h1>
+          <p class="ep-flow-kicker">示例 EDF 试用流程</p>
+          <h1>选择一份示例记录，开始候选事件复核</h1>
           <p>
-            面向科研筛查支持：先确认记录是否可读，再标出疑似癫痫样片段，最后由人工复核形成草稿记录。
+            面向科研筛查支持：先确认记录是否可读，再生成待人工查看的候选片段包，最后由人工复核形成草稿记录。
             候选事件不等于临床诊断；长时程记录会按时间窗分段查看。
           </p>
         </div>
@@ -62,7 +62,7 @@
         </button>
         <button type="button" data-step="candidates" disabled>
           <span>3</span>
-          <strong>查找疑似</strong>
+          <strong>筛出候选</strong>
         </button>
         <button type="button" data-step="review" disabled>
           <span>4</span>
@@ -107,23 +107,24 @@
             <div class="ep-flow-section-head">
               <div>
                 <span>第 1 步</span>
-                <h2>上传或选择 HE 示例 EDF</h2>
+                <h2>选择 HE 示例 EDF</h2>
               </div>
               <button class="ep-flow-file-btn" type="button" id="chooseEdfBtn">
                 <i data-lucide="upload" aria-hidden="true"></i>
-                <span>选择 EDF 文件</span>
+                <span>登记 EDF 文件</span>
               </button>
               <input id="edfInput" type="file" accept=".edf,application/edf" hidden />
             </div>
 
             <div class="ep-flow-folder">
               <div>
-                <span>默认 HE 示例目录</span>
-                <code id="sampleFolderText">HE sample folder</code>
+                <span>示例数据来源</span>
+                <strong id="sampleSourceText">正在连接示例数据</strong>
+                <small id="sampleFolderText">数据来源说明：等待试用环境返回数据状态</small>
               </div>
               <button class="ep-flow-btn ep-flow-btn-ghost" type="button" id="copyFolderBtn">
                 <i data-lucide="copy" aria-hidden="true"></i>
-                <span>复制目录</span>
+                <span>复制数据来源说明</span>
               </button>
             </div>
 
@@ -132,8 +133,8 @@
             <div class="ep-flow-callout">
               <i data-lucide="shield-alert" aria-hidden="true"></i>
               <p>
-                可直接选择下面的 HE 示例记录，也可以上传 EDF 做占位检查。长时程 EDF 不会一次性读进浏览器；
-                后续分析只读取需要查看的时间窗。
+                优先选择下方 HE 示例记录跑完整流程；导入 EDF 目前只登记文件名和大小，不能套用 HE 示例候选。
+                长时程记录不会一次性读进浏览器，后续分析只读取需要查看的时间窗。
               </p>
             </div>
           </section>
@@ -163,11 +164,11 @@
             <div class="ep-flow-section-head">
               <div>
                 <span>第 3 步</span>
-                <h2>查找疑似癫痫样事件</h2>
+                <h2>生成待人工查看的候选片段包</h2>
               </div>
               <button class="ep-flow-btn ep-flow-btn-primary" type="button" id="generateCandidatesBtn">
                 <i data-lucide="sparkles" aria-hidden="true"></i>
-                <span>查找疑似事件</span>
+                <span>生成候选片段包</span>
               </button>
             </div>
             <div class="ep-flow-runner" id="candidateRunner" aria-live="polite">
@@ -188,7 +189,7 @@
             <div class="ep-flow-section-head">
               <div>
                 <span>第 4 步</span>
-                <h2>进入候选复核工作台</h2>
+                <h2>复核候选事件</h2>
               </div>
               <div class="ep-flow-action-row">
                 <button class="ep-flow-btn ep-flow-btn-ghost" type="button" id="autoReviewBtn" hidden>
@@ -196,14 +197,14 @@
                   <span>填充预览复核</span>
                 </button>
                 <button class="ep-flow-btn ep-flow-btn-primary" type="button" id="saveReviewBtn">
-                  <i data-lucide="square-pen" aria-hidden="true"></i>
-                  <span>打开工作台</span>
+                  <i data-lucide="save" aria-hidden="true"></i>
+                  <span>同步复核记录</span>
                 </button>
               </div>
             </div>
             <div class="ep-flow-review-layout">
               <div class="ep-flow-event-list" id="eventList"></div>
-              <aside class="ep-flow-review-form ep-flow-review-handoff" aria-label="候选复核工作台入口">
+              <aside class="ep-flow-review-form ep-flow-review-handoff" aria-label="候选复核详情">
                 <h3 id="activeEventTitle">请选择候选事件</h3>
                 <div class="ep-flow-waveform-preview">
                   <canvas id="reviewWaveform" width="900" height="300" role="img" aria-label="候选事件波形只读概览" aria-describedby="reviewWaveformDesc"></canvas>
@@ -211,9 +212,34 @@
                 </div>
                 <p class="ep-flow-sr-only" id="reviewWaveformDesc">候选事件波形图用于流程概览；有真实 EDF 窗口时显示原始片段，示例不足时显示示意图，不作为临床诊断依据。</p>
                 <div class="ep-flow-workbench-card">
-                  <h4>复核记录由候选复核工作台统一生成</h4>
-                  <p id="reviewHandoffCopy">本页展示候选队列和流程状态，精细复核不在这里重复录入。</p>
+                  <h4>当前页直接复核</h4>
+                  <p id="reviewHandoffCopy">查看波形后标注候选是否纳入草稿；存疑项会保留为待确认，不写成结论。</p>
                   <div class="ep-flow-workbench-facts" id="reviewHandoffFacts"></div>
+                  <div class="ep-flow-inline-review">
+                    <div class="ep-flow-decision-row" role="group" aria-label="复核状态">
+                      <button class="ep-flow-decision-btn keep" type="button" data-flow-status="confirmed">
+                        <i data-lucide="check" aria-hidden="true"></i>
+                        <span>纳入草稿</span>
+                      </button>
+                      <button class="ep-flow-decision-btn uncertain" type="button" data-flow-status="needs_review">
+                        <i data-lucide="circle-help" aria-hidden="true"></i>
+                        <span>存疑复核</span>
+                      </button>
+                      <button class="ep-flow-decision-btn reject" type="button" data-flow-status="rejected">
+                        <i data-lucide="x" aria-hidden="true"></i>
+                        <span>不纳入</span>
+                      </button>
+                    </div>
+                    <label class="ep-flow-review-note" for="reviewNoteInput">
+                      <span>复核备注</span>
+                      <textarea id="reviewNoteInput" rows="3" placeholder="记录关键波形证据，或说明不纳入草稿的理由"></textarea>
+                    </label>
+                    <div class="ep-flow-note-templates" role="group" aria-label="备注模板">
+                      <button type="button" data-flow-note="双导同步尖慢波，EMG/ACC 未见同步增高。">同步尖慢波</button>
+                      <button type="button" data-flow-note="波形与 EMG/ACC 同步，倾向肌电或体动伪迹。">伪迹同步</button>
+                      <button type="button" data-flow-note="证据不足，建议由第二复核者确认。">二次复核</button>
+                    </div>
+                  </div>
                 </div>
               </aside>
             </div>
@@ -238,7 +264,7 @@
             <div class="ep-flow-section-head">
               <div>
                 <span>第 6 步</span>
-                <h2>复核草稿预览</h2>
+                <h2>草稿材料总览</h2>
               </div>
               <div class="ep-flow-action-row">
                 <button class="ep-flow-btn ep-flow-btn-ghost" type="button" id="exportCsvBtn" disabled>
@@ -252,7 +278,7 @@
               </div>
             </div>
 
-            <article class="ep-flow-report" id="reportPreview" aria-label="草稿报告预览">
+            <article class="ep-flow-report" id="reportPreview" aria-label="草稿材料总览">
               <header>
                 <div>
                   <p class="ep-flow-kicker">候选事件复核摘要</p>
@@ -268,22 +294,22 @@
                 <figure>
                   <canvas id="timelineFigure" width="920" height="250" role="img" aria-describedby="timelineFigureDesc"></canvas>
                   <p class="ep-flow-sr-only" id="timelineFigureDesc">候选事件时间轴，按人工复核状态区分，仅展示候选复核草稿。</p>
-                  <figcaption>图 1. 全记录候选事件时间轴，按人工复核状态区分。</figcaption>
+                  <figcaption>图 1. 当前候选包时间轴，按人工复核状态区分。</figcaption>
                 </figure>
                 <figure>
                   <canvas id="funnelFigure" width="560" height="250" role="img" aria-describedby="funnelFigureDesc"></canvas>
-                  <p class="ep-flow-sr-only" id="funnelFigureDesc">疑似片段、已复核、纳入草稿候选的数量漏斗。</p>
-                  <figcaption>图 2. 疑似片段到纳入草稿候选的复核漏斗。</figcaption>
+                  <p class="ep-flow-sr-only" id="funnelFigureDesc">候选片段、已有人工状态、纳入草稿候选的数量漏斗。</p>
+                  <figcaption>图 2. 候选片段到纳入草稿候选的复核漏斗。</figcaption>
                 </figure>
                 <figure>
                   <canvas id="densityFigure" width="560" height="250" role="img" aria-describedby="densityFigureDesc"></canvas>
-                  <p class="ep-flow-sr-only" id="densityFigureDesc">已复核纳入草稿候选数的预览归一化统计，单位为个每记录小时，不代表发作频率、疾病活动度或完整事件负荷。</p>
-                  <figcaption>图 3. 已复核纳入草稿候选数（预览，按记录小时归一化）；不代表发作频率、疾病活动度或完整事件负荷。</figcaption>
+                  <p class="ep-flow-sr-only" id="densityFigureDesc">已有人工状态的纳入草稿候选数预览归一化统计，单位为个每记录小时，不代表发作频率、疾病活动度或完整事件负荷。</p>
+                  <figcaption>图 3. 已有人工状态的纳入草稿候选数（预览，按记录小时归一化）；不代表发作频率、疾病活动度或完整事件负荷。</figcaption>
                 </figure>
                 <figure>
                   <canvas id="qcFigure" width="560" height="250" role="img" aria-describedby="qcFigureDesc"></canvas>
-                  <p class="ep-flow-sr-only" id="qcFigureDesc">通道证据参与与伪迹风险概览，用于复核草稿质控。</p>
-                  <figcaption>图 4. 通道证据参与与伪迹风险概览。</figcaption>
+                  <p class="ep-flow-sr-only" id="qcFigureDesc">通道参与与伪迹风险概览，用于复核草稿质控。</p>
+                  <figcaption>图 4. 通道参与与伪迹风险概览。</figcaption>
                 </figure>
               </section>
               <section class="ep-flow-report-columns">
@@ -292,7 +318,7 @@
                   <p id="reportInterpretation">完成复核后生成摘要。</p>
                 </article>
                 <article>
-                  <h3>Methods 与限制</h3>
+                  <h3>方法与限制</h3>
                   <p id="reportMethods">完成预检与复核后生成方法说明。</p>
                 </article>
               </section>
@@ -319,8 +345,8 @@
         <aside class="ep-flow-side" aria-label="流程评审摘要">
           <section class="ep-flow-panel ep-flow-next">
             <span>当前下一步</span>
-            <h2 id="nextActionTitle">上传或选择 HE 示例数据</h2>
-            <p id="nextActionText">选择 HE-105、HE-106、HE-118，或从本地目录上传 EDF 文件。</p>
+            <h2 id="nextActionTitle">选择 HE 示例数据</h2>
+            <p id="nextActionText">选择 HE-105、HE-106、HE-118，或登记 EDF 文件。</p>
             <button class="ep-flow-btn ep-flow-btn-primary" type="button" id="nextActionBtn">
               <i data-lucide="arrow-right" aria-hidden="true"></i>
               <span>继续</span>
@@ -338,7 +364,7 @@
           <section class="ep-flow-panel">
             <div class="ep-flow-side-head">
               <span>记录</span>
-              <strong>操作与来源</strong>
+              <strong>最近进度</strong>
             </div>
             <ol class="ep-flow-audit" id="auditList"></ol>
           </section>
@@ -348,6 +374,6 @@
       <div class="ep-flow-toast" id="toast" role="status" aria-live="polite"></div>
     </main>
 
-    <script src="./epilepsy-full-flow-preview.js?v=20260706-spacious-v1"></script>
+    <script src="./epilepsy-full-flow-preview.js?v=20260707-inline-review-v1"></script>
   </body>
 </html>

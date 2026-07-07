@@ -26,6 +26,38 @@ npx http-server . -p 4174 -c-1
 演示账户：`demo.customer@quanlan.cn / demo123456`
 管理账户：本地/测试环境使用 `QLANALYSER_ADMIN_EMAIL` 与 `QLANALYSER_ADMIN_PASSWORD`；生产环境必须配置非本地默认口令。
 
+### HE 癫痫样候选事件 full-flow 本地试用
+
+这个专项 lab API 默认关闭，必须设置本地环境变量和 HE 样本目录。优先用脚本启动：
+
+```powershell
+cd D:\Quanlan\Codes\Python\quanlan-analyser-official
+scripts\start_lab_epilepsy_full_flow_local.ps1 -SampleRoot "D:\Quanlan\Data\HE脑电\HE脑电" -StartFrontend
+```
+
+脚本会设置：
+
+```text
+QLANALYSER_ENV=local
+QLANALYSER_LAB_EPILEPSY_FULL_FLOW_ENABLED=1
+QLANALYSER_LAB_HE_SAMPLE_ROOT=D:\Quanlan\Data\HE脑电\HE脑电
+```
+
+打开：
+
+```text
+http://127.0.0.1:4176/epilepsy-full-flow-preview.html?api=http://127.0.0.1:8001/api
+```
+
+验收：
+
+```powershell
+C:\Users\XGN\miniconda3\python.exe scripts\acceptance_lab_epilepsy_full_flow_api.py --api-base-url http://127.0.0.1:8001/api --record-id he-105 --top-k 6 --scan-windows 12 --candidate-timeout 120
+node scripts\e2e_lab_epilepsy_full_flow_browser.mjs
+```
+
+浏览器 E2E 会覆盖：full-flow 选 HE 记录、预检、候选生成、复核页整段拖动/边界拖动、后端 review session 保存、报告页导出、返回 full-flow 后状态恢复。证据目录：`work\release_evidence\lab_epilepsy_full_flow_browser\`。
+
 ---
 
 ## 运行用户级对抗验收

@@ -160,6 +160,23 @@ def safe_channels(value: Any) -> list[str]:
     return ["EEG1", "EEG2"]
 
 
+def assert_waveform_contract(waveform: dict[str, Any], max_points: int) -> None:
+    channels = waveform.get("channels")
+    assert_ok(isinstance(channels, list) and channels, "WAVEFORM_CHANNELS_EMPTY", waveform)
+    for channel in channels:
+        assert_ok(isinstance(channel, dict), "WAVEFORM_CHANNEL_NOT_OBJECT", channel)
+        times = channel.get("times_sec")
+        values = channel.get("values")
+        assert_ok(isinstance(times, list) and len(times) >= 2, "WAVEFORM_TIMES_INVALID", channel)
+        assert_ok(isinstance(values, list), "WAVEFORM_CHANNEL_VALUES_MISSING", channel)
+        numeric_times = [number_or(item, float("nan")) for item in times]
+        assert_ok(all(item == item for item in numeric_times), "WAVEFORM_TIMES_NOT_NUMERIC", times[:10])
+        assert_ok(all(numeric_times[index] < numeric_times[index + 1] for index in range(len(numeric_times) - 1)), "WAVEFORM_TIMES_NOT_MONOTONIC", times[:10])
+        assert_ok(len(numeric_times) <= max_points, "WAVEFORM_MAX_POINTS_NOT_ENFORCED", {"channel": channel.get("name"), "points": len(numeric_times), "max_points": max_points})
+        assert_ok(len(values) == len(numeric_times), "WAVEFORM_CHANNEL_LENGTH_MISMATCH", {"channel": channel.get("name"), "values": len(values), "times": len(numeric_times)})
+    assert_ok((waveform.get("unit") or "uV") == "uV", "WAVEFORM_UNIT_INVALID", waveform.get("unit"))
+
+
 def event_status_for_index(index: int) -> str:
     if index == 0:
         return "confirmed"
@@ -336,11 +353,18 @@ def run_acceptance(args: argparse.Namespace) -> dict[str, Any]:
     record("preflight_passed", {"sfreq": preflight.get("sfreq"), "duration_sec": preflight.get("duration_sec"), "channel_count": preflight.get("channel_count")})
 
     candidate_query = {"scan_windows": args.scan_windows, "window_sec": args.window_sec, "top_k": args.top_k}
+    if args.allow_seeded_fallback:
+        candidate_query["allow_seeded_fallback"] = "true"
     candidates_payload, meta = request_json("POST", api_base_url, f"/lab/epilepsy-full-flow/records/{urllib.parse.quote(record_id)}/candidates", timeout=args.candidate_timeout, query=candidate_query)
     result["timings_ms"]["candidates"] = meta["elapsed_ms"]
     candidates = candidates_payload.get("candidates") if isinstance(candidates_payload, dict) else []
     assert_ok(isinstance(candidates, list) and candidates, "CANDIDATES_EMPTY", candidates_payload)
     assert_ok(candidates_payload.get("non_medical_scope") == "research_screening_support_only", "CANDIDATE_SCOPE_INVALID", candidates_payload.get("non_medical_scope"))
+    if not args.allow_seeded_fallback:
+        assert_ok(not candidates_payload.get("fallback_reason"), "CANDIDATE_FALLBACK_OCCURRED", {
+            "candidate_source": candidates_payload.get("candidate_source"),
+            "fallback_reason": candidates_payload.get("fallback_reason"),
+        })
     write_step(evidence_dir, "candidates", candidates_payload)
     record("candidates_generated", {"candidate_count": len(candidates), "candidate_source": candidates_payload.get("candidate_source"), "algorithm_status": candidates_payload.get("algorithm_status")})
 
@@ -353,8 +377,8 @@ def run_acceptance(args: argparse.Namespace) -> dict[str, Any]:
     }
     waveform, meta = request_json("GET", api_base_url, f"/lab/epilepsy-full-flow/records/{urllib.parse.quote(record_id)}/waveform-window", timeout=args.timeout, query=waveform_query)
     result["timings_ms"]["waveform_window"] = meta["elapsed_ms"]
-    assert_ok(isinstance(waveform.get("channels"), list) and waveform["channels"], "WAVEFORM_CHANNELS_EMPTY", waveform)
     assert_ok(number_or(waveform.get("duration_sec"), 0.0) > 0, "WAVEFORM_DURATION_MISSING", waveform)
+    assert_waveform_contract(waveform, int(waveform_query["max_points"]))
     write_step(evidence_dir, "waveform_window", waveform)
     record("waveform_window_loaded", {"channel_count": len(waveform.get("channels", [])), "duration_sec": waveform.get("duration_sec"), "start_sec": waveform.get("start_sec")})
 
@@ -425,6 +449,7 @@ def main() -> int:
     parser.add_argument("--timeout", type=float, default=10.0)
     parser.add_argument("--candidate-timeout", type=float, default=90.0)
     parser.add_argument("--evidence-root", type=Path, default=EVIDENCE_ROOT)
+    parser.add_argument("--allow-seeded-fallback", action="store_true", help="Allow seeded candidate fallback when the real bounded window scan fails.")
     args = parser.parse_args()
 
     evidence_dir: Path | None = None

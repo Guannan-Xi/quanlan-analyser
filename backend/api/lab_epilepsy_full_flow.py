@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import io
+import json
 import math
 import os
 import re
@@ -37,9 +38,12 @@ MAX_REVIEW_EVENTS = 200
 MAX_REVIEW_ACTIONS = 300
 MAX_REVIEW_PAYLOAD_CHARS = 200_000
 MAX_TEXT_FIELD_CHARS = 2000
+MAX_SAMPLE_RECORDS = 12
+REVIEW_SESSION_STORE_DIR = Path(__file__).resolve().parents[2] / "work" / "lab_epilepsy_full_flow" / "review_sessions"
 DEFAULT_CHANNELS = ["EEG1", "EEG2", "EMG", "ACC"]
 LOCAL_HOSTS = {"127.0.0.1", "::1", "localhost"}
 LOCAL_APP_ENVS = {"local", "dev", "development", "test"}
+LAB_SAMPLE_RECORD_ID_RE = re.compile(r"^he-\d{3,}$")
 SENSITIVE_PAYLOAD_KEYS = {
     "source_path",
     "source_path_display",
@@ -101,18 +105,28 @@ HE_CANDIDATE_SEEDS: dict[str, list[dict[str, Any]]] = {
 LAB_REVIEW_SESSIONS: OrderedDict[str, dict[str, Any]] = OrderedDict()
 
 EVENT_TYPE_EXPORT_LABELS = {
-    "ied": "棘波样候选",
-    "seizure_like": "发作样节律候选",
-    "rhythmic": "节律性候选",
-    "artifact_suspect": "伪迹疑似",
+    "ied": "棘/尖波样候选（待复核）",
+    "seizure_like": "节律性片段候选（待复核）",
+    "rhythmic": "节律性片段候选（待复核）",
+    "artifact_suspect": "伪迹候选",
     "candidate_window": "候选窗口",
 }
 
 STATUS_EXPORT_LABELS = {
     "confirmed": "纳入草稿候选",
     "rejected": "不纳入草稿",
-    "needs_review": "存疑复核",
+    "needs_review": "存疑/需二次复核",
     "unreviewed": "未复核",
+}
+
+STATUS_ALIASES = {
+    "kept": "confirmed",
+    "included": "confirmed",
+    "include": "confirmed",
+    "excluded": "rejected",
+    "exclude": "rejected",
+    "uncertain": "needs_review",
+    "pending": "needs_review",
 }
 
 
@@ -225,12 +239,28 @@ def _csv_text(rows: list[dict[str, Any]], headers: list[str]) -> str:
     return buffer.getvalue()
 
 
+def _normalize_review_status(value: Any) -> str:
+    text = str(value or "unreviewed").strip().lower()
+    text = STATUS_ALIASES.get(text, text)
+    if text in STATUS_EXPORT_LABELS:
+        return text
+    return "needs_review"
+
+
+def _event_review_status(event: dict[str, Any]) -> str:
+    return _normalize_review_status(event.get("status") or event.get("backend_status") or event.get("review_status"))
+
+
+def _normalize_review_event(event: dict[str, Any]) -> dict[str, Any]:
+    normalized = dict(event)
+    normalized["status"] = _event_review_status(normalized)
+    return normalized
+
+
 def _review_status_counts(events: list[dict[str, Any]]) -> dict[str, int]:
     counts = {"auto_candidates": len(events), "reviewed": 0, "confirmed": 0, "rejected": 0, "needs_review": 0, "unreviewed": 0}
     for event in events:
-        status = str(event.get("status") or "unreviewed")
-        if status not in {"confirmed", "rejected", "needs_review", "unreviewed"}:
-            status = "needs_review"
+        status = _event_review_status(event)
         counts[status] += 1
         if status != "unreviewed":
             counts["reviewed"] += 1
@@ -243,8 +273,75 @@ def _event_type_label(value: Any) -> str:
 
 
 def _review_status_label(value: Any) -> str:
-    text = str(value or "unreviewed")
-    return STATUS_EXPORT_LABELS.get(text, "存疑复核")
+    return STATUS_EXPORT_LABELS.get(_normalize_review_status(value), "存疑/需二次复核")
+
+
+def _priority_label(value: Any) -> str:
+    return {
+        "high": "高",
+        "medium": "中",
+        "low": "低",
+    }.get(str(value or "").lower(), str(value or "") or "未记录")
+
+
+def _candidate_source_label(value: Any) -> str:
+    text = str(value or "")
+    if text == "bounded_full_record_window_scan_rms_ptp_v1":
+        return "有限 EDF 窗口抽样后按波形幅度变化排序，供人工复核优先级使用"
+    if text == "bounded_full_record_window_scan_metrics":
+        return "有限 EDF 窗口抽样后的波形幅度变化指标"
+    if text.startswith("fallback_seeded"):
+        return "示例时间点回退包；仅用于流程预览，不能作为真实候选生成证据"
+    if text:
+        return text
+    return "当前预览候选包"
+
+
+def _review_session_path(session_id: str) -> Path:
+    if not re.fullmatch(r"lab_ep_review_[a-f0-9]{12}", session_id or ""):
+        raise HTTPException(status_code=404, detail="Lab review session not found")
+    return REVIEW_SESSION_STORE_DIR / f"{session_id}.json"
+
+
+def _safe_exception_summary(exc: Exception) -> str:
+    message = str(_sanitize_payload(str(exc))).strip()
+    if len(message) > 180:
+        message = f"{message[:177]}..."
+    return f"{type(exc).__name__}: {message or 'scan_failed'}"
+
+
+def _persist_review_session(session: dict[str, Any]) -> None:
+    session_id = str(session.get("session_id") or "")
+    if not session_id:
+        return
+    REVIEW_SESSION_STORE_DIR.mkdir(parents=True, exist_ok=True)
+    path = _review_session_path(session_id)
+    tmp_path = path.with_suffix(".json.tmp")
+    tmp_path.write_text(json.dumps(session, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    tmp_path.replace(path)
+
+
+def _load_review_session(session_id: str) -> dict[str, Any] | None:
+    session = LAB_REVIEW_SESSIONS.get(session_id)
+    if session:
+        LAB_REVIEW_SESSIONS.move_to_end(session_id)
+        return session
+    path = _review_session_path(session_id)
+    if not path.exists():
+        return None
+    try:
+        loaded = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(loaded, dict) or loaded.get("session_id") != session_id:
+        return None
+    loaded["source"] = loaded.get("source") or "lab_epilepsy_full_flow_backend_file_sanitized"
+    loaded["storage"] = loaded.get("storage") or "local_lab_json_file"
+    LAB_REVIEW_SESSIONS[session_id] = loaded
+    LAB_REVIEW_SESSIONS.move_to_end(session_id)
+    while len(LAB_REVIEW_SESSIONS) > MAX_REVIEW_SESSIONS:
+        LAB_REVIEW_SESSIONS.popitem(last=False)
+    return loaded
 
 
 def _customer_event_rows(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -255,7 +352,7 @@ def _customer_event_rows(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
             channels = "|".join(str(item) for item in channels)
         rows.append({
             "事件编号": event.get("event_id", ""),
-            "人工状态": _review_status_label(event.get("status")),
+            "人工状态": _review_status_label(_event_review_status(event)),
             "候选类型": _event_type_label(event.get("event_type")),
             "起始秒": event.get("start_sec", ""),
             "结束秒": event.get("end_sec", ""),
@@ -264,12 +361,11 @@ def _customer_event_rows(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
             "原始结束秒": event.get("original_end_sec", ""),
             "通道": channels,
             "展示证据等级": event.get("evidence_grade", ""),
+            "复核优先级": _priority_label(event.get("priority")),
             "复核备注": event.get("review_note") or event.get("note") or "",
             "复核人": event.get("reviewer", ""),
             "复核时间": event.get("reviewed_at", ""),
-            "预览排序值": event.get("preview_rms_ptp_rank_score", ""),
-            "排序值说明": event.get("score_note", ""),
-            "候选来源": event.get("event_source") or event.get("source", ""),
+            "候选来源": _candidate_source_label(event.get("event_source") or event.get("source", "")),
         })
     return rows
 
@@ -281,9 +377,10 @@ def _lab_review_export(session: dict[str, Any]) -> dict[str, Any]:
     context = dict(session.get("context") or {})
     model = dict(session.get("model") or {})
     counts = _review_status_counts(events)
-    final_events = [event for event in events if str(event.get("status") or "unreviewed") != "unreviewed"]
+    state_marked_events = [event for event in events if _event_review_status(event) != "unreviewed"]
+    confirmed_events = [event for event in events if _event_review_status(event) == "confirmed"]
     review_status = "partial_review_draft" if counts["needs_review"] + counts["unreviewed"] else "review_draft_ready"
-    review_status_label = "部分复核草稿" if review_status == "partial_review_draft" else "复核草稿已就绪"
+    review_status_label = "部分人工状态标注（研究草稿）" if review_status == "partial_review_draft" else "当前候选包已完成人工状态标注（研究草稿）"
     event_headers = [
         "事件编号",
         "人工状态",
@@ -295,11 +392,10 @@ def _lab_review_export(session: dict[str, Any]) -> dict[str, Any]:
         "原始结束秒",
         "通道",
         "展示证据等级",
+        "复核优先级",
         "复核备注",
         "复核人",
         "复核时间",
-        "预览排序值",
-        "排序值说明",
         "候选来源",
     ]
     event_rows = _customer_event_rows(events)
@@ -321,11 +417,14 @@ def _lab_review_export(session: dict[str, Any]) -> dict[str, Any]:
         "正式交付就绪": False,
         "reviewed_candidate_events_csv": _csv_text(event_rows, event_headers),
         "review_actions_csv": _csv_text(action_rows, ["index", "action", "detail", "created_at", "source"]),
-        "draft_included_events_csv": _csv_text(_customer_event_rows(final_events), event_headers),
+        "reviewed_candidate_status_csv": _csv_text(_customer_event_rows(state_marked_events), event_headers),
+        "draft_reportable_confirmed_candidates_csv": _csv_text(_customer_event_rows(confirmed_events), event_headers),
+        "draft_included_events_csv": _csv_text(_customer_event_rows(state_marked_events), event_headers),
         "epoch_predictions_csv": _csv_text(event_rows, event_headers),
         "candidate_events_csv": _csv_text(event_rows, event_headers),
         "manual_corrections_csv": _csv_text(action_rows, ["index", "action", "detail", "created_at", "source"]),
-        "final_review_events_csv": _csv_text(_customer_event_rows(final_events), event_headers),
+        "candidate_review_state_csv": _csv_text(_customer_event_rows(state_marked_events), event_headers),
+        "final_review_events_csv": _csv_text(_customer_event_rows(state_marked_events), event_headers),
         "summary_json": {
             **counts,
             "record_filename": record.get("filename"),
@@ -374,7 +473,7 @@ def _lab_review_report(session: dict[str, Any]) -> dict[str, Any]:
     channels_text = "、".join(str(channel) for channel in channels) if isinstance(channels, list) else str(channels or "未记录")
     duration_hours = float(record.get("duration_sec") or 0) / 3600
     sfreq_text = f"{record.get('sfreq')} Hz" if record.get("sfreq") else "未记录"
-    candidate_source = context.get("source_algorithm_artifact_id") or model.get("detector_version") or "当前预览候选包"
+    candidate_source = _candidate_source_label(context.get("source_algorithm_artifact_id") or model.get("detector_version") or "当前预览候选包")
     return {
         "schema_version": "qlanalyser.epilepsy.report_preview.v1",
         "source_review_schema_version": session.get("schema_version"),
@@ -393,7 +492,7 @@ def _lab_review_report(session: dict[str, Any]) -> dict[str, Any]:
             f"输入记录为 {record.get('filename', 'EEG 记录')}，记录时长约 {duration_hours:.1f} 小时，"
             f"采样率 {sfreq_text}，通道为 {channels_text}。"
             f"候选来源为 {candidate_source}；当前本地预览读取有限真实 EDF 波形窗口，并保存候选复核层。"
-            "复核状态映射为：纳入草稿候选、暂不纳入草稿、存疑、未复核。"
+            "复核状态映射为：纳入草稿候选、暂不纳入草稿、存疑/需二次复核、未复核。"
             "排序指标来自 RMS/PTP 预览值，不是概率、置信度、敏感性、特异性或诊断结论。"
             "正式报告仍需补齐滤波/参考设置、候选生成参数、真实证据图、复核人和可追溯清单。"
         ),
@@ -406,7 +505,7 @@ def _lab_review_report(session: dict[str, Any]) -> dict[str, Any]:
             }
         ],
         "provenance": export["review_revision_json"],
-        "confirmed_events": [event for event in events if event.get("status") == "confirmed"],
+        "confirmed_events": [event for event in events if _event_review_status(event) == "confirmed"],
         "all_reviewed_events": events,
         "actions": session.get("actions") or [],
     }
@@ -418,8 +517,9 @@ def _sanitized_record(record: dict[str, Any]) -> dict[str, Any]:
         for key, value in record.items()
         if str(key).lower() not in SENSITIVE_PAYLOAD_KEYS
     }
-    filename = cleaned.get("filename")
+    filename = Path(str(cleaned.get("filename") or "")).name
     if filename:
+        cleaned["filename"] = filename
         cleaned["safe_source_path"] = f"{SAFE_SAMPLE_ROOT}{filename}"
     cleaned["path_visibility"] = "safe_relative"
     return cleaned
@@ -431,11 +531,16 @@ def _record_id_from_path(path: Path) -> str:
 
 def _sample_paths() -> list[Path]:
     root = _sample_root()
-    return [
-        path
-        for path in sorted(root.iterdir())
-        if path.is_file() and path.suffix.lower() in SUPPORTED_SUFFIXES
-    ]
+    paths: list[Path] = []
+    for path in sorted(root.iterdir()):
+        if len(paths) >= MAX_SAMPLE_RECORDS:
+            break
+        if path.is_symlink() or not path.is_file() or path.suffix.lower() not in SUPPORTED_SUFFIXES:
+            continue
+        if not LAB_SAMPLE_RECORD_ID_RE.fullmatch(_record_id_from_path(path)):
+            continue
+        paths.append(path)
+    return paths
 
 
 def _sample_path(record_id: str) -> Path:
@@ -653,7 +758,7 @@ def _scan_candidate_windows(path: Path, requested_windows: int, window_sec: floa
                 "channels": channels,
                 "preview_rms_ptp_rank_score": item["preview_rms_ptp_rank_score"],
                 "score_kind": "bounded_scan_rms_ptp_rank_not_probability",
-                "score_note": "全记录均匀窗口扫描后的 RMS/PTP 预览排序值，不是临床概率、检测置信度、敏感性/特异性或诊断结论。",
+                "score_note": "有限均匀窗口抽样后的 RMS/PTP 复核优先级排序值，不是临床概率、检测置信度、敏感性/特异性或诊断结论。",
                 "backend_metrics": {
                     "rms_uv": item["rms_uv"],
                     "ptp_uv": item["ptp_uv"],
@@ -683,7 +788,7 @@ def _seeded_candidates(path: Path, record_id: str) -> list[dict[str, Any]]:
             "index": index,
             "preview_rms_ptp_rank_score": preview_score,
             "score_kind": "preview_rms_ptp_rank_not_probability",
-            "score_note": "RMS/PTP 小窗口预览排序值，不是临床概率、检测置信度、敏感性/特异性或诊断结论。",
+            "score_note": "RMS/PTP 小窗口复核优先级排序值，不是临床概率、检测置信度、敏感性/特异性或诊断结论。",
             "backend_metrics": metrics,
             "source": "seeded_time_real_edf_window_metrics",
             "event_type_scope": "candidate_label_only",
@@ -731,6 +836,7 @@ def generate_he_candidates(
     scan_windows: int = Query(DEFAULT_SCAN_WINDOWS, ge=8, le=MAX_SCAN_WINDOWS),
     window_sec: float = Query(DEFAULT_SCAN_WINDOW_SEC, ge=1.0, le=30.0),
     top_k: int = Query(DEFAULT_SCAN_TOP_K, ge=1, le=40),
+    allow_seeded_fallback: bool = Query(False),
 ) -> dict[str, Any]:
     path = _sample_path(record_id)
     record = _record_payload(path, request, include_metadata=True)
@@ -740,8 +846,18 @@ def generate_he_candidates(
         candidate_source = "bounded_full_record_window_scan_rms_ptp_v1"
         algorithm_status = "lab_bounded_scan_not_validated_detector"
     except Exception as exc:
+        if not allow_seeded_fallback:
+            raise HTTPException(
+                status_code=502,
+                detail={
+                    "code": "candidate_scan_failed",
+                    "message": "Real bounded EDF candidate scan failed; seeded fallback is disabled by default.",
+                    "fallback_allowed": False,
+                    "non_medical_scope": "research_screening_support_only",
+                },
+            ) from exc
         candidates = _seeded_candidates(path, record_id)
-        fallback_reason = f"{type(exc).__name__}: {str(exc)[:180]}"
+        fallback_reason = _safe_exception_summary(exc)
         candidate_source = "fallback_seeded_candidate_times_with_real_edf_window_metrics_v2"
         algorithm_status = "lab_preview_seed_fallback_not_validated_detector"
     return {
@@ -753,6 +869,7 @@ def generate_he_candidates(
             "scan_windows": scan_windows,
             "window_sec": window_sec,
             "top_k": top_k,
+            "allow_seeded_fallback": allow_seeded_fallback,
             "strategy": "uniform_full_record_window_sampling_ranked_by_rms_ptp",
         },
         "fallback_reason": fallback_reason,
@@ -798,6 +915,7 @@ def save_lab_review_session(payload: dict[str, Any] = Body(...)) -> dict[str, An
         raise HTTPException(status_code=422, detail="record.filename is required")
     events = _require_object_list(events, "reviewed_events", MAX_REVIEW_EVENTS)
     actions = _require_object_list(actions, "actions", MAX_REVIEW_ACTIONS)
+    normalized_events = [_normalize_review_event(item) for item in events[:MAX_REVIEW_EVENTS]]
     session_id = f"lab_ep_review_{uuid4().hex[:12]}"
     saved_at = datetime.now(timezone.utc).isoformat()
     stored = {
@@ -812,21 +930,22 @@ def save_lab_review_session(payload: dict[str, Any] = Body(...)) -> dict[str, An
         "model": _sanitize_payload(payload.get("model") or {}),
         "summary": _sanitize_payload(payload.get("summary") or {}),
         "event_reviews": _sanitize_payload(payload.get("event_reviews") or {}),
-        "reviewed_events": _sanitize_payload(events[:MAX_REVIEW_EVENTS]),
+        "reviewed_events": _sanitize_payload(normalized_events),
         "actions": _sanitize_payload(actions[-MAX_REVIEW_ACTIONS:]),
-        "source": "lab_epilepsy_full_flow_backend_memory_sanitized",
-        "storage": "volatile_lab_memory",
+        "source": "lab_epilepsy_full_flow_backend_file_sanitized",
+        "storage": "local_lab_json_file",
     }
     LAB_REVIEW_SESSIONS[session_id] = stored
     LAB_REVIEW_SESSIONS.move_to_end(session_id)
     while len(LAB_REVIEW_SESSIONS) > MAX_REVIEW_SESSIONS:
         LAB_REVIEW_SESSIONS.popitem(last=False)
+    _persist_review_session(stored)
     return {
         "session_id": session_id,
         "saved_at": saved_at,
         "record_filename": record.get("filename"),
-        "event_count": len(events),
-        "reviewed_count": sum(1 for item in events if item.get("status") != "unreviewed"),
+        "event_count": len(normalized_events),
+        "reviewed_count": sum(1 for item in normalized_events if _event_review_status(item) != "unreviewed"),
         "source": stored["source"],
         "non_medical_scope": stored["non_medical_scope"],
     }
@@ -834,7 +953,7 @@ def save_lab_review_session(payload: dict[str, Any] = Body(...)) -> dict[str, An
 
 @router.get("/lab/epilepsy-full-flow/review-sessions/{session_id}")
 def get_lab_review_session(session_id: str) -> dict[str, Any]:
-    session = LAB_REVIEW_SESSIONS.get(session_id)
+    session = _load_review_session(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Lab review session not found")
     return session
@@ -842,7 +961,7 @@ def get_lab_review_session(session_id: str) -> dict[str, Any]:
 
 @router.post("/lab/epilepsy-full-flow/review-sessions/{session_id}/exports")
 def export_lab_review_session(session_id: str) -> dict[str, Any]:
-    session = LAB_REVIEW_SESSIONS.get(session_id)
+    session = _load_review_session(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Lab review session not found")
     return _lab_review_export(session)
@@ -850,7 +969,7 @@ def export_lab_review_session(session_id: str) -> dict[str, Any]:
 
 @router.get("/lab/epilepsy-full-flow/review-sessions/{session_id}/report")
 def report_lab_review_session(session_id: str) -> dict[str, Any]:
-    session = LAB_REVIEW_SESSIONS.get(session_id)
+    session = _load_review_session(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Lab review session not found")
     return _lab_review_report(session)

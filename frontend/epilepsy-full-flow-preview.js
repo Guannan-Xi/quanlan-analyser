@@ -18,7 +18,7 @@
   const STEP_LABEL = {
     upload: "上传样本",
     preflight: "数据预检",
-    candidates: "查找疑似",
+    candidates: "筛出候选",
     review: "候选复核",
     adversarial: "边界检查",
     report: "草稿输出",
@@ -26,24 +26,24 @@
 
   const TYPE_LABEL = {
     ied: "癫痫样放电候选",
-    seizure_like: "疑似节律性候选",
-    rhythmic: "疑似节律性候选事件",
-    artifact_suspect: "伪迹疑似",
+    seizure_like: "节律性片段候选（待复核）",
+    rhythmic: "节律性片段候选（待复核）",
+    artifact_suspect: "伪迹候选",
     candidate_window: "候选窗口",
   };
 
   const STATUS_LABEL = {
     confirmed: "纳入草稿候选",
     rejected: "不纳入草稿",
-    needs_review: "存疑",
+    needs_review: "存疑/需二次复核",
     unreviewed: "未复核",
   };
 
   const EVENT_TYPE_EXPORT_LABEL = {
     ied: "棘波样候选",
-    seizure_like: "疑似节律性候选",
+    seizure_like: "节律性片段候选",
     rhythmic: "节律性候选",
-    artifact_suspect: "伪迹疑似",
+    artifact_suspect: "伪迹候选",
     candidate_window: "候选窗口",
   };
 
@@ -185,7 +185,7 @@
       score: Number.isFinite(score) ? score : 0.5,
       preview_rms_ptp_rank_score: Number.isFinite(score) ? score : 0.5,
       score_kind: sourceEvent.score_kind || "preview_rank_not_probability",
-      score_note: sourceEvent.score_note || "预览排序值不是临床概率、检测置信度或诊断结论。",
+      score_note: sourceEvent.score_note || "复核优先级排序值不是临床概率、检测置信度或诊断结论。",
       source: sourceEvent.source || "preview_candidate_package",
       event_type_scope: sourceEvent.event_type_scope || "candidate_label_only",
     };
@@ -236,7 +236,7 @@
       return text ? JSON.parse(text) : null;
     } catch (error) {
       if (error?.name === "AbortError") {
-        throw new Error(`请求超过 ${Math.round(timeoutMs / 1000)} 秒未返回，请稍后重试或检查本地任务队列。`);
+        throw new Error(`请求超过 ${Math.round(timeoutMs / 1000)} 秒未返回，请稍后重试或检查本地处理任务。`);
       }
       throw error;
     } finally {
@@ -258,12 +258,12 @@
       state.backendRecords = [];
       state.backendRoot = "";
       state.backendAvailable = false;
-      state.backendError = "本地 HE 示例数据未连接。请确认示例数据服务已启动，并配置 HE 样本目录。";
+      state.backendError = "示例数据未就绪。请联系部署人员或重新连接示例数据。";
       addAudit(
         "backend_records_unavailable",
         DEMO_PREVIEW_MODE
-          ? "本地示例数据未连接；当前仅显示版式预览样本。"
-          : "本地示例数据未连接；已阻止预览样本自动冒充真实分析。"
+          ? "示例数据未就绪；当前仅显示界面预览样本。"
+          : "示例数据未就绪；已阻止预览样本自动冒充真实分析。"
       );
     }
     setSampleFolder();
@@ -296,6 +296,150 @@
     }
   }
 
+  function restoreFlowState() {
+    let raw = "";
+    try {
+      raw = window.localStorage.getItem(FLOW_STORAGE_KEY) || window.sessionStorage.getItem(FLOW_STORAGE_KEY) || "";
+    } catch {
+      raw = "";
+    }
+    if (!raw) return false;
+    let snapshot = null;
+    try {
+      snapshot = JSON.parse(raw);
+    } catch {
+      return false;
+    }
+    if (!snapshot || snapshot.schema_version !== FLOW_SCHEMA || !snapshot.selected_record_id) return false;
+    const snapshotRecord = snapshot.current_record && typeof snapshot.current_record === "object" ? snapshot.current_record : null;
+    const selected = availableRecords().find((record) => record.id === snapshot.selected_record_id)
+      || (snapshotRecord?.id === snapshot.selected_record_id ? snapshotRecord : null);
+    if (!selected) return false;
+    if (Array.isArray(snapshot.backend_records) && state.backendAvailable) {
+      state.backendRecords = snapshot.backend_records.map(normalizeBackendRecord);
+    }
+    const restoredRecord = {
+      ...selected,
+      ...(snapshot.current_record || {}),
+      candidates: Array.isArray(snapshot.candidates)
+        ? snapshot.candidates.map(normalizeCandidateEvent)
+        : selected.candidates,
+    };
+    if (restoredRecord.backend_record && state.backendAvailable) {
+      replaceAvailableRecord(normalizeBackendRecord(restoredRecord));
+    } else if (!state.backendAvailable) {
+      state.uploadedRecord = {
+        ...restoredRecord,
+        backend_record: false,
+        restored_from_snapshot: true,
+      };
+    }
+    state.selectedRecordId = snapshot.selected_record_id;
+    state.preflightDone = Boolean(snapshot.preflight_done);
+    state.preflightLimitedUpload = Boolean(snapshot.preflight_limited_upload);
+    state.candidatesGenerated = Boolean(snapshot.candidates_generated);
+    state.currentStep = STEPS.includes(snapshot.current_step) ? snapshot.current_step : "upload";
+    state.reviews = snapshot.reviews && typeof snapshot.reviews === "object" ? snapshot.reviews : {};
+    state.reviewSaved = Boolean(snapshot.review_saved);
+    state.backendReviewSession = snapshot.backend_review_session || null;
+    state.gates = Array.isArray(snapshot.gates) ? snapshot.gates : [];
+    state.audit = Array.isArray(snapshot.audit) ? snapshot.audit.slice(-80) : state.audit;
+    state.activeEventIndex = 0;
+    state.reviewVersion += 1;
+    const reviewMerged = mergeLatestReviewPayloadIntoFlow();
+    addAudit("flow_state_restored", reviewMerged ? "已恢复候选复核流程进度，并同步最新人工状态。" : "已恢复上次候选复核流程进度。");
+    return true;
+  }
+
+  function mergeLatestReviewPayloadIntoFlow() {
+    const payload = latestStoredReviewPayload();
+    if (!payload || !Array.isArray(payload.reviewed_events) || !payload.reviewed_events.length) return false;
+    const record = currentRecord();
+    if (!record || !sameReviewRecord(record, payload.record || {})) return false;
+    const incoming = payload.reviewed_events.map(candidateFromReviewPayloadEvent).filter(Boolean);
+    if (!incoming.length) return false;
+    const currentIds = new Set((record.candidates || []).map((event) => event.event_id || event.id));
+    if (!record.candidates?.length || incoming.some((event) => !currentIds.has(event.event_id))) {
+      record.candidates = incoming.map(normalizeCandidateEvent);
+      replaceAvailableRecord(record.backend_record ? normalizeBackendRecord(record) : record);
+    }
+    state.selectedRecordId = record.id;
+    state.preflightDone = true;
+    state.candidatesGenerated = true;
+    state.reviews = { ...state.reviews };
+    payload.reviewed_events.forEach((event) => {
+      if (!event?.event_id) return;
+      state.reviews[event.event_id] = reviewFromPayloadEvent(event);
+    });
+    state.reviewSaved = true;
+    state.backendReviewSession = payload.backend_review_session || state.backendReviewSession;
+    state.reviewVersion += 1;
+    return true;
+  }
+
+  function latestStoredReviewPayload() {
+    try {
+      const raw = window.sessionStorage.getItem(REVIEW_STORAGE_KEY) || window.localStorage.getItem(REVIEW_STORAGE_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (!parsed || parsed.schema_version !== REVIEW_SCHEMA) return null;
+      return parsed;
+    } catch {
+      return null;
+    }
+  }
+
+  function sameReviewRecord(record, reviewRecord) {
+    const keys = ["id", "file_id", "filename"];
+    return keys.some((key) => record?.[key] && reviewRecord?.[key] && String(record[key]) === String(reviewRecord[key]));
+  }
+
+  function candidateFromReviewPayloadEvent(event) {
+    const start = numberOr(event.original_start_sec, numberOr(event.candidate_start_sec, event.start_sec));
+    const end = Math.max(start + 0.1, numberOr(event.original_end_sec, numberOr(event.candidate_end_sec, event.end_sec)));
+    const score = Number(event.preview_rms_ptp_rank_score ?? event.score ?? 0.5);
+    return normalizeCandidateEvent({
+      event_id: event.event_id,
+      id: event.event_id,
+      start_sec: start,
+      end_sec: end,
+      duration_sec: round1(end - start),
+      event_type: event.ai_type || event.event_type || event.reviewed_type || "candidate_window",
+      priority: event.priority || "medium",
+      channels: Array.isArray(event.channels) ? event.channels : [],
+      score: Number.isFinite(score) ? score : 0.5,
+      preview_rms_ptp_rank_score: Number.isFinite(score) ? score : 0.5,
+      score_kind: event.score_kind || "preview_rank_not_probability",
+      score_note: event.score_note || "复核优先级排序值不是临床概率、检测置信度或诊断结论。",
+      source: event.event_source || event.source || "review_payload",
+      event_type_scope: event.event_type_scope || "candidate_label_only",
+    });
+  }
+
+  function reviewFromPayloadEvent(event) {
+    const start = numberOr(event.reviewed_start_sec, event.start_sec);
+    const end = Math.max(start + 0.1, numberOr(event.reviewed_end_sec, event.end_sec));
+    return {
+      status: normalizeFlowReviewStatus(event.status || event.backend_status || event.review_status),
+      event_type: event.event_type || event.reviewed_type || event.ai_type || "candidate_window",
+      evidence_grade: event.evidence_grade || event.grade || "",
+      adjusted_start_sec: round1(start),
+      adjusted_end_sec: round1(end),
+      note: event.review_note || event.note || "",
+      reviewer: event.reviewer || "",
+      reviewed_at: event.reviewed_at || "",
+    };
+  }
+
+  function normalizeFlowReviewStatus(status) {
+    const value = String(status || "unreviewed");
+    if (value === "kept") return "confirmed";
+    if (value === "excluded") return "rejected";
+    if (value === "uncertain") return "needs_review";
+    if (["confirmed", "rejected", "needs_review", "unreviewed"].includes(value)) return value;
+    return "unreviewed";
+  }
+
   async function init() {
     cacheDom();
     bindEvents();
@@ -304,8 +448,10 @@
     runAdversarialReview({ silent: true });
     render();
     await loadBackendRecords();
-    const first = availableRecords()[0];
-    if (first) selectRecord(first.id, { silent: true });
+    if (!restoreFlowState()) {
+      const first = availableRecords()[0];
+      if (first) selectRecord(first.id, { silent: true });
+    }
     runAdversarialReview({ silent: true });
     render();
     syncIcons();
@@ -319,6 +465,7 @@
       "openReportBtn",
       "chooseEdfBtn",
       "edfInput",
+      "sampleSourceText",
       "sampleFolderText",
       "copyFolderBtn",
       "sampleGrid",
@@ -338,6 +485,7 @@
       "activeEventTitle",
       "reviewWaveform",
       "reviewHandoffFacts",
+      "reviewNoteInput",
       "runAdversarialBtn",
       "gateGrid",
       "issueLedger",
@@ -370,9 +518,9 @@
     dom.steps.forEach((button) => {
       button.addEventListener("click", () => setStep(button.dataset.step));
     });
-    dom.copyFolderBtn.addEventListener("click", () => copyText(sampleFolderForDisplay(), "已复制示例目录。"));
+    dom.copyFolderBtn.addEventListener("click", () => copyText(sampleSourceTraceForCopy(), "已复制示例数据来源说明。"));
     dom.copyFlowBtn.addEventListener("click", copyFlowJson);
-    dom.openReviewBtn.addEventListener("click", openDetailedReview);
+    dom.openReviewBtn?.addEventListener("click", openDetailedReview);
     dom.openReportBtn.addEventListener("click", openStandaloneReport);
     dom.chooseEdfBtn.addEventListener("click", () => {
       if (isFlowBusy()) {
@@ -385,7 +533,14 @@
     dom.runPreflightBtn.addEventListener("click", runPreflight);
     dom.generateCandidatesBtn.addEventListener("click", generateCandidates);
     dom.autoReviewBtn.addEventListener("click", fillExampleReview);
-    dom.saveReviewBtn.addEventListener("click", openDetailedReview);
+    dom.saveReviewBtn.addEventListener("click", saveReviewLayer);
+    document.querySelectorAll("[data-flow-status]").forEach((button) => {
+      button.addEventListener("click", () => markInlineReviewStatus(button.dataset.flowStatus));
+    });
+    document.querySelectorAll("[data-flow-note]").forEach((button) => {
+      button.addEventListener("click", () => appendInlineReviewNote(button.dataset.flowNote || ""));
+    });
+    dom.reviewNoteInput.addEventListener("change", syncInlineReviewNote);
     dom.runAdversarialBtn.addEventListener("click", () => runAdversarialReview());
     dom.exportCsvBtn.addEventListener("click", exportEventsCsv);
     dom.exportReportJsonBtn.addEventListener("click", exportReportJson);
@@ -393,7 +548,9 @@
   }
 
   function setSampleFolder() {
-    dom.sampleFolderText.textContent = sampleFolderForDisplay();
+    const sourceStatus = sampleSourceStatus();
+    if (dom.sampleSourceText) dom.sampleSourceText.textContent = sourceStatus.title;
+    dom.sampleFolderText.textContent = sourceStatus.detail;
   }
 
   function isLocalHost() {
@@ -403,6 +560,42 @@
   function sampleFolderForDisplay() {
     if (state.backendRoot) return state.backendRoot;
     return SAFE_SAMPLE_FOLDER;
+  }
+
+  function sampleSourceStatus() {
+    if (state.backendAvailable) {
+      return {
+        title: "示例数据已由试用环境提供",
+        detail: "数据来源说明：真实 EDF 元数据和波形窗口已连接",
+      };
+    }
+    if (DEMO_PREVIEW_MODE) {
+      return {
+        title: "当前为界面预览模式",
+        detail: "数据来源说明：仅展示界面样式，不能作为真实分析证据",
+      };
+    }
+    if (state.backendError) {
+      return {
+        title: "示例数据未就绪",
+        detail: "请联系部署人员或重新连接示例数据",
+      };
+    }
+    return {
+      title: "正在连接示例数据",
+      detail: "数据来源说明：等待试用环境返回数据状态",
+    };
+  }
+
+  function sampleSourceTraceForCopy() {
+    const sourceStatus = sampleSourceStatus();
+    return [
+      "QLanalyser 示例数据来源说明",
+      `状态：${sourceStatus.title}`,
+      `说明：${sourceStatus.detail}`,
+      `数据标识：${sampleFolderForDisplay()}`,
+      `API：${API_BASE}`,
+    ].join("\n");
   }
 
   function currentRecord() {
@@ -490,13 +683,13 @@
     state.preflightLimitedUpload = false;
     state.candidatesGenerated = false;
     addAudit("browser_file_selected", `浏览器选择文件 ${file.name}，大小 ${formatBytes(file.size)}；尚未读取 EDF 记录信息，不能套用 HE 示例候选。`);
-    toast("已选择本地 EDF，但需要先读取记录信息，才能查找疑似事件。");
+    toast("已选择本地 EDF，但需要先读取记录信息，才能生成候选片段包。");
   }
 
   async function runPreflight() {
     if (state.busy.preflight) return;
     if (!currentRecord()) {
-      toast("请先选择 HE 示例或上传 EDF。");
+      toast("请先选择 HE 示例或导入 EDF。");
       setStep("upload");
       return;
     }
@@ -511,11 +704,11 @@
         state.preflightDone = true;
         state.preflightLimitedUpload = true;
         state.reviewSaved = false;
-        addAudit("upload_preflight_limited", "浏览器上传文件只完成文件名/大小登记；尚未读取 EDF 元数据。");
+        addAudit("upload_preflight_limited", "导入文件只完成文件名和大小登记；尚未读取 EDF 元数据。");
         runAdversarialReview({ silent: true });
         state.currentStep = "preflight";
         render();
-        toast("上传文件尚未完成 EDF 读取，已停留在预检页等待正式分析任务。");
+        toast("导入文件尚未完成 EDF 读取，已停留在预检页等待正式分析任务。");
         return;
       }
       if (record.backend_record) {
@@ -538,7 +731,7 @@
       runAdversarialReview({ silent: true });
       setStep("candidates");
       render();
-      toast("预检完成，可以查找疑似事件。");
+      toast("预检完成，可以生成待人工查看的候选片段包。");
     } finally {
       if (isCurrentOperation(opId, recordId)) {
         state.busy.preflight = false;
@@ -557,10 +750,10 @@
     const record = currentRecord();
     if (record?.upload_only) {
       state.candidatesGenerated = false;
-      addAudit("uploaded_candidates_blocked", "浏览器上传文件尚未完成 EDF 读取，已阻断示例候选套用。");
+      addAudit("uploaded_candidates_blocked", "导入文件尚未完成 EDF 读取，已阻断示例候选套用。");
       runAdversarialReview({ silent: true });
       render();
-      toast("上传文件不能套用 HE 示例候选，请接入正式分析任务或选择 HE 示例。");
+      toast("导入文件不能套用 HE 示例候选，请接入正式分析任务或选择 HE 示例。");
       return;
     }
     clearCandidateTimers();
@@ -570,7 +763,7 @@
     state.candidateOperationId = opId;
     state.candidateProgress = 12;
     state.candidatesGenerated = false;
-    renderCandidateRunner("读取预检结果，准备查找疑似事件", 12);
+    renderCandidateRunner("读取预检结果，准备生成候选片段包", 12);
     renderActions();
     if (record?.backend_record) {
       try {
@@ -599,11 +792,11 @@
         state.reviews = {};
         state.waveformCache = {};
         state.reviewSaved = false;
-        addAudit("backend_candidates_generated", `已标出 ${candidates().length} 个需要人工查看的疑似片段，并计算每段的波形变化指标。`);
+        addAudit("backend_candidates_generated", `已标出 ${candidates().length} 个待人工查看的候选片段，并计算每段的波形变化指标。`);
         runAdversarialReview({ silent: true });
         setStep("review");
         render();
-        toast("疑似事件已生成，请打开候选复核工作台。");
+        toast("候选片段包已生成，可在当前页复核。");
         finishCandidateRun(opId);
         return;
       } catch (error) {
@@ -611,8 +804,8 @@
           finishCandidateRun(opId);
           return;
         }
-        addAudit("backend_candidates_failed", "疑似事件查找失败，未生成新的候选列表。");
-        toast("疑似事件查找失败，未自动降级为示例候选。");
+        addAudit("backend_candidates_failed", "候选片段包生成失败，未生成新的候选列表。");
+        toast("候选片段包生成失败，未自动降级为示例候选。");
         finishCandidateRun(opId);
         return;
       }
@@ -634,11 +827,11 @@
       state.reviews = {};
       state.reviewSaved = false;
       state.reviewVersion += 1;
-      addAudit("candidate_package_generated", `生成 ${candidates().length} 个候选事件；排序值不是概率，不能用于正式结论。`);
+      addAudit("candidate_package_generated", `生成 ${candidates().length} 个候选片段；排序值不是概率，不能用于正式结论。`);
       runAdversarialReview({ silent: true });
       setStep("review");
       render();
-      toast("疑似事件已生成，请打开候选复核工作台。");
+      toast("候选片段包已生成，可在当前页复核。");
       finishCandidateRun(opId);
     }, 520));
   }
@@ -659,15 +852,23 @@
 
   function candidateSourceLabel(event) {
     if (event?.source === "seeded_time_real_edf_window_metrics") {
-      return "示例时间点 + 原始波形片段；排序值不是概率";
+      return "示例时间点 + 原始波形片段；用于复核优先级";
     }
-    if (event?.source === "bounded_full_record_window_scan_metrics") {
-      return "从长记录中分段筛出；排序值不是概率";
+    if (event?.source === "bounded_full_record_window_scan_metrics" || event?.source === "bounded_full_record_window_scan_rms_ptp_v1") {
+      return "有限 EDF 窗口抽样后按波形幅度变化排序，供人工复核优先级使用";
     }
     if (event?.score_kind?.includes("not_probability")) {
-      return "预览候选；排序值不是概率";
+      return "预览候选；用于复核优先级";
     }
     return "预览候选；正式交付需接入真实波形追溯";
+  }
+
+  function priorityLabel(priority) {
+    return {
+      high: "高",
+      medium: "中",
+      low: "低",
+    }[String(priority || "").toLowerCase()] || priority || "未记录";
   }
 
   function activeCandidate() {
@@ -686,11 +887,11 @@
 
   function fillExampleReview() {
     if (isFlowBusy()) {
-      toast("当前流程正在运行，请等待完成后再打开工作台。");
+      toast("当前流程正在运行，请等待完成后再复核候选。");
       return;
     }
     if (!candidates().length) {
-      toast("请先查找疑似事件。");
+      toast("请先生成候选片段包。");
       setStep("candidates");
       return;
     }
@@ -722,13 +923,91 @@
     return "EMG/ACC 或信号质量提示伪迹风险，本预览中排除出统计。";
   }
 
+  function defaultInlineReview(event) {
+    return {
+      status: "unreviewed",
+      event_type: event.event_type,
+      evidence_grade: "",
+      adjusted_start_sec: round1(event.start_sec),
+      adjusted_end_sec: round1(event.end_sec),
+      note: "",
+      reviewer: "preview_reviewer",
+      reviewed_at: "",
+    };
+  }
+
+  function ensureInlineReview(event) {
+    if (!event) return null;
+    if (!state.reviews[event.event_id]) {
+      state.reviews[event.event_id] = defaultInlineReview(event);
+    }
+    return state.reviews[event.event_id];
+  }
+
+  function markInlineReviewStatus(status) {
+    if (!["confirmed", "rejected", "needs_review"].includes(status)) return;
+    if (isFlowBusy()) {
+      toast("当前流程正在运行，请等待完成后再标注候选。");
+      return;
+    }
+    const event = activeCandidate();
+    if (!event) {
+      toast("请先生成候选片段包。");
+      setStep("candidates");
+      return;
+    }
+    const review = ensureInlineReview(event);
+    const noteText = dom.reviewNoteInput.value.trim();
+    review.status = status;
+    review.event_type = status === "rejected" ? "artifact_suspect" : (review.event_type || event.event_type);
+    review.evidence_grade = review.evidence_grade || (status === "confirmed" ? "B" : status === "needs_review" ? "C" : "X");
+    review.note = noteText || review.note || exampleNote(status, event);
+    review.reviewer = review.reviewer || "preview_reviewer";
+    review.reviewed_at = new Date().toISOString();
+    state.reviewSaved = false;
+    state.reviewVersion += 1;
+    addAudit("inline_review_status", `${event.event_id} 标注为 ${STATUS_LABEL[status]}。`);
+    runAdversarialReview({ silent: true });
+    render();
+    toast(`${event.event_id} 已标注为${STATUS_LABEL[status]}。`);
+  }
+
+  function syncInlineReviewNote(options = {}) {
+    const event = activeCandidate();
+    if (!event) return;
+    const review = ensureInlineReview(event);
+    const nextNote = dom.reviewNoteInput.value.trim();
+    if ((review.note || "") === nextNote) return;
+    review.note = nextNote;
+    review.reviewer = review.reviewer || "preview_reviewer";
+    if (review.status !== "unreviewed") review.reviewed_at = new Date().toISOString();
+    state.reviewSaved = false;
+    state.reviewVersion += 1;
+    addAudit("inline_review_note", `${event.event_id} 更新复核备注。`);
+    runAdversarialReview({ silent: true });
+    if (options.renderAfter !== false) render();
+  }
+
+  function appendInlineReviewNote(text) {
+    if (!text) return;
+    const event = activeCandidate();
+    if (!event) {
+      toast("请先选择候选事件。");
+      return;
+    }
+    const existing = dom.reviewNoteInput.value.trim();
+    dom.reviewNoteInput.value = existing ? `${existing}\n${text}` : text;
+    syncInlineReviewNote();
+  }
+
   async function saveReviewLayer() {
     if (state.busy.saveReview) return false;
     if (!candidates().length) {
-      toast("请先查找疑似事件。");
+      toast("请先生成候选片段包。");
       setStep("candidates");
       return false;
     }
+    syncInlineReviewNote({ renderAfter: false });
     state.busy.saveReview = true;
     const saveVersion = state.reviewVersion;
     const saveRecordId = state.selectedRecordId;
@@ -736,7 +1015,7 @@
     const payload = buildReviewPayload();
     try {
       window.sessionStorage.setItem(REVIEW_STORAGE_KEY, JSON.stringify(payload));
-      window.sessionStorage.setItem(FLOW_STORAGE_KEY, JSON.stringify(buildFlowState()));
+      window.localStorage.setItem(REVIEW_STORAGE_KEY, JSON.stringify(payload));
       if (currentRecord()?.backend_record) {
         try {
           const saved = await apiFetch("/lab/epilepsy-full-flow/review-sessions", {
@@ -745,6 +1024,10 @@
             body: JSON.stringify(payload),
           });
           state.backendReviewSession = saved;
+          payload.backend_review_session = saved;
+          payload.context = { ...(payload.context || {}), review_session_id: saved.session_id };
+          window.sessionStorage.setItem(REVIEW_STORAGE_KEY, JSON.stringify(payload));
+          window.localStorage.setItem(REVIEW_STORAGE_KEY, JSON.stringify(payload));
           addAudit("backend_review_session_saved", `复核记录已保存：${saved.session_id}。`);
         } catch (error) {
           state.backendReviewSession = null;
@@ -756,8 +1039,10 @@
         return false;
       }
       state.reviewSaved = true;
-      addAudit("review_layer_saved", "候选与复核上下文已保存，可供工作台或草稿预览页读取。");
+      addAudit("review_layer_saved", "候选与复核上下文已保存，可供草稿预览页读取。");
       runAdversarialReview({ silent: true });
+      window.sessionStorage.setItem(FLOW_STORAGE_KEY, JSON.stringify(buildFlowState()));
+      window.localStorage.setItem(FLOW_STORAGE_KEY, JSON.stringify(buildFlowState()));
       render();
       toast("候选与复核上下文已保存。");
       return true;
@@ -778,34 +1063,34 @@
     gates.push(makeGate("input", "输入与隐私", record && !record.upload_only ? "pass" : record ? "warn" : "fail", [
       record ? `已选择 ${record.filename}。` : "未选择 EDF 数据。",
       "前端默认只显示安全相对路径；导出包会移除 source_path/local_source_path/root 等绝对路径字段。",
-      record?.upload_only ? "浏览器上传文件仅登记文件名和大小，尚未完成 EDF 读取。" : "HE 示例由本地示例数据或版式预览样本提供。",
-    ], record ? (record.upload_only ? ["P1：上传文件尚未读取记录信息，不能查找疑似事件或生成报告。"] : []) : ["阻断：必须先选择 HE 示例或上传 EDF。"]));
+      record?.upload_only ? "导入文件仅登记文件名和大小，尚未完成 EDF 读取。" : "HE 示例由试用环境中的真实 EDF 或界面预览样本提供。",
+    ], record ? (record.upload_only ? ["P1：导入文件尚未读取记录信息，不能生成候选片段包或报告。"] : []) : ["阻断：必须先选择 HE 示例或导入 EDF。"]));
 
     gates.push(makeGate("preflight", "数据预检", state.preflightDone ? (record?.upload_only ? "warn" : "pass") : "fail", [
       state.preflightDone
         ? record?.upload_only
-          ? "仅完成浏览器文件名和大小登记，尚未读取 EDF 元数据。"
+          ? "仅完成导入文件名和大小登记，尚未读取 EDF 元数据。"
           : "已确认文件规模、通道策略和长记录处理边界。"
         : "尚未运行预检。",
       "70 小时 EDF 不在浏览器全量读取，正式态需使用窗口化数据读取。",
-      record?.upload_only ? "上传 EDF 的采样率/通道/时长当前为未知，不能写入学术报告。" : "HE 样本元数据由预检或版式预览给出。",
+      record?.upload_only ? "导入 EDF 的采样率、通道和时长当前为未知，不能写入正式交付材料。" : "HE 样本元数据由预检或界面预览给出。",
     ], state.preflightDone
-      ? record?.upload_only ? ["P1：上传文件还未读取 EDF 元数据，不能查找疑似事件或生成报告。"] : []
-      : ["阻断：查找疑似事件前必须完成预检。"]));
+      ? record?.upload_only ? ["P1：导入文件还未读取 EDF 元数据，不能生成候选片段包或报告。"] : []
+      : ["阻断：生成候选片段包前必须完成预检。"]));
 
-    gates.push(makeGate("candidate", "疑似事件", state.candidatesGenerated ? "warn" : "fail", [
-      state.candidatesGenerated ? `已标出 ${candidates().length} 个疑似事件。` : "尚未生成疑似事件。",
-      record?.backend_candidate_source ? `候选生成边界：${record.backend_candidate_source}。` : "预览候选只用于流程试用，不声明算法外部验证性能。",
+    gates.push(makeGate("candidate", "候选片段包", state.candidatesGenerated ? "warn" : "fail", [
+      state.candidatesGenerated ? `已标出 ${candidates().length} 个待人工查看的候选片段。` : "尚未生成候选片段包。",
+      record?.backend_candidate_source ? `候选生成边界：${candidateSourceLabel({ source: record.backend_candidate_source })}。` : "预览候选只用于流程试用，不声明算法外部验证性能。",
       "正式报告需记录算法版本、参数、候选表校验信息和证据来源；当前不是经外部验证的检测器输出。",
     ], state.candidatesGenerated ? ["正式交付限制：当前为候选复核草稿，正式交付需接入已验证算法产物和真实波形追溯。"] : ["阻断：复核前必须有候选包。"]));
 
     gates.push(makeGate("review", "人工复核", reviewGateStatus(stats), [
-      `${stats.reviewed}/${stats.total} 个候选已复核。`,
-      `${stats.confirmed} 个候选纳入草稿，${stats.rejected} 个不纳入草稿，${stats.needs_review} 个存疑，${stats.unreviewed} 个未复核。`,
-      "仅纳入草稿候选进入预览候选密度；不纳入草稿和存疑候选进入操作记录或待确认清单。",
+      `${stats.reviewed}/${stats.total} 个候选已有人工状态；其中 ${stats.needs_review} 个存疑/需二次复核。`,
+      `${stats.confirmed} 个候选纳入草稿，${stats.rejected} 个不纳入草稿，${stats.needs_review} 个存疑/需二次复核，${stats.unreviewed} 个未复核。`,
+      "仅纳入草稿候选进入预览候选密度；不纳入草稿和存疑/需二次复核候选进入操作记录或待确认清单。",
     ], reviewBlocks(stats)));
 
-    gates.push(makeGate("report", "报告与证据", reportGateStatus(stats), [
+    gates.push(makeGate("report", "草稿与证据", reportGateStatus(stats), [
       state.reviewSaved ? "候选与复核上下文已保存，可被草稿预览页读取。" : "人工复核结果尚未保存。",
       "图表来自候选复核草稿；代表波形示意需正式接入 EDF 窗口数据。",
       "草稿措辞保持科研筛查支持，不使用确诊、排除疾病或治疗建议。",
@@ -839,7 +1124,7 @@
     const blocks = [];
     if (!state.candidatesGenerated) blocks.push("阻断：候选包缺失。");
     if (stats.reviewed === 0 && state.candidatesGenerated) blocks.push("阻断：没有任何人工复核记录。");
-    if (stats.unreviewed > 0) blocks.push("P1：仍有未复核候选，报告只能是部分复核草稿。");
+    if (stats.unreviewed > 0) blocks.push("P1：仍有未复核候选，只能生成部分复核草稿。");
     if (stats.needs_review > 0) blocks.push("P1：存疑候选不能写成结论，需要单列待确认。");
     return blocks;
   }
@@ -849,7 +1134,7 @@
     if (!state.reviewSaved) blocks.push("P1：人工复核结果未保存，外部报告页无法复现当前结果。");
     if (stats.reviewed === 0) blocks.push("阻断：没有人工复核结果，不能生成复核草稿结论。");
     if (stats.unreviewed + stats.needs_review > 0) blocks.push("P1：报告状态必须标为部分复核草稿。");
-    blocks.push("正式交付限制：正式学术报告需替换真实 EDF 窗口示意图，并生成追溯清单和操作记录。");
+    blocks.push("正式交付限制：正式交付材料需替换真实 EDF 窗口示意图，并生成追溯清单和操作记录。");
     return blocks;
   }
 
@@ -876,9 +1161,9 @@
   }
 
   function stepLockReason(step) {
-    if (step === "preflight") return "请先选择或上传 EDF。";
+    if (step === "preflight") return "请先选择 HE 示例或导入 EDF。";
     if (step === "candidates") return "请先完成数据预检。";
-    if (step === "review") return "请先查找疑似事件。";
+    if (step === "review") return "请先生成候选片段包。";
     if (step === "adversarial") return "请先完成至少一条人工复核。";
     if (step === "report") return "请先保存工作台复核记录，并通过阻断项检查。";
     return "当前步骤还未解锁。";
@@ -904,7 +1189,7 @@
     if (next.action === "preflight") await runPreflight();
     if (next.action === "candidates") await generateCandidates();
     if (next.action === "review") setStep("review");
-    if (next.action === "open_review") await openDetailedReview();
+    if (next.action === "open_review") setStep("review");
     if (next.action === "auto_review") fillExampleReview();
     if (next.action === "save_review") await saveReviewLayer();
     if (next.action === "adversarial") {
@@ -921,22 +1206,22 @@
     if (!currentRecord() && !state.backendAvailable && !DEMO_PREVIEW_MODE) {
       return {
         action: "reload_backend",
-        title: "连接本地 HE 示例服务",
-        text: "需要读取真实 HE EDF 后才能继续。未连接时不会自动使用预览假数据。",
+        title: "连接示例数据",
+        text: "需要读取真实 HE EDF 后才能继续；未就绪时不会用界面预览样本代替真实分析。",
         label: "重新连接",
       };
     }
-    if (!currentRecord()) return { action: "select_sample", title: "上传或选择 HE 示例数据", text: "选择 HE-105、HE-106、HE-118，或从本地目录上传 EDF 文件。", label: "选择 HE-105" };
-    if (!state.preflightDone) return { action: "preflight", title: "运行数据预检", text: "先确认文件规模、通道和长记录读取策略，再查找疑似事件。", label: "运行预检" };
-    if (currentRecord()?.upload_only && state.preflightDone) return { action: "select_sample", title: "上传文件待读取记录信息", text: "当前上传文件不能套用 HE 示例候选；请选择 HE 示例，或先完成 EDF 读取后再查找疑似事件。", label: "选择 HE 示例" };
-    if (!state.candidatesGenerated) return { action: "candidates", title: "查找疑似事件", text: "从长记录中筛出需要人工查看的片段；HE 示例首次读取原始波形可能需要 20-40 秒。", label: "查找疑似事件" };
-    if (stats.reviewed === 0) return { action: "open_review", title: "进入候选复核工作台", text: "候选队列已准备好，复核记录从工作台统一生成。", label: "打开工作台" };
-    if (stats.unreviewed === 0 && !state.reviewSaved) return { action: "save_review", title: "同步复核记录", text: "保存工作台中的人工判断，供复核草稿读取。", label: "同步记录" };
+    if (!currentRecord()) return { action: "select_sample", title: "选择 HE 示例数据", text: "选择 HE-105、HE-106、HE-118，或登记 EDF 文件。", label: "选择 HE-105" };
+    if (!state.preflightDone) return { action: "preflight", title: "运行数据预检", text: "先确认文件规模、通道和长记录读取策略，再生成候选片段包。", label: "运行预检" };
+    if (currentRecord()?.upload_only && state.preflightDone) return { action: "select_sample", title: "导入文件待读取记录信息", text: "当前导入文件不能套用 HE 示例候选；请选择 HE 示例，或先完成 EDF 读取后再生成候选片段包。", label: "选择 HE 示例" };
+    if (!state.candidatesGenerated) return { action: "candidates", title: "生成候选片段包", text: "从长记录中筛出需要人工查看的片段；HE 示例首次读取原始波形可能需要 20-40 秒。", label: "生成候选片段包" };
+    if (stats.reviewed === 0) return { action: "review", title: "在当前页复核候选", text: "选择左侧候选，在右侧标注是否纳入草稿；不需要再打开新的工作台。", label: "开始复核" };
+    if (stats.unreviewed === 0 && !state.reviewSaved) return { action: "save_review", title: "同步复核记录", text: "保存当前页的人工判断，供复核草稿读取。", label: "同步记录" };
     if (state.reviewSaved && stats.unreviewed === 0 && !hasFailingGate()) return { action: "report", title: stats.needs_review > 0 ? "查看部分复核草稿" : "查看复核草稿预览", text: "存疑候选会保留为草稿风险提示，不会升级为正式结论。", label: "查看草稿" };
     if (stats.needs_review > 0) return { action: "review", title: `处理 ${stats.needs_review} 个存疑候选`, text: "存疑候选必须单列待确认，不能进入正式结论。", label: "回到复核" };
     if (stats.unreviewed > 0) return { action: "review", title: "补齐未复核候选", text: "未复核候选不能进入最终报告结论。", label: "回到复核" };
-    if (!state.reviewSaved) return { action: "save_review", title: "同步复核记录", text: "保存工作台中的人工判断，供复核草稿读取。", label: "同步记录" };
-    if (hasFailingGate()) return { action: "adversarial", title: "完成结果边界检查", text: "重新检查输入、疑似事件、人工复核和草稿结论是否越界。", label: "运行检查" };
+    if (!state.reviewSaved) return { action: "save_review", title: "同步复核记录", text: "保存当前页的人工判断，供复核草稿读取。", label: "同步记录" };
+    if (hasFailingGate()) return { action: "adversarial", title: "完成结果边界检查", text: "重新检查输入、候选片段、人工复核和草稿结论是否越界。", label: "运行检查" };
     if (state.currentStep !== "report") return { action: "report", title: "查看复核草稿预览", text: "草稿包含摘要、图表、事件表、方法、限制和追溯信息；仍不是正式科研结论。", label: "查看复核草稿" };
     return { action: "export_report", title: "下载草稿数据", text: "下载当前草稿数据；正式报告还需要 PDF/HTML、图表、追溯清单和审计记录。", label: "下载草稿数据" };
   }
@@ -970,15 +1255,17 @@
     const canOpenReport = state.reviewSaved && stats.reviewed > 0 && !hasFailingGate() && !busy;
     dom.chooseEdfBtn.disabled = busy;
     dom.edfInput.disabled = busy;
-    dom.openReviewBtn.disabled = !canOpenReview;
-    dom.openReviewBtn.title = canOpenReview ? "打开候选复核工作台" : busy ? "当前流程正在运行" : "请先查找疑似事件";
+    if (dom.openReviewBtn) {
+      dom.openReviewBtn.disabled = !canOpenReview;
+      dom.openReviewBtn.title = canOpenReview ? "打开详细复核页" : busy ? "当前流程正在运行" : "请先生成候选片段包";
+    }
     dom.openReportBtn.disabled = !canOpenReport;
     dom.openReportBtn.title = canOpenReport ? "打开草稿预览页" : busy ? "当前流程正在运行" : "请先保存工作台复核记录并处理阻断项";
     dom.runPreflightBtn.disabled = state.busy.preflight || !currentRecord();
     dom.generateCandidatesBtn.disabled = state.busy.candidates || !state.preflightDone || Boolean(currentRecord()?.upload_only);
     dom.autoReviewBtn.disabled = busy || !state.candidatesGenerated;
     dom.saveReviewBtn.disabled = state.busy.saveReview || !canOpenReview;
-    dom.saveReviewBtn.title = canOpenReview ? "打开候选复核工作台" : busy ? "当前流程正在运行" : "请先查找疑似事件";
+    dom.saveReviewBtn.title = canOpenReview ? "同步当前页复核记录" : busy ? "当前流程正在运行" : "请先生成候选片段包";
     dom.exportCsvBtn.disabled = busy || hasFailingGate() || !state.reviewSaved;
     dom.exportCsvBtn.title = dom.exportCsvBtn.disabled ? "存在阻断项或复核结果未保存，不能导出事件表。" : "导出草稿事件表。";
     dom.exportReportJsonBtn.disabled = busy || hasFailingGate() || !state.reviewSaved;
@@ -1021,9 +1308,9 @@
     if (!rows.length) {
       dom.sampleGrid.innerHTML = `
         <article class="ep-flow-sample-card ep-flow-sample-card-empty" aria-live="polite">
-          <strong>未连接真实 HE 示例数据</strong>
-          <small>${h(state.backendError || "请先启动本地 HE 示例数据服务。")}</small>
-          <small>仅当明确开启预览模式时，才允许显示版式预览样本。</small>
+          <strong>示例数据未就绪</strong>
+          <small>${h(state.backendError || "请联系部署人员或重新连接示例数据。")}</small>
+          <small>未就绪时不会用界面预览样本代替真实分析。</small>
         </article>
       `;
       return;
@@ -1032,7 +1319,7 @@
       <button class="ep-flow-sample-card ${record.id === state.selectedRecordId ? "is-selected" : ""}" type="button" data-record-id="${h(record.id)}" ${busy ? "disabled" : ""} aria-current="${record.id === state.selectedRecordId ? "true" : "false"}" title="${busy ? "当前流程正在运行，完成后可切换记录。" : "选择该记录"}">
         <strong>${h(record.filename)}</strong>
           <small>${formatBytes(record.size_bytes)} · ${record.duration_sec ? `${formatHours(record.duration_sec)} h` : "待读取"} · ${h((record.channels || []).join(" / ") || "通道待解析")}</small>
-          <small>${record.upload_only ? "浏览器上传：仅登记，未分析" : record.backend_record ? "本地示例数据：真实 EDF 元数据/窗口指标" : "版式预览样本，不作为真实分析证据"}</small>
+          <small>${record.upload_only ? "导入文件：仅登记，未分析" : record.backend_record ? "真实 EDF 示例：元数据和波形窗口已连接" : "界面预览样本，不作为真实分析证据"}</small>
         </button>
     `).join("");
     dom.sampleGrid.querySelectorAll("[data-record-id]").forEach((button) => {
@@ -1065,14 +1352,14 @@
   function preflightChecks(record) {
     if (!record) {
       return [
-        { label: "文件", value: "待选择", detail: "请先选择 HE 示例或上传 EDF。" },
+        { label: "文件", value: "待选择", detail: "请先选择 HE 示例或导入 EDF。" },
         { label: "读取方式", value: "未确认", detail: "长时程记录需要按时间窗分段查看。" },
       ];
     }
     return [
       { label: "文件格式", value: record.filename.toLowerCase().endsWith(".edf") ? "EDF" : "待确认", detail: `${record.filename} · ${formatBytes(record.size_bytes)}` },
       { label: "记录规模", value: record.duration_sec ? `${formatHours(record.duration_sec)} h` : "待解析", detail: "约 70 小时记录需要分段处理，不能一次性全量加载。" },
-      { label: "采样率", value: record.sfreq ? `${record.sfreq} Hz` : "待解析", detail: "HE 示例预期为 1000 Hz；上传文件以实际读取结果为准。" },
+      { label: "采样率", value: record.sfreq ? `${record.sfreq} Hz` : "待解析", detail: "HE 示例预期为 1000 Hz；导入文件以实际读取结果为准。" },
       { label: "通道", value: (record.channels || []).join(" / ") || "待解析", detail: "EEG 通道用于候选展示，EMG/ACC 只能作为伪迹线索，不能单独决定是否纳入草稿。" },
       { label: "隐私路径", value: "安全相对路径", detail: record.safe_source_path || SAFE_SAMPLE_FOLDER },
       { label: "代表波形", value: "原始记录片段", detail: "正式报告代表图必须来自真实 EDF 时间窗。" },
@@ -1081,7 +1368,7 @@
 
   function renderCandidates() {
     const list = candidates();
-    const runnerText = state.candidatesGenerated ? "疑似事件已生成" : state.candidateProgress > 0 ? "正在查找疑似事件" : "等待运行";
+    const runnerText = state.candidatesGenerated ? "候选片段包已生成" : state.candidateProgress > 0 ? "正在生成候选片段包" : "等待运行";
     dom.candidateRunner.querySelector("span").textContent = runnerText;
     dom.candidateRunner.querySelector("b").style.width = `${state.candidateProgress}%`;
     const progressEl = dom.candidateRunner.querySelector(".ep-flow-progress");
@@ -1092,11 +1379,11 @@
         <article class="ep-flow-candidate-mini">
           <strong>${h(event.event_id)} · ${h(eventTypeLabel(event.event_type))}</strong>
           <span>${formatClock(event.start_sec)} · ${event.duration_sec.toFixed(1)} s · ${h(event.channels.join(" / "))}</span>
-          <span>复核优先级 ${h(event.priority)} · 波形变化 ${event.score.toFixed(2)}（非概率）</span>
+          <span>复核优先级：${h(priorityLabel(event.priority))} · 排序值仅作复核优先级参考</span>
           <span>${h(candidateSourceLabel(event))}</span>
         </article>
       `).join("")
-      : `<article class="ep-flow-candidate-mini"><strong>暂无候选</strong><span>完成预检后会列出需要人工查看的疑似事件。</span></article>`;
+      : `<article class="ep-flow-candidate-mini"><strong>暂无候选</strong><span>完成预检后会列出需要人工查看的候选片段。</span></article>`;
   }
 
   function renderReview() {
@@ -1106,11 +1393,11 @@
         <button class="ep-flow-event-card ${index === state.activeEventIndex ? "is-active" : ""}" type="button" data-event-index="${index}" aria-current="${index === state.activeEventIndex ? "true" : "false"}" aria-selected="${index === state.activeEventIndex ? "true" : "false"}">
           <strong><span>${h(event.event_id)}</span><span>${h(STATUS_LABEL[statusFor(event)])}</span></strong>
           <span>${formatClock(event.start_sec)} · ${event.duration_sec.toFixed(1)} s · ${h(eventTypeLabel(event.event_type))}</span>
-          <span>${h(event.channels.join(" / "))} · 复核优先级 ${h(event.priority)} · 波形变化 ${event.score.toFixed(2)}（非概率）</span>
+          <span>${h(event.channels.join(" / "))} · 复核优先级：${h(priorityLabel(event.priority))}</span>
           <span>${h(candidateSourceLabel(event))}</span>
         </button>
       `).join("")
-      : `<article class="ep-flow-event-card"><strong><span>暂无候选</span></strong><span>查找疑似事件后在这里查看候选队列。</span></article>`;
+      : `<article class="ep-flow-event-card"><strong><span>暂无候选</span></strong><span>生成候选片段包后在这里查看候选队列。</span></article>`;
     dom.eventList.querySelectorAll("[data-event-index]").forEach((button) => {
       button.addEventListener("click", () => {
         state.activeEventIndex = Number(button.dataset.eventIndex);
@@ -1125,9 +1412,10 @@
     const review = reviewFor(event);
     if (!event) {
       dom.activeEventTitle.textContent = "请选择候选事件";
-      dom.reviewWaveform.setAttribute("aria-label", "暂无候选事件波形；查找疑似事件后显示只读概览。");
-      drawEmptyCanvas(dom.reviewWaveform, "查找疑似事件后显示只读概览");
+      dom.reviewWaveform.setAttribute("aria-label", "暂无候选片段波形；生成候选片段包后显示只读概览。");
+      drawEmptyCanvas(dom.reviewWaveform, "生成候选片段包后显示只读概览");
       renderReviewHandoffFacts(null, null);
+      renderInlineReviewControls(null, null);
       return;
     }
     dom.activeEventTitle.textContent = `${event.event_id} · ${eventTypeLabel(event.event_type)}`;
@@ -1136,7 +1424,25 @@
       `${event.event_id}，${eventTypeLabel(event.event_type)}，起始 ${formatClock(event.start_sec)}，时长 ${event.duration_sec.toFixed(1)} 秒，通道 ${event.channels.join(" / ")}，状态 ${STATUS_LABEL[review?.status || "unreviewed"]}。`
     );
     renderReviewHandoffFacts(event, review);
+    renderInlineReviewControls(event, review);
     drawWaveformPreview(event, review);
+  }
+
+  function renderInlineReviewControls(event, review) {
+    const disabled = !event || isFlowBusy();
+    document.querySelectorAll("[data-flow-status]").forEach((button) => {
+      const active = Boolean(event && review?.status === button.dataset.flowStatus);
+      button.classList.toggle("is-active", active);
+      button.disabled = disabled;
+      button.setAttribute("aria-pressed", active ? "true" : "false");
+    });
+    if (dom.reviewNoteInput) {
+      dom.reviewNoteInput.value = event ? (review?.note || "") : "";
+      dom.reviewNoteInput.disabled = disabled;
+    }
+    document.querySelectorAll("[data-flow-note]").forEach((button) => {
+      button.disabled = disabled;
+    });
   }
 
   function renderReviewHandoffFacts(event, review) {
@@ -1144,7 +1450,7 @@
     const stats = reviewStats();
     const facts = [
       `候选 ${stats.total}`,
-      `已复核 ${stats.reviewed}/${stats.total}`,
+      `已有人工状态 ${stats.reviewed}/${stats.total}`,
     ];
     if (event) {
       facts.push(`${formatClock(event.start_sec)} · ${event.duration_sec.toFixed(1)} s`);
@@ -1207,9 +1513,9 @@
   function issueFix(issue) {
     if (issue.includes("选择")) return "回到上传样本步骤。";
     if (issue.includes("预检")) return "运行数据预检。";
-    if (issue.includes("候选") || issue.includes("疑似")) return "查找疑似事件。";
-    if (issue.includes("未复核")) return "打开候选复核工作台复核。";
-    if (issue.includes("保存")) return "保存工作台复核记录。";
+    if (issue.includes("候选") || issue.includes("疑似")) return "生成候选片段包。";
+    if (issue.includes("未复核")) return "回到当前页候选复核区完成标注。";
+    if (issue.includes("保存")) return "同步当前页复核记录。";
     if (issue.includes("waveform")) return "正式态接入真实证据图。";
     return "保留为报告限制或待办。";
   }
@@ -1222,7 +1528,7 @@
     dom.reportStatusBadge.classList.toggle("partial", stats.report_status === "partial_review_draft");
     dom.reportSummary.innerHTML = [
       ["候选事件", stats.auto_candidates, "候选总数"],
-      ["已复核", stats.reviewed, "人工处理覆盖"],
+      ["已有人工状态", stats.reviewed, "人工处理覆盖"],
       ["纳入草稿", stats.confirmed, "进入预览统计"],
       ["存疑/未复核", stats.needs_review + stats.unreviewed, "不写作结论"],
       ["纳入草稿候选数", `${stats.confirmed_candidate_rate_per_hour.toFixed(3)} 个/记录小时`, "预览归一化统计，非疾病负荷"],
@@ -1242,12 +1548,12 @@
           <td>${h(formatClock(event.start_sec))}<br><small>${h(event.duration_sec.toFixed(1))} s</small></td>
           <td>${h(eventTypeLabel(event.event_type))}</td>
           <td>${h(event.channels.join(" / "))}</td>
-          <td>${h(event.evidence_grade || "-")}<br><small>RMS/PTP 预览排序 ${h(event.preview_rms_ptp_rank_score.toFixed(2))}（非概率）</small></td>
+          <td>${h(event.evidence_grade || "-")}<br><small>复核优先级：${h(priorityLabel(event.priority))}</small></td>
           <td>${h(STATUS_LABEL[event.status] || event.status)}</td>
           <td>${h(event.review_note || "-")}</td>
         </tr>
       `).join("")
-      : `<tr><td colspan="7">查找疑似事件并在候选复核工作台完成复核后生成事件表。</td></tr>`;
+      : `<tr><td colspan="7">生成候选片段包，并在当前页完成人工状态标注后生成事件表。</td></tr>`;
     window.requestAnimationFrame(drawReportFigures);
   }
 
@@ -1284,7 +1590,7 @@
       draft_csv_exported: "事件表已下载",
       candidate_package_generated: "候选已生成",
       demo_review_filled: "预览复核已填充",
-      upload_preflight_limited: "上传文件待分析",
+      upload_preflight_limited: "导入文件待分析",
       uploaded_candidates_blocked: "候选生成已阻断",
       adversarial_review_run: "边界检查完成",
     }[action] || "流程记录";
@@ -1310,6 +1616,7 @@
       non_medical_scope: "research_screening_support_only",
       created_at: new Date().toISOString(),
       record: {
+        id: record?.id || "",
         file_id: record?.file_id || "",
         filename: record?.filename || "",
         duration_sec: effectiveDurationSec(record),
@@ -1317,6 +1624,7 @@
         channels: record?.channels || [],
         safe_source_path: record?.safe_source_path || `${SAFE_SAMPLE_FOLDER}${record?.filename || ""}`,
         path_visibility: "safe_relative",
+        backend_record: Boolean(record?.backend_record),
       },
       metadata: {
         review_event_source: "reviewed_events",
@@ -1333,6 +1641,8 @@
         review_session_id: `preview_session_${record?.id || "none"}`,
         source_algorithm_artifact_id: record?.backend_candidate_source || "preview_candidate_package",
         source_page: "epilepsy-full-flow-preview",
+        api_base: API_BASE,
+        backend_record: Boolean(record?.backend_record),
       },
       model: {
         detector_version: record?.backend_algorithm_status || "preview_candidate_package_he_v1",
@@ -1417,7 +1727,7 @@
       priority: event.priority,
       preview_rms_ptp_rank_score: event.preview_rms_ptp_rank_score ?? event.score,
       score_kind: event.score_kind || "preview_rank_not_probability",
-      score_note: event.score_note || "预览排序值不是临床概率、检测置信度或诊断结论。",
+      score_note: event.score_note || "复核优先级排序值不是临床概率、检测置信度或诊断结论。",
       event_source: event.source || "preview_candidate_package",
       event_type_scope: event.event_type_scope || "candidate_label_only",
       channels: event.channels,
@@ -1432,24 +1742,24 @@
   function interpretationText(stats, record) {
     if (!record) return "尚未选择记录。";
     if (stats.reviewed === 0) {
-      return `记录 ${record.filename} 已进入预览流程，但尚无人工复核结果；不能形成报告摘要。`;
+      return `记录 ${record.filename} 已进入预览流程，但尚无人工复核结果；不能形成草稿摘要。`;
     }
     const pending = stats.needs_review + stats.unreviewed;
     const base = `在 ${record.filename} 的候选复核草稿中，${stats.confirmed} 个癫痫样候选被纳入草稿，${stats.rejected} 个候选不纳入草稿。`;
     if (pending > 0) {
       return `${base} 仍有 ${pending} 个存疑或未复核候选，本草稿只能作为部分复核记录，不能代表完整记录的事件负荷。`;
     }
-    return `${base} 当前所有候选均已有人工状态；纳入草稿候选数（预览，按记录小时归一化）只表示已复核候选的预览统计，不代表发作频率、疾病活动度或完整事件负荷。`;
+    return `${base} 当前所有候选均已有人工状态；纳入草稿候选数（预览，按记录小时归一化）只表示已有人工状态候选的预览统计，不代表发作频率、疾病活动度或完整事件负荷。`;
   }
 
   function methodsText(record, stats) {
     if (!record) return "尚未选择输入数据。";
     const sfreq = record.sfreq ? `${record.sfreq} Hz` : "待读取";
     const candidateSource = record.backend_candidate_source?.startsWith("fallback_")
-      ? "疑似事件来自示例时间点；系统读取对应原始波形片段，并计算波形变化指标。该指标只用于排序，不是概率。"
+      ? "候选片段来自示例时间点；系统读取对应原始波形片段，并计算波形变化指标。该指标只用于复核优先级，不是概率。"
       : record.backend_candidate_source
-        ? "疑似事件来自长记录分段筛查；系统读取原始波形片段，并计算波形变化指标。该指标只用于排序，不是概率。"
-        : "当前页面使用版式预览候选试跑产品流程，不表示候选算法或科研结论已验证。";
+        ? "候选片段来自长记录分段筛查；系统读取原始波形片段，并计算波形变化指标。该指标只用于复核优先级，不是概率。"
+        : "当前页面使用界面预览候选试跑产品流程，不表示候选算法或科研结论已验证。";
     return `输入为 ${record.filename}，通道为 ${(record.channels || []).join("、") || "待读取"}，采样率 ${sfreq}，记录时长约 ${formatHours(effectiveDurationSec(record))} 小时。${candidateSource} 正式分析应记录算法版本、阈值、预处理、窗口长度、人工复核标准和导出追溯清单。证据等级 A/B/C/X 仅表示当前界面展示的证据是否足够复核，不是临床证据等级；不纳入草稿原因包括肌电、运动、接触不良、断线、饱和、噪声、重复候选或非癫痫样生理活动。本草稿不估计敏感性或特异性，不确认或排除癫痫发作。`;
   }
 
@@ -1457,7 +1767,7 @@
     return [
       { id: "timelineFigure", title: "候选事件时间轴", source: "preview_review_layer", provenance: "preview_only", limitation: "正式报告需绑定真实 EDF 波形追溯。" },
       { id: "funnelFigure", title: "复核漏斗", source: "manual_review_layer", provenance: "review_state" },
-      { id: "densityFigure", title: "纳入草稿候选数（预览，按记录小时归一化）", source: "manual_review_layer", provenance: "review_state", limitation: "仅为已复核候选的预览统计，不代表发作频率、疾病活动度或完整事件负荷。" },
+      { id: "densityFigure", title: "纳入草稿候选数（预览，按记录小时归一化）", source: "manual_review_layer", provenance: "review_state", limitation: "仅为已有人工状态候选的预览统计，不代表发作频率、疾病活动度或完整事件负荷。" },
       { id: "qcFigure", title: "通道参与概览", source: "preview_candidates", provenance: "preview_only" },
     ];
   }
@@ -1466,7 +1776,6 @@
     return {
       generated_at: new Date().toISOString(),
       generated_by: "epilepsy-full-flow-preview",
-      source_folder_display: SAFE_SAMPLE_FOLDER,
       path_visibility: "safe_relative",
       review_saved_to: state.reviewSaved ? REVIEW_STORAGE_KEY : null,
       backend_review_session_id: state.backendReviewSession?.session_id || null,
@@ -1480,10 +1789,15 @@
       schema_version: FLOW_SCHEMA,
       current_step: state.currentStep,
       selected_record_id: state.selectedRecordId,
+      current_record: currentRecord(),
+      backend_records: state.backendRecords,
+      candidates: candidates(),
+      reviews: state.reviews,
       preflight_done: state.preflightDone,
       preflight_limited_upload: state.preflightLimitedUpload,
       candidates_generated: state.candidatesGenerated,
       review_saved: state.reviewSaved,
+      backend_review_session: state.backendReviewSession,
       gates: state.gates,
       audit: state.audit,
       report: buildReportPayload(),
@@ -1503,7 +1817,6 @@
         记录时长秒: round1(effectiveDurationSec(record)),
         采样率Hz: record?.sfreq || "",
         通道: record?.channels || [],
-        数据路径显示: record?.safe_source_path || "",
       },
       进度: {
         已完成预检: state.preflightDone ? "是" : "否",
@@ -1527,7 +1840,7 @@
       })),
       操作记录: state.audit.slice(-20).map((item) => ({
         时间: item.at,
-        操作: item.action,
+        操作: auditActionLabel(item.action),
         说明: item.detail,
       })),
     };
@@ -1544,12 +1857,18 @@
 
   async function openDetailedReview() {
     if (!await saveReviewLayer()) return;
-    window.location.href = "./epilepsy-review-preview.html?source=full-flow-preview";
+    window.location.href = linkedPreviewUrl("./epilepsy-review-preview.html", "full-flow-preview");
   }
 
   async function openStandaloneReport() {
     if (!await saveReviewLayer()) return;
-    window.location.href = "./epilepsy-report-preview.html?source=full-flow-preview";
+    window.location.href = linkedPreviewUrl("./epilepsy-report-preview.html", "full-flow-preview");
+  }
+
+  function linkedPreviewUrl(path, source) {
+    const params = new URLSearchParams({ source });
+    if (isLocalPage() && API_BASE) params.set("api", API_BASE);
+    return `${path}?${params.toString()}`;
   }
 
   async function exportReportJson() {
@@ -1569,7 +1888,7 @@
         ]);
         reportPayload = normalizeBackendReportForCustomer(reportPackage, reportPayload);
         backendExport = exportPackage;
-        addAudit("backend_export_package_loaded", `复核草稿已生成：${state.backendReviewSession.session_id}。`);
+        addAudit("backend_export_package_loaded", `研究草稿材料已生成：${state.backendReviewSession.session_id}。`);
       } catch (error) {
         addAudit("backend_export_package_failed", "复核草稿生成失败，已回退为浏览器本地草稿数据。");
       }
@@ -1621,7 +1940,6 @@
         记录时长秒: round1(record.duration_sec || 0),
         采样率Hz: record.sfreq || "",
         通道: record.channels || [],
-        数据路径显示: record.safe_source_path || "",
       },
       摘要: {
         候选总数: stats.auto_candidates ?? stats.total ?? events.length,
@@ -1642,8 +1960,7 @@
       ],
       追溯: {
         复核记录编号: state.backendReviewSession?.session_id || "浏览器本地记录",
-        草稿材料来源: backendExport ? "本地服务生成" : "浏览器当前记录",
-        路径显示策略: "仅显示安全相对路径",
+        草稿材料来源: backendExport ? "试用环境生成" : "当前页面记录",
       },
     };
   }
@@ -1658,8 +1975,7 @@
       候选类型: EVENT_TYPE_EXPORT_LABEL[event.event_type] || eventTypeLabel(event.event_type),
       通道: Array.isArray(event.channels) ? event.channels : [],
       展示证据等级: event.evidence_grade || "",
-      排序值: Number(event.preview_rms_ptp_rank_score ?? event.score ?? 0),
-      排序值说明: event.score_note || "排序值只用于复核优先级，不是临床概率。",
+      复核优先级: priorityLabel(event.priority),
       复核备注: event.review_note || event.note || "",
       伪迹原因: artifactLabel(event.artifact_reason || ""),
     };
@@ -1687,8 +2003,9 @@
       try {
         const sessionId = encodeURIComponent(state.backendReviewSession.session_id);
         const exportPackage = await apiFetch(`/lab/epilepsy-full-flow/review-sessions/${sessionId}/exports`, { method: "POST" });
-        if (exportPackage?.final_review_events_csv) {
-          saveBlob(exportPackage.final_review_events_csv, "复核草稿事件表.csv", "text/csv;charset=utf-8");
+        const eventCsv = exportPackage?.candidate_review_state_csv || exportPackage?.final_review_events_csv;
+        if (eventCsv) {
+          saveBlob(eventCsv, "复核草稿事件表.csv", "text/csv;charset=utf-8");
           addAudit("draft_csv_exported", `下载复核事件表：${state.backendReviewSession.session_id}。`);
           toast("事件表已下载。");
           renderAudit();
@@ -1703,7 +2020,7 @@
       ["临床用途", "不允许作为临床诊断、治疗或用药依据"],
       ["使用边界", "科研筛查和人工复核支持"],
       [],
-      ["事件编号", "人工状态", "起始秒", "时长秒", "候选类型", "通道", "展示证据等级", "证据等级说明", "预览排序值", "排序值说明", "候选来源", "候选类型说明", "复核备注"],
+      ["事件编号", "人工状态", "起始秒", "时长秒", "候选类型", "通道", "展示证据等级", "证据等级说明", "复核优先级", "候选来源", "候选类型说明", "复核备注"],
       ...candidates().map((event) => {
         const item = normalizedEvent(event);
         return [
@@ -1715,8 +2032,7 @@
           item.channels.join("|"),
           item.evidence_grade,
           item.evidence_grade_scope,
-          item.preview_rms_ptp_rank_score,
-          item.score_note,
+          priorityLabel(item.priority),
           candidateSourceLabel({ source: item.event_source }),
           item.event_type_scope,
           item.review_note,
@@ -1926,7 +2242,7 @@
     const list = candidates().map(normalizedEvent);
     const duration = effectiveDurationSec(currentRecord());
     ctx.clearRect(0, 0, width, height);
-    drawCanvasTitle(ctx, "全记录候选事件时间轴", width);
+    drawCanvasTitle(ctx, "当前候选包时间轴", width);
     const left = 54;
     const right = width - 28;
     const y = height / 2;
@@ -1971,7 +2287,7 @@
     const stats = reviewStats();
     const values = [
       ["候选", stats.total, "#2563eb"],
-      ["已复核", stats.reviewed, "#0f766e"],
+      ["已有人工状态", stats.reviewed, "#0f766e"],
       ["纳入草稿", stats.confirmed, STATUS_COLOR.confirmed],
     ];
     drawBarChart(ctx, width, height, "复核漏斗", values, Math.max(1, stats.total));
@@ -2083,7 +2399,7 @@
   function reportStatusLabel(stats) {
     const value = stats.report_status || buildReportPayload().summary.report_status;
     if (stats.report_status_label) return stats.report_status_label;
-    if (value === "review_draft_ready") return "复核草稿已补齐（非正式）";
+    if (value === "review_draft_ready") return "当前候选包状态已补齐（仍为研究草稿）";
     if (value === "partial_review_draft") return "部分复核草稿";
     return "未生成";
   }

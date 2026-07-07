@@ -9,8 +9,8 @@
     kept: "纳入草稿候选",
     rejected: "不纳入草稿",
     excluded: "不纳入草稿",
-    needs_review: "存疑",
-    uncertain: "存疑",
+    needs_review: "存疑/需二次复核",
+    uncertain: "存疑/需二次复核",
     unreviewed: "未复核",
   };
   const STATUS_ORDER = {
@@ -24,9 +24,9 @@
   };
   const TYPE_LABEL = {
     ied: "棘波样候选",
-    seizure_like: "疑似节律性候选",
+    seizure_like: "节律性片段候选（待复核）",
     rhythmic: "节律性放电候选",
-    artifact_suspect: "伪迹疑似",
+    artifact_suspect: "伪迹候选",
     candidate_window: "候选窗口 / 未分类",
     unknown: "未分类候选",
   };
@@ -42,6 +42,7 @@
     hydrateFromReviewPreview();
     bindEvents();
     renderReport();
+    updateReturnLink();
     resizeFigures();
     window.addEventListener("resize", resizeFigures);
     syncIcons();
@@ -68,6 +69,7 @@
   function cacheDom() {
     [
       "reviewJsonInput",
+      "returnFromReportBtn",
       "exportReportBtn",
       "copySummaryBtn",
       "copyMethodsBtn",
@@ -110,6 +112,18 @@
         document.querySelectorAll(".ep-report-nav a").forEach((item) => item.classList.toggle("is-active", item === link));
       });
     });
+  }
+
+  function updateReturnLink() {
+    if (!dom.returnFromReportBtn) return;
+    const params = new URLSearchParams(window.location.search);
+    const source = params.get("source") || "";
+    const target = source === "full-flow-preview"
+      ? "./epilepsy-full-flow-preview.html"
+      : "./epilepsy-review-preview.html";
+    dom.returnFromReportBtn.href = linkedPreviewUrl(target, "report-preview");
+    const label = dom.returnFromReportBtn.querySelector("span");
+    if (label) label.textContent = source === "full-flow-preview" ? "返回全流程" : "返回复核";
   }
 
   async function loadReviewJson(event) {
@@ -164,7 +178,7 @@
         status,
         preview_rms_ptp_rank_score: Number(item.preview_rms_ptp_rank_score || item.score || 0),
         score_kind: item.score_kind || "preview_rank_not_probability",
-        score_note: item.score_note || "预览排序值不是临床概率、检测置信度或诊断结论。",
+        score_note: item.score_note || "复核优先级排序值不是临床概率。",
         note: item.note || review.note || uiReview.note || "",
         reviewer: item.reviewer || review.reviewer || uiReview.reviewer || "",
         reviewed_at: item.reviewed_at || review.reviewed_at || uiReview.reviewed_at || "",
@@ -197,7 +211,7 @@
         candidate_denominator: candidateDenominator,
         candidate_set_scope: preservedMetadata.candidate_set_scope || (hasFullCandidateSet ? "current_preview_candidate_package" : "unknown"),
         denominator_note: hasFullCandidateSet
-          ? "复核记录包含当前已载入的预览候选包；这不是全记录完整检测器的事件负荷估计。"
+          ? "复核记录包含当前已载入的预览候选包；这不是完整检测器的事件负荷估计。"
           : hasExplicitCandidateDenominator
             ? "复核记录提供了候选总数，但事件明细可能不是完整列表。"
             : "候选总数未知，当前记录不能作为可下载复核草稿。",
@@ -256,6 +270,7 @@
   function persistReviewPayload(payload) {
     try {
       window.sessionStorage.setItem(REVIEW_STORAGE_KEY, JSON.stringify(payload));
+      window.localStorage.setItem(REVIEW_STORAGE_KEY, JSON.stringify(payload));
     } catch {
       // Returning to the review page may fall back to its built-in sample if storage is blocked.
     }
@@ -284,20 +299,20 @@
     dom.pendingMetric.textContent = `${stats.needsReview + stats.unreviewed}`;
     dom.coverageMetric.textContent = `${Math.round((stats.reviewed / Math.max(1, stats.total)) * 100)}%`;
     dom.coverageHint.textContent = stats.implicitUnreviewed > 0
-      ? `${stats.reviewed}/${stats.total} 候选已复核，另有 ${stats.implicitUnreviewed} 个候选未载入`
-      : `${stats.reviewed}/${stats.total} 候选已复核`;
+      ? `${stats.reviewed}/${stats.total} 候选已有人工状态，另有 ${stats.implicitUnreviewed} 个候选未载入`
+      : `${stats.reviewed}/${stats.total} 候选已有人工状态`;
     const status = reportStatus();
     const candidateSetKnown = Boolean(payload.metadata?.has_full_candidate_set || payload.metadata?.has_explicit_candidate_denominator);
     dom.overallStatement.textContent = status === "complete_review_preview"
       ? "候选复核已覆盖当前预览候选包；当前图表仍为预览示意。"
       : status === "not_ready"
         ? (events.length
-          ? "已显示事件结果表，但缺少当前候选包分母，不能下载复核草稿数据。"
+          ? "已显示候选复核表，但缺少当前候选包分母，不能下载复核草稿数据。"
           : (payload.metadata?.empty_reason || "复核记录为空，不能输出草稿数据。"))
         : candidateSetKnown
           ? "部分复核草稿，仍含待确认或未复核候选。"
           : "部分复核草稿，且当前候选包分母仍需确认。";
-    dom.contractLabel.textContent = "草稿版本 v1";
+    dom.contractLabel.textContent = "复核草稿";
   }
 
   function renderExportState() {
@@ -414,12 +429,12 @@
     const rows = [
       ["confirmed", "纳入草稿"],
       ["rejected", "不纳入"],
-      ["needs_review", "存疑"],
+      ["needs_review", "存疑/需二次复核"],
       ["unreviewed", "未复核"],
     ];
     ctx.font = "700 13px Inter, Microsoft YaHei, sans-serif";
     ctx.fillStyle = "#17201b";
-    ctx.fillText("全记录候选时间轴", left, 24);
+    ctx.fillText("当前候选包时间轴", left, 24);
     rows.forEach(([status, label], row) => {
       const y = top + row * rowGap;
       ctx.fillStyle = "#66746d";
@@ -517,11 +532,11 @@
     const stats = eventStats(state.payload.reviewed_events, state.payload);
     clearFigure(ctx, w, height);
     const rows = [
-      ["疑似片段", stats.total, "#2f659f"],
-      ["已复核", stats.reviewed, "#6f5aa8"],
+      ["候选片段", stats.total, "#2f659f"],
+      ["已有人工状态", stats.reviewed, "#6f5aa8"],
       ["纳入草稿", stats.confirmed, "#2f7d55"],
       ["不纳入", stats.rejected, "#b2413d"],
-      ["存疑", stats.needsReview, "#a86513"],
+      ["存疑/需二次复核", stats.needsReview, "#a86513"],
     ];
     const max = Math.max(1, ...rows.map((item) => item[1]));
     const left = 92;
@@ -674,10 +689,10 @@
       },
       摘要: {
         候选总数: summary.auto_candidates || 0,
-        已复核: summary.reviewed || 0,
+        已有人工状态: summary.reviewed || 0,
         纳入草稿候选: summary.confirmed || 0,
         不纳入草稿候选: summary.rejected || 0,
-        存疑: summary.needs_review || 0,
+        "存疑/需二次复核": summary.needs_review || 0,
         未复核: summary.unreviewed || 0,
         草稿状态: reportStatusLabel(summary.report_status),
         纳入草稿候选数每记录小时: summary.confirmed_candidates_per_record_hour_preview || 0,
@@ -710,8 +725,7 @@
       通道: event.channels,
       展示证据等级: event.evidence_grade,
       伪迹原因: artifactLabel(event.artifact_reason),
-      排序值: event.preview_rms_ptp_rank_score,
-      排序值说明: event.score_note || "排序值只用于复核优先级，不是临床概率。",
+      复核优先级: priorityLabel(event.priority),
       复核备注: event.note || "",
       复核人: event.reviewer || "未记录复核人",
       复核时间: event.reviewed_at || "",
@@ -720,7 +734,7 @@
 
   function reportStatusLabel(status) {
     return {
-      complete_review_preview: "候选复核已完整，仍为预览草稿",
+      complete_review_preview: "当前候选包人工状态已覆盖，仍为研究草稿",
       partial_review_draft: "部分复核草稿",
       review_draft_ready: "复核草稿",
       not_ready: "尚不能生成草稿",
@@ -756,8 +770,7 @@
       ["展示证据等级", "evidence_grade"],
       ["伪迹原因", (row) => artifactLabel(row.artifact_reason)],
       ["人工状态", (row) => STATUS_LABEL[row.status] || row.status || ""],
-      ["预览排序值", "preview_rms_ptp_rank_score"],
-      ["排序值说明", "score_note"],
+      ["复核优先级", (row) => priorityLabel(row.priority)],
       ["复核备注", "note"],
       ["复核人", "reviewer"],
       ["复核时间", "reviewed_at"],
@@ -798,13 +811,13 @@
     if (stats.confirmed === 0) {
       return `在 ${payload.record.filename} 的 ${hours.toFixed(1)} 小时记录中，当前未形成可纳入统计的癫痫样草稿候选。${completenessText}；共有 ${pending} 个候选仍需确认或复核，不能代表确认或排除发作的临床结论。`;
     }
-    return `在 ${payload.record.filename} 的 ${hours.toFixed(1)} 小时记录中，当前预览候选包包含 ${stats.total} 个疑似片段；经人工复核后，${stats.confirmed} 个癫痫样候选被纳入草稿。纳入草稿候选数按记录小时归一化约 ${rate}/小时，仅作复核草稿索引，不代表发作频率、疾病活动度或完整事件负荷。${stats.rejected} 个候选不纳入草稿，${pending} 个候选仍需确认或未复核。${completenessText}。`;
+    return `在 ${payload.record.filename} 的 ${hours.toFixed(1)} 小时记录中，当前预览候选包包含 ${stats.total} 个候选片段；经人工复核后，${stats.confirmed} 个癫痫样候选被纳入草稿。纳入草稿候选数按记录小时归一化约 ${rate}/小时，仅作复核草稿索引，不代表发作频率、疾病活动度或完整事件负荷。${stats.rejected} 个候选不纳入草稿，${pending} 个候选仍需确认或未复核。${completenessText}。`;
   }
 
   function dataMethodText() {
     const record = state.payload.record;
     const duration = Math.max(0, record.duration_sec / 3600).toFixed(1);
-    return `输入记录为 ${record.filename}，总时长约 ${duration} 小时，采样率 ${record.sfreq || "-"} Hz，草稿通道为 ${record.channels.join("、")}。当前预览中的代表波形为版式示意；正式复核草稿必须使用真实 EDF 波形窗口，并在图注中标注窗口、单位、滤波和通道。`;
+    return `输入记录为 ${record.filename}，总时长约 ${duration} 小时，采样率 ${record.sfreq || "-"} Hz，复核涉及通道为 ${record.channels.join("、")}。当前预览中的代表波形为版式示意；正式复核草稿必须使用真实 EDF 波形窗口，并在图注中标注窗口、单位、滤波和通道。`;
   }
 
   function reviewMethodText() {
@@ -812,19 +825,19 @@
     const methodText = model.detector_version || Number.isFinite(Number(model.threshold))
       ? "候选生成设置已随草稿保存，可用于追溯。"
       : "候选生成设置待正式记录。";
-    return `疑似片段先形成当前预览候选包，再由人工复核。${methodText} 人工复核记录候选状态、时间边界、展示证据等级、伪迹原因和操作记录。草稿只汇总人工复核后的结果，不把系统原始候选直接写成结论。证据等级 A/B/C/X 分别表示展示证据明确、较充分、较弱、不可判读；不纳入草稿的常见原因包括 EMG 增高、ACC 同步体动、电极问题、饱和和不可判读。`;
+    return `候选片段先形成当前预览候选包，再由人工复核。${methodText} 人工复核记录候选状态、时间边界、展示证据等级、伪迹原因和操作记录。草稿只汇总人工复核后的结果，不把系统原始候选直接写成结论。证据等级 A/B/C/X 分别表示展示证据明确、较充分、较弱、不可判读；不纳入草稿的常见原因包括 EMG 增高、ACC 同步体动、电极问题、饱和和不可判读。`;
   }
 
   function methodsText() {
-    return `${dataMethodText()}\n${reviewMethodText()}\n统计口径：仅纳入草稿候选进入报告摘要、预览候选密度和代表图；不纳入草稿、存疑、未复核候选保留为追溯记录。纳入草稿候选数按记录小时归一化只用于复核草稿索引，不代表发作频率、疾病活动度或完整事件负荷。算法候选分数仅用于排序或复核优先级，不代表临床置信度。局限性：当前预览无同步视频、无临床标注、无外部验证集指标，不能估计敏感性或特异性，也不能代表确认或排除发作。`;
+    return `${dataMethodText()}\n${reviewMethodText()}\n统计口径：仅纳入草稿候选进入草稿摘要、预览候选密度和代表图；不纳入草稿、存疑、未复核候选保留为追溯记录。纳入草稿候选数按记录小时归一化只用于复核草稿索引，不代表发作频率、疾病活动度或完整事件负荷。算法候选分数仅用于排序或复核优先级，不代表临床置信度。局限性：当前预览无同步视频、无临床标注、无外部验证集指标，不能估计敏感性或特异性，也不能代表确认或排除发作。`;
   }
 
   function figureManifest() {
     return [
-      { id: "timelineFigure", title: "全记录候选时间轴", source: "reviewed_events", provenance: "derived_from_review_layer" },
+      { id: "timelineFigure", title: "当前候选包时间轴", source: "reviewed_events", provenance: "derived_from_review_layer" },
       { id: "waveformFigure", title: "代表候选波形版式示意", source: "合成预览波形", provenance: "正式草稿需替换为真实 EDF 波形窗口", evidence_ready: false },
       { id: "funnelFigure", title: "复核漏斗", source: "reviewed_events", provenance: "derived_from_review_layer" },
-      { id: "densityFigure", title: "已复核纳入草稿候选数（预览，按记录小时归一化）", source: "confirmed_reviewed_events", provenance: "derived_from_review_layer", limitation: "非发作频率，非疾病活动度，非完整事件负荷。" },
+      { id: "densityFigure", title: "已有人工状态的纳入草稿候选数（预览，按记录小时归一化）", source: "confirmed_reviewed_events", provenance: "derived_from_review_layer", limitation: "非发作频率，非疾病活动度，非完整事件负荷。" },
       { id: "qcFigure", title: "通道参与概览", source: "confirmed_reviewed_events", provenance: "derived_from_review_layer" },
     ];
   }
@@ -884,9 +897,9 @@
         threshold: Number.isFinite(Number(model.threshold)) ? Number(model.threshold) : "预览草稿未记录",
       },
       manual_review_mapping: {
-        confirmed: "纳入草稿候选，进入草稿摘要和事件结果表。",
+        confirmed: "纳入草稿候选，进入草稿摘要和候选复核表。",
         rejected: "不纳入草稿候选，仅保留追溯。",
-        needs_review: "存疑候选，不形成结论。",
+        needs_review: "存疑/需二次复核候选，不形成结论。",
         unreviewed: "未复核候选，不形成结论。",
       },
       evidence_grade_definition: {
@@ -1006,12 +1019,12 @@
         has_explicit_candidate_denominator: true,
         candidate_denominator: events.length,
         candidate_set_scope: "current_preview_candidate_package",
-        denominator_note: "示例记录包含当前已载入的预览候选包；这不是全记录完整检测器的事件负荷估计。",
+        denominator_note: "示例记录包含当前已载入的预览候选包；这不是完整检测器的事件负荷估计。",
       },
       reviewed_events: events,
       actions: [
         { type: "event_review", label: "纳入草稿", detail: "HE105-E001", created_at: new Date(Date.now() - 720000).toISOString() },
-        { type: "event_review", label: "存疑", detail: "HE105-E002 · needs_review", created_at: new Date(Date.now() - 620000).toISOString() },
+        { type: "event_review", label: "存疑/需二次复核", detail: "HE105-E002 · needs_review", created_at: new Date(Date.now() - 620000).toISOString() },
         { type: "adjust_event_interval", label: "调整边界", detail: "HE105-E004 · 18525.0-18526.8s", created_at: new Date(Date.now() - 420000).toISOString() },
         { type: "event_review", label: "不纳入草稿", detail: "HE105-E007 · 体动 / ACC 同步", created_at: new Date(Date.now() - 180000).toISOString() },
       ],
@@ -1141,6 +1154,37 @@
       unreadable: "不可判读",
     };
     return labels[value] || value;
+  }
+
+  function linkedPreviewUrl(path, source) {
+    const params = new URLSearchParams({ source });
+    const currentParams = new URLSearchParams(window.location.search);
+    const apiBase = currentParams.get("api") || state.payload?.context?.api_base || "";
+    if (apiBase && isLocalPage() && isLocalApiBase(apiBase)) params.set("api", apiBase);
+    return `${path}?${params.toString()}`;
+  }
+
+  function isLocalPage() {
+    const host = window.location.hostname;
+    return !host || host === "localhost" || host === "127.0.0.1" || host === "::1" || host === "[::1]";
+  }
+
+  function isLocalApiBase(value) {
+    try {
+      const url = new URL(value, window.location.origin);
+      return ["localhost", "127.0.0.1", "::1", "[::1]"].includes(url.hostname);
+    } catch {
+      return false;
+    }
+  }
+
+  function priorityLabel(priority) {
+    const labels = {
+      high: "高",
+      medium: "中",
+      low: "低",
+    };
+    return labels[String(priority || "").toLowerCase()] || priority || "未记录";
   }
 
   function actionLabel(value) {

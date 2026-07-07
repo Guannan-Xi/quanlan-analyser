@@ -104,6 +104,31 @@ Demo credentials:
 demo.customer@quanlan.cn / demo123456
 ```
 
+## Local Lab Epilepsy Full-Flow Preview
+
+Use this for the HE sample epilepsy-like candidate review workbench. The lab API is intentionally local-only and disabled unless the script sets the required environment variables:
+
+```powershell
+scripts\start_lab_epilepsy_full_flow_local.ps1 -SampleRoot "D:\Quanlan\Data\HE脑电\HE脑电" -StartFrontend
+```
+
+Then open:
+
+```text
+http://127.0.0.1:4176/epilepsy-full-flow-preview.html?api=http://127.0.0.1:8001/api
+```
+
+The script sets `QLANALYSER_ENV=local`, `QLANALYSER_LAB_EPILEPSY_FULL_FLOW_ENABLED=1`, and `QLANALYSER_LAB_HE_SAMPLE_ROOT=<HE sample root>`, and checks that supported EEG sample files exist before starting the backend.
+
+Verify the local HE trial path after both services are running:
+
+```powershell
+C:\Users\XGN\miniconda3\python.exe scripts\acceptance_lab_epilepsy_full_flow_api.py --api-base-url http://127.0.0.1:8001/api --record-id he-105 --top-k 6 --scan-windows 12 --candidate-timeout 120
+node scripts\e2e_lab_epilepsy_full_flow_browser.mjs
+```
+
+The browser E2E writes screenshots, downloaded draft files, and a JSON verdict under `work\release_evidence\lab_epilepsy_full_flow_browser\`.
+
 Current public review links:
 
 ```text
