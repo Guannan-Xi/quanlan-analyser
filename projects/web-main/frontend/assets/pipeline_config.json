@@ -1,0 +1,66 @@
+{
+  "data": {
+    "format": "EDF + events TSV",
+    "sfreq_hz": 256,
+    "channels": [
+      "Fp1",
+      "Fp2",
+      "F3",
+      "F4",
+      "C3",
+      "C4",
+      "P3",
+      "P4"
+    ],
+    "montage": "standard_1020",
+    "reference": "average"
+  },
+  "epoching": {
+    "event_id": [
+      "stim/target",
+      "stim/standard"
+    ],
+    "tmin_s": -0.2,
+    "tmax_s": 0.8,
+    "baseline_s": [
+      -0.2,
+      0.0
+    ]
+  },
+  "preprocessing": {
+    "filter_hz": [
+      1,
+      40
+    ],
+    "ica_method": "infomax",
+    "ica_components": 6,
+    "eeglab_equivalent": [
+      "pop_eegfiltnew",
+      "runica",
+      "ICLabel/topoplot style review"
+    ]
+  },
+  "statistics": {
+    "unit": "subject",
+    "p300_window_s": [
+      0.28,
+      0.42
+    ],
+    "planned_tests": [
+      "paired contrasts",
+      "FDR-BH",
+      "cluster permutation"
+    ],
+    "n_permutations": 1024
+  },
+  "figure_postprocess": {
+    "dpi": 300,
+    "palette": [
+      "#157a77",
+      "#d95f43",
+      "#526577"
+    ],
+    "spines": "top/right removed",
+    "raw_tables_required": true
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "slug": "face_n170",
+  "name": "面孔知觉 N170",
+  "family": "erp",
+  "effect": "n170",
+  "events": {
+    "face": 14,
+    "object": 4
+  },
+  "channels": 12,
+  "duration_s": 60,
+  "sfreq_hz": 256,
+  "edf_bytes": 373544,
+  "effect_detectability": 4.722,
+  "effect_metric": "occipital_n170_difference_uv",
+  "review_grade": "excellent",
+  "coverage": {
+    "upload": true,
+    "event_parsing": true,
+    "epoching": true,
+    "time_frequency": false,
+    "erp": true,
+    "statistics_ready": true
+  },
+  "recommended_outputs": [
+    "events.tsv",
+    "QC",
+    "subject-level CSV",
+    "publication figure",
+    "manifest"
+  ]
+}

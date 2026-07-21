@@ -1,0 +1,13 @@
+path,finding
+projects/web-main/backend/services/customer_delivery_service.py,customer/patient-like path; provenance review required
+projects/web-main/frontend/assets/customer_oddball_case/customer_analysis_manifest.json,customer/patient-like path; provenance review required
+projects/web-main/frontend/assets/customer_oddball_case/customer_analysis_reference_manifest.json,customer/patient-like path; provenance review required
+projects/web-main/frontend/assets/customer_oddball_case/customer_figure_caption.txt,customer/patient-like path; provenance review required
+projects/web-main/frontend/assets/customer_oddball_case/customer_methods.txt,customer/patient-like path; provenance review required
+projects/web-main/frontend/assets/customer_oddball_case/customer_oddball_erp_pz.png,customer/patient-like path; provenance review required
+projects/web-main/frontend/assets/customer_oddball_case/customer_oddball_p300_topomap.png,customer/patient-like path; provenance review required
+projects/web-main/frontend/assets/customer_oddball_case/customer_oddball_run_summary.json,customer/patient-like path; provenance review required
+projects/web-main/frontend/assets/customer_oddball_case/customer_statistics_summary.csv,customer/patient-like path; provenance review required
+projects/web-main/frontend/assets/customer_oddball_case/customer_subject_level_metrics.csv,customer/patient-like path; provenance review required
+projects/web-main/frontend/assets/customer_oddball_case/sub-001_events.tsv,customer/patient-like path; provenance review required
+projects/web-main/frontend/assets/customer_oddball_case/sub-002_events.tsv,customer/patient-like path; provenance review required

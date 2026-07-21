@@ -1,0 +1,40 @@
+{
+  "schema_version": "baseline-safety-scan-v1",
+  "trackable_file_count": 1134,
+  "scanned_text_file_count": 1051,
+  "finding_counts": {
+    "review": 4
+  },
+  "findings": [
+    {
+      "path": "projects/web-main/frontend/app.js",
+      "line": 62,
+      "rule": "literal-password",
+      "severity": "review"
+    },
+    {
+      "path": "projects/web-main/scripts/acceptance_ops_ui.mjs",
+      "line": 48,
+      "rule": "literal-password",
+      "severity": "review"
+    },
+    {
+      "path": "projects/web-main/scripts/acceptance_task_queue_capacity.py",
+      "line": 63,
+      "rule": "literal-password",
+      "severity": "review"
+    },
+    {
+      "path": "projects/web-main/scripts/verify_p1_live_wiring.mjs",
+      "line": 46,
+      "rule": "literal-password",
+      "severity": "review"
+    }
+  ],
+  "privacy": "Matched values are intentionally not recorded.",
+  "limitations": [
+    "Pattern scanning cannot prove the absence of all secrets or personal data.",
+    "Binary and files larger than 5 MiB are not content-scanned; Git ignore and large-file review cover them.",
+    "Review findings require manual classification before commit."
+  ]
+}

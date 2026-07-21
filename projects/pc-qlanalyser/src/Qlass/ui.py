@@ -1,0 +1,314 @@
+from PyQt5.QtWidgets import QWidget, QPushButton, QListWidget, \
+    QProgressBar, QLabel, QComboBox, QPlainTextEdit, QSizePolicy,\
+    QGridLayout, QCheckBox, QLineEdit
+from PyQt5.QtCore import QRect, QMetaObject
+from PyQt5.QtGui import QIcon
+
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg, NavigationToolbar2QT  
+from matplotlib.figure import Figure
+import matplotlib.pyplot as plt
+
+
+class Ui_MainWindow(object):
+    def setupUi(self, MainWindow):
+        MainWindow.setObjectName("MainWindow")
+        # MainWindow.center()
+        # qr = self.frameGeometry()
+        # cp = QDesktopWidget().availableGeometry().center()
+        # qr.moveCenter(cp)
+        # MainWindow.move(qr.topLeft())
+
+        #MainWindow.setFixedSize(1600, 1000)
+        MainWindow.resize(1600, 1000)
+        MainWindow.setWindowIcon(QIcon('logo.png'))
+        MainWindow.setWindowTitle("Qlass")
+
+        # sizePolicy = QSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        # sizePolicy.setHorizontalStretch(0)
+        # sizePolicy.setVerticalStretch(0)
+
+
+        # 设置主窗口的大小策略为可扩展
+        sizePolicy = QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        sizePolicy.setHorizontalStretch(1)
+        sizePolicy.setVerticalStretch(1)
+        sizePolicy.setHeightForWidth(MainWindow.sizePolicy().hasHeightForWidth())
+        MainWindow.setSizePolicy(sizePolicy)
+
+        self.button_input_files = QPushButton(self)
+        self.button_input_files.setGeometry(QRect(40, 20, 240, 40))
+        self.button_input_files.setStyleSheet("font: 10pt;")
+        self.button_input_files.setObjectName("button_input_files")
+        self.button_input_files.setText("Select EDF/EDF+ File(s)")
+
+        self.button_clear_input = QPushButton(self)
+        self.button_clear_input.setGeometry(QRect(300, 20, 80, 40))
+        self.button_clear_input.setStyleSheet("font: 10pt;")
+        self.button_clear_input.setObjectName("button_clear_input")
+        self.button_clear_input.setText("Clear")
+
+        # Stage Codes
+        self.label_wake_code = QLabel(self)
+        self.label_wake_code.setGeometry(QRect(40, 80, 50, 20))
+        self.label_wake_code.setStyleSheet("font: 10pt;")
+        self.label_wake_code.setText("Wake:")
+
+        self.label_nrem_code = QLabel(self)
+        self.label_nrem_code.setGeometry(QRect(100, 80, 50, 20))
+        self.label_nrem_code.setStyleSheet("font: 10pt;")
+        self.label_nrem_code.setText("NREM:")
+
+        self.label_rem_code = QLabel(self)
+        self.label_rem_code.setGeometry(QRect(160, 80, 50, 20))
+        self.label_rem_code.setStyleSheet("font: 10pt;")
+        self.label_rem_code.setText("REM:")
+
+        self.label_epoch_length_pre_text = QLabel(self)
+        self.label_epoch_length_pre_text.setGeometry(QRect(220, 80, 90, 20))
+        self.label_epoch_length_pre_text.setStyleSheet("font: 10pt;")
+        self.label_epoch_length_pre_text.setText("Epoch Length:")
+
+        self.combobox_epoch_length = QComboBox(self)
+        self.combobox_epoch_length.setGeometry(QRect(310, 80, 40, 20))
+        self.combobox_epoch_length.setStyleSheet("font: 10pt;")
+        # self.combobox_epoch_length.setInputMask("00")
+        self.combobox_epoch_length.addItem("4")
+        self.combobox_epoch_length.addItem("10")
+        self.combobox_epoch_length.addItem("20")
+
+
+        self.label_epoch_length_post_text = QLabel(self)
+        self.label_epoch_length_post_text.setGeometry(QRect(360, 80, 40, 20))
+        self.label_epoch_length_post_text.setStyleSheet("font: 10pt;")
+        self.label_epoch_length_post_text.setText("sec")
+
+        self.listWidget_input = QListWidget(self)
+        self.listWidget_input.setGeometry(QRect(40, 180, 340, 270))
+        self.listWidget_input.setObjectName("listWidget_input")
+        self.listWidget_input
+
+        self.ListWidget_warning = QLabel(self)
+        self.ListWidget_warning.setGeometry(QRect(50, 260, 340, 270))
+        self.ListWidget_warning.setStyleSheet("font: 10pt;")
+        self.ListWidget_warning.setStyleSheet("color:red")
+        self.ListWidget_warning.setWordWrap(True)
+        #self.ListWidget_warning.setText("**Score file again if you change epoch length before Visualizing the Selected File**")
+
+        self.progressBar = QProgressBar(self)
+        self.progressBar.setGeometry(QRect(40, 500, 340, 20))
+        self.progressBar.setProperty("value", 0)
+        self.progressBar.setObjectName("progressBar")
+        self.progressBar.setProperty("value", 0)
+        self.progressBar.setStyleSheet("QProgressBar {background-color : lightgray}")
+
+        self.label_status = QLabel(self)
+        self.label_status.setGeometry(QRect(200, 500, 160, 20))
+        self.label_status.setStyleSheet("font: 10pt;")
+        self.label_status.setText("")
+#        self.label_status.setObjectName("label_status")
+
+        self.button_run = QPushButton(self)
+        self.button_run.setGeometry(QRect(40, 540, 340, 40))
+        self.button_run.setStyleSheet("font: 10pt;")
+        self.button_run.setObjectName("button_run")
+        self.button_run.setText("Score All Files")
+        self.button_run.setEnabled(False)
+
+        self.button_plot = QPushButton(self)
+        self.button_plot.setGeometry(QRect(40, 600, 340, 40))
+        self.button_plot.setStyleSheet("font: 10pt;")
+        self.button_plot.setObjectName("button_plot")
+        self.button_plot.setText("Visualize the Selected File")
+        self.button_plot.setEnabled(False)
+
+        # self.checkbox_run_shap = QCheckBox('Run/Plot SHAP (not supported for 2_LightGBM-1EEG)', self)
+        # self.checkbox_run_shap.setGeometry(QRect(40, 450, 340, 40))
+        
+        # log
+        self.textbox = QPlainTextEdit(self)
+        self.textbox.setStyleSheet("font: 10pt;")
+        self.textbox.setGeometry(QRect(40, 660, 340, 320))
+
+        # Set right pane
+        layout_right_pane = QGridLayout()
+        
+        # plot
+        # self.label_plot = QLabel()
+        # self.label_plot.setStyleSheet("font: 10pt;")
+        # self.label_plot.setWordWrap(True)
+        # self.label_plot.setText("Right click on an epoch to plot its SHAP values (LighGBM-2EEG only). Be patient, it takes a few seconds to update the plots.")
+
+        self.figure = plt.figure(layout="constrained")
+        self.canvas = FigureCanvasQTAgg(self.figure)
+        
+        # Select number of epochs to display
+        self.label_select_number_epochs = QLabel()
+        self.label_select_number_epochs.setGeometry(QRect(0, 0, 200, 40))
+        self.label_select_number_epochs.setStyleSheet("font: 10pt;")
+        self.label_select_number_epochs.setText("Select Number of Epochs to Display")
+        self.combobox_select_n_epochs = QComboBox()
+        self.combobox_select_n_epochs.setGeometry(QRect(200, 0, 200, 40))
+        self.combobox_select_n_epochs.addItem("All")
+        self.combobox_select_n_epochs.addItem("100")
+        self.combobox_select_n_epochs.addItem("50")
+        self.combobox_select_n_epochs.addItem("20")
+        self.combobox_select_n_epochs.addItem("10")
+        self.combobox_select_n_epochs.addItem("5")
+        self.combobox_select_n_epochs.addItem("3")
+        self.combobox_select_n_epochs.addItem("2")
+        self.combobox_select_n_epochs.addItem("1")
+        self.combobox_select_n_epochs.setEnabled(False)
+
+        # go to epoch
+
+        self.button_goto_epoch = QPushButton(self)
+        # self.button_goto_epoch.setGeometry(QRect(220, 540, 160, 40))
+        self.button_goto_epoch.setStyleSheet("font: 10pt;")
+        self.button_goto_epoch.setObjectName("button_goto_epoch")
+        self.button_goto_epoch.setText("Go to Epoch")
+        self.button_goto_epoch.setEnabled(False)
+
+
+        # Display the stage of the selected epoch
+        self.label_selected_epoch_stage = QLabel()
+        self.label_selected_epoch_stage.setGeometry(QRect(0, 0, 200, 40))
+        self.label_selected_epoch_stage.setStyleSheet("font: 10pt;")
+        self.label_selected_epoch_stage.setText("Stage of selected epoch")
+        self.combobox_selected_epoch_stage = QComboBox()
+        self.combobox_selected_epoch_stage.setGeometry(QRect(200, 0, 200, 40))
+        #self.combobox_selected_epoch_stage.addItem("None")
+        self.combobox_selected_epoch_stage.addItem("Wake")
+        self.combobox_selected_epoch_stage.addItem("NREM")
+        self.combobox_selected_epoch_stage.addItem("REM")
+        self.combobox_selected_epoch_stage.setEnabled(False)
+
+        self.button_previous = QPushButton(self)
+        # self.button_previous.setGeometry(QRect(220, 540, 160, 40))
+        self.button_previous.setStyleSheet("font: 10pt;")
+        self.button_previous.setObjectName("button_previous")
+        self.button_previous.setText("<")
+        self.button_previous.setEnabled(False)
+
+        self.button_previous_more = QPushButton(self)
+        # self.button_previous_more.setGeometry(QRect(220, 540, 160, 40))
+        self.button_previous_more.setStyleSheet("font: 10pt;")
+        self.button_previous_more.setObjectName("button_previous_more")
+        self.button_previous_more.setText("<<")
+        self.button_previous_more.setEnabled(False)
+
+        self.button_next = QPushButton(self)
+        # self.button_next.setGeometry(QRect(220, 540, 160, 40))
+        self.button_next.setStyleSheet("font: 10pt;")
+        self.button_next.setObjectName("button_next")
+        self.button_next.setText(">")
+        self.button_next.setEnabled(False)
+
+        self.button_next_more = QPushButton(self)
+        # self.button_next_more.setGeometry(QRect(220, 540, 160, 40))
+        self.button_next_more.setStyleSheet("font: 10pt;")
+        self.button_next_more.setObjectName("button_next_more")
+        self.button_next_more.setText(">>")
+        self.button_next_more.setEnabled(False)
+
+        # self.figure_shap_epoch = plt.figure(layout="constrained")
+        # self.canvas_shap_epoch = FigureCanvasQTAgg(self.figure_shap_epoch)
+
+        # self.label_shap_epoch = QLabel()
+        # self.label_shap_epoch.setStyleSheet("font: 9pt;")
+        # self.label_shap_epoch.setWordWrap(True)
+        # self.label_shap_epoch.setText("Top 10 features with the highest absolute SHAP values for the selected epoch. Positive SHAP values indicate positive contribution to the prediction, and vice versa. If in the WAKE SHAP plot, you see a positive SHAP_Wake value for the feature 'emg_abs_max', it indicates that the 'emg_abs_max' value from the selected epoch increases the likelihood of the selected epoch being scored as Wake. Note that SHAP value only explains why the model makes the decision, it doesn't evaluate whether the decision is correct or not.")
+
+        # self.figure_shap_global = plt.figure(layout="constrained")
+        # self.canvas_shap_global = FigureCanvasQTAgg(self.figure_shap_global)
+
+        # self.label_shap_global = QLabel()
+        # self.label_shap_global.setStyleSheet("font: 9pt;")
+        # self.label_shap_global.setWordWrap(True)
+        # self.label_shap_global.setText("Top 10 features with the highest absolute Global SHAP values (calculated from 500 randomly sampled epochs). SHAP value shows how much a feature affected the prediction. Positive SHAP values indicate positive contribution to the prediction, and vice versa. Samples with redder color have higher feature values. Here is an example on how to interpret the plots. If in the WAKE SHAP plot, you see more redder dots on the right side of feature 'emg_abs_max' (more positive SHAP), it indicates that in general higher 'emg_abs_max' increases the likelihood of being scored as Wake. Note that SHAP value only explains why the model makes the decision, it doesn't evaluate whether the decision is correct or not.")
+
+        layout_right_pane.addWidget(self.label_select_number_epochs, 0, 0, 1, 1)
+        layout_right_pane.addWidget(self.combobox_select_n_epochs, 0, 1, 1, 1)
+        layout_right_pane.addWidget(self.label_selected_epoch_stage, 0, 2, 1, 1)
+        layout_right_pane.addWidget(self.combobox_selected_epoch_stage, 0, 3, 1, 1)
+        layout_right_pane.addWidget(self.button_goto_epoch, 0, 4, 1, 1)
+        layout_right_pane.addWidget(self.button_previous_more, 0, 5, 1, 1)
+        layout_right_pane.addWidget(self.button_previous, 0, 6, 1, 1)
+        layout_right_pane.addWidget(self.button_next, 0, 7, 1, 1)
+        layout_right_pane.addWidget(self.button_next_more, 0, 8, 1, 1)
+        # layout_right_pane.addWidget(self.label_plot, 1, 0, 1, 9)
+        layout_right_pane.addWidget(self.canvas, 2, 0, 1, 9)
+        # layout_right_pane.addWidget(self.canvas_shap_epoch, 3, 0, 1, 9)
+        # layout_right_pane.addWidget(self.label_shap_epoch, 4, 0, 1, 9)
+        # layout_right_pane.addWidget(self.canvas_shap_global, 5, 0, 1, 9)
+        # layout_right_pane.addWidget(self.label_shap_global, 6, 0, 1, 9)
+
+
+        self.right_pane = QWidget(self)
+        self.right_pane.setObjectName("right_pane")
+        self.right_pane.setGeometry(QRect(420, 10, 1160, 980))
+        self.right_pane.setLayout(layout_right_pane)
+
+
+        ##下面代码创建主布局来管理所有组件
+         # 创建主布局
+        self.main_layout = QGridLayout()
+        
+        # 创建左侧面板容器
+        self.left_panel = QWidget()
+        self.left_layout = QGridLayout(self.left_panel)
+
+        # 将现有的左侧组件添加到左侧布局中
+        self.left_layout.addWidget(self.button_input_files, 0, 0, 1, 3)
+        self.left_layout.addWidget(self.button_clear_input, 0, 3, 1, 1)
+        self.left_layout.addWidget(self.label_wake_code, 1, 0)
+        self.left_layout.addWidget(self.label_nrem_code, 1, 1)
+        self.left_layout.addWidget(self.label_rem_code, 1, 2)
+        self.left_layout.addWidget(self.label_epoch_length_pre_text, 1, 3)
+        self.left_layout.addWidget(self.combobox_epoch_length, 1, 4)
+        self.left_layout.addWidget(self.label_epoch_length_post_text, 1, 5)
+        self.left_layout.addWidget(self.listWidget_input, 2, 0, 1, 6)
+        self.left_layout.addWidget(self.ListWidget_warning, 3, 0, 1, 6)
+        self.left_layout.addWidget(self.progressBar, 4, 0, 1, 6)
+        self.left_layout.addWidget(self.label_status, 5, 0, 1, 6)
+        self.left_layout.addWidget(self.button_run, 6, 0, 1, 6)
+        self.left_layout.addWidget(self.button_plot, 7, 0, 1, 6)
+        self.left_layout.addWidget(self.textbox, 8, 0, 1, 6)
+        
+        # 设置左侧面板的大小策略
+        left_size_policy = QSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
+        self.left_panel.setSizePolicy(left_size_policy)
+        
+        # 将左侧面板和右侧面板添加到主布局
+        self.main_layout.addWidget(self.left_panel, 0, 0)
+        self.main_layout.addWidget(self.right_pane, 0, 1)
+        
+        # 设置列的拉伸因子，使右侧面板占据更多空间
+        self.main_layout.setColumnStretch(0, 1)  # 左侧面板
+        self.main_layout.setColumnStretch(1, 4)  # 右侧面板
+        
+        # 创建中央窗口部件并设置主布局
+        central_widget = QWidget()
+        central_widget.setLayout(self.main_layout)
+        MainWindow.setCentralWidget(central_widget)
+
+
+
+        QMetaObject.connectSlotsByName(MainWindow)
+
+
+    def write(self, txt):
+        self.textbox.appendPlainText(str(txt))
+
+
+class QTextEditLogger:
+    def __init__(self, widget):
+        self.widget = widget
+        self.widget.setReadOnly(True)  # 设置为只读
+
+    def write(self, text):
+        if text.strip() != '':  # 避免写入空行
+            self.widget.appendPlainText(text.rstrip())
+
+    def flush(self):
+        pass
+

@@ -1,0 +1,33 @@
+{
+  "slug": "sleep_spindle_kcomplex",
+  "name": "睡眠纺锤与 K-complex",
+  "family": "sleep",
+  "effect": "sleep_events",
+  "events": {
+    "k_complex": 2,
+    "spindle": 2,
+    "stage2": 1
+  },
+  "channels": 12,
+  "duration_s": 60,
+  "sfreq_hz": 256,
+  "edf_bytes": 373784,
+  "effect_detectability": 1504.12,
+  "effect_metric": "sleep_event_detectability",
+  "review_grade": "excellent",
+  "coverage": {
+    "upload": true,
+    "event_parsing": true,
+    "epoching": true,
+    "time_frequency": true,
+    "erp": false,
+    "statistics_ready": true
+  },
+  "recommended_outputs": [
+    "events.tsv",
+    "QC",
+    "subject-level CSV",
+    "publication figure",
+    "manifest"
+  ]
+}

@@ -1,0 +1,78 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+.env
+.env.*
+*.log
+
+# Node / frontend
+node_modules/
+dist/
+build/
+.npm/
+*.tsbuildinfo
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Runtime / private data (never commit)
+data/
+work/
+outputs/
+*.bdf
+*.edf
+*.fif
+*.set
+*.cnt
+*.vhdr
+*.vmrk
+*.eeg
+*.mat
+*.npy
+*.npz
+*.db
+*.sqlite
+*.sqlite3
+*.pdf
+*.zip
+*.7z
+*.rar
+
+# Generated research outputs (index separately; do not baseline the payloads)
+results/
+**/results/
+
+# Large local model, dataset, binary and normative-reference assets
+# (keep on disk, inventory only; pc-qlanalyser is excluded from modularization)
+*.pkl
+*.sav
+*.parquet
+*.NRM
+*.dll
+*.ipynb
+**/qeeg_output/
+
+# Local packaging artifacts (optional regenerate)
+packages/*.zip
+packages/*.sha256
+evidence/verification-scan.json
+
+# License / machine config leftovers
+**/resource/licence.lic
+**/config/config.dat
+**/config/config_production.dat
+**/resource/html_reports/

@@ -1,0 +1,352 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>癫痫样候选窗口判读预览 - QLanalyser</title>
+    <meta
+      name="description"
+      content="QLanalyser 癫痫样候选窗口全局概览、初筛观察、人工判读和草稿记录预览。"
+    />
+    <link rel="stylesheet" href="./epilepsy-full-flow-preview.css?v=20260708-review-handoff-v1" />
+    <link rel="stylesheet" href="./workbench-spacious-overrides.css?v=20260706-spacious-v1" />
+    <script src="./vendor/lucide.min.js"></script>
+  </head>
+  <body>
+    <main class="ep-flow-app" data-testid="epilepsy-full-flow-preview">
+      <header class="ep-flow-topbar">
+        <div class="ep-flow-brand">
+          <span>QLanalyser Online</span>
+          <strong>癫痫样候选窗口判读预览</strong>
+        </div>
+        <div class="ep-flow-top-actions">
+          <button class="ep-flow-btn ep-flow-btn-ghost" type="button" id="copyFlowBtn">
+            <i data-lucide="copy" aria-hidden="true"></i>
+            <span>复制试用摘要</span>
+          </button>
+          <button class="ep-flow-btn ep-flow-btn-ghost" type="button" id="openReviewBtn" disabled hidden>
+            <i data-lucide="square-pen" aria-hidden="true"></i>
+            <span>打开判读区</span>
+          </button>
+          <button class="ep-flow-btn ep-flow-btn-primary" type="button" id="openReportBtn" disabled hidden>
+            <i data-lucide="file-chart-column" aria-hidden="true"></i>
+            <span>打开草稿详情</span>
+          </button>
+        </div>
+      </header>
+
+      <section class="ep-flow-hero" aria-label="流程目标">
+        <div>
+          <p class="ep-flow-kicker">示例 EDF 判读流程</p>
+          <h1 id="heroTitle">选择记录后，先看全局数据概览</h1>
+          <p>
+            先读取记录时长、采样率和通道，再观察候选窗口分布与代表波形，最后在 EEG/EMG/ACC 和时频证据上完成人工判读。
+          </p>
+        </div>
+        <div class="ep-flow-scope" aria-label="工作台口径">
+          <span>工作台口径</span>
+          <strong>候选观察与人工判读记录</strong>
+          <small>本页只形成候选观察和人工判读记录，不生成诊断意见、治疗建议或用药依据。</small>
+        </div>
+      </section>
+
+      <nav class="ep-flow-stepper" aria-label="端到端步骤">
+        <button class="is-active" type="button" data-step="upload">
+          <span>1</span>
+          <strong>选择记录</strong>
+        </button>
+        <button type="button" data-step="review" disabled>
+          <span>2</span>
+          <strong>初筛观察</strong>
+        </button>
+        <button type="button" data-step="report" disabled>
+          <span>3</span>
+          <strong>人工判读与草稿</strong>
+        </button>
+      </nav>
+
+      <section class="ep-flow-context" aria-label="当前分析对象">
+        <article>
+          <span>当前记录</span>
+          <strong id="contextRecord">尚未选择</strong>
+        </article>
+        <article>
+          <span>记录读取</span>
+          <strong id="contextQc">待读取</strong>
+        </article>
+        <article>
+          <span>候选窗口</span>
+          <strong id="contextCandidates">0</strong>
+        </article>
+        <article>
+          <span>人工判读覆盖</span>
+          <strong id="contextReview">0%</strong>
+        </article>
+        <article>
+          <span>判读记录</span>
+          <strong id="contextReport">未生成</strong>
+        </article>
+      </section>
+
+      <section class="ep-flow-overview" aria-label="全局数据概览与初筛结果观察">
+        <article class="ep-flow-overview-card ep-flow-overview-primary">
+          <div>
+            <span>全局数据概览</span>
+            <h2 id="overviewRecordTitle">尚未选择记录</h2>
+          </div>
+          <dl id="overviewRecordStats"></dl>
+        </article>
+        <article class="ep-flow-overview-card">
+          <span>初筛结果观察</span>
+          <strong id="overviewScreeningTitle">等待记录读取</strong>
+          <p id="overviewScreeningText">选择合成示例记录后，先查看记录规模和通道，再生成候选窗口。</p>
+        </article>
+        <article class="ep-flow-overview-card">
+          <span>候选窗口分布</span>
+          <div class="ep-flow-window-distribution" id="overviewDistribution"></div>
+        </article>
+      </section>
+
+      <div class="ep-flow-shell">
+        <section class="ep-flow-work" aria-label="流程操作区">
+          <section class="ep-flow-panel ep-flow-stage is-active" id="stageUpload" data-stage="upload">
+            <div class="ep-flow-section-head">
+              <div>
+                <span>选择记录</span>
+                <h2>选择合成示例 EDF</h2>
+              </div>
+              <button class="ep-flow-file-btn" type="button" id="chooseEdfBtn">
+                <i data-lucide="upload" aria-hidden="true"></i>
+                <span>登记 EDF 文件</span>
+              </button>
+              <input id="edfInput" type="file" accept=".edf,application/edf" hidden />
+            </div>
+
+            <div class="ep-flow-folder">
+              <div>
+                <span>示例数据来源</span>
+                <strong id="sampleSourceText">正在连接示例数据</strong>
+                <small id="sampleFolderText">数据来源说明：等待试用环境返回数据状态</small>
+              </div>
+              <button class="ep-flow-btn ep-flow-btn-ghost" type="button" id="copyFolderBtn">
+                <i data-lucide="copy" aria-hidden="true"></i>
+                <span>复制数据来源说明</span>
+              </button>
+            </div>
+
+            <div class="ep-flow-sample-grid" id="sampleGrid" aria-label="合成示例文件"></div>
+
+            <div class="ep-flow-callout">
+              <i data-lucide="shield-alert" aria-hidden="true"></i>
+              <p>
+                优先选择下方合成示例记录跑完整流程；导入 EDF 目前只登记文件名和大小，不能套用合成示例候选。
+                长时程记录不会一次性读进浏览器，后续分析只读取需要查看的时间窗。
+              </p>
+            </div>
+          </section>
+
+          <section class="ep-flow-panel ep-flow-stage" id="stagePreflight" data-stage="preflight">
+            <div class="ep-flow-section-head">
+              <div>
+                <span>记录读取</span>
+                <h2>记录读取与全局概览</h2>
+              </div>
+              <button class="ep-flow-btn ep-flow-btn-primary" type="button" id="runPreflightBtn">
+                <i data-lucide="scan-line" aria-hidden="true"></i>
+                <span>读取记录概览</span>
+              </button>
+            </div>
+            <div class="ep-flow-qc-grid" id="qcGrid"></div>
+            <div class="ep-flow-method-note">
+              <strong>读取内容</strong>
+              <p>
+                读取文件格式、记录时长、采样率和通道，用来判断后续候选窗口和波形证据如何分段查看。当前 HE 记录是本地示例；
+                如果换成新的 EDF，需要先完成元数据读取，不能直接套用示例候选。
+              </p>
+            </div>
+          </section>
+
+          <section class="ep-flow-panel ep-flow-stage" id="stageCandidates" data-stage="candidates">
+            <div class="ep-flow-section-head">
+              <div>
+                <span>初筛观察</span>
+                <h2>生成候选窗口并观察分布</h2>
+              </div>
+              <button class="ep-flow-btn ep-flow-btn-primary" type="button" id="generateCandidatesBtn">
+                <i data-lucide="sparkles" aria-hidden="true"></i>
+                <span>生成候选窗口</span>
+              </button>
+            </div>
+            <div class="ep-flow-runner" id="candidateRunner" aria-live="polite">
+              <span>等待运行</span>
+              <div class="ep-flow-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="等待运行"><b></b></div>
+            </div>
+            <div class="ep-flow-candidate-strip" id="candidateStrip"></div>
+            <div class="ep-flow-callout">
+              <i data-lucide="info" aria-hidden="true"></i>
+              <p>
+                候选窗口用于安排人工判读顺序和代表波形查看；排序值不是概率，也不表示检测器性能。
+                正式版本必须绑定真实数据窗口、检测器版本、参数和审阅记录。
+              </p>
+            </div>
+          </section>
+
+          <section class="ep-flow-panel ep-flow-stage" id="stageReview" data-stage="review">
+            <div class="ep-flow-section-head">
+              <div>
+                <span>人工判读</span>
+                <h2>候选窗口波形判读</h2>
+              </div>
+            </div>
+            <div class="ep-flow-review-embedded" data-testid="embedded-review-stage">
+              <div class="ep-flow-workbench-card ep-flow-workbench-card-inline">
+                <div>
+                  <h3 id="activeEventTitle">当前页人工判读区</h3>
+                  <p id="reviewHandoffCopy">在当前页查看候选队列、EEG/EMG/ACC 和时频证据并记录人工判读状态。完成后可生成判读草稿。</p>
+                  <div class="ep-flow-workbench-facts" id="reviewHandoffFacts"></div>
+                </div>
+                <button class="ep-flow-btn ep-flow-btn-ghost ep-flow-handoff-reload" type="button" id="openReviewHandoffBtn" data-open-review-handoff title="重新加载判读区" aria-label="重新加载判读区">
+                  <i data-lucide="refresh-cw" aria-hidden="true"></i>
+                  <span>重新加载</span>
+                </button>
+              </div>
+              <div class="ep-flow-event-list ep-flow-review-source-list" id="eventList" hidden></div>
+              <div class="ep-flow-review-frame-shell">
+                <iframe
+                  id="reviewWorkbenchFrame"
+                  data-testid="embedded-epilepsy-review-frame"
+                  title="候选窗口波形判读区"
+                  loading="eager"
+                  referrerpolicy="no-referrer"
+                ></iframe>
+              </div>
+            </div>
+          </section>
+
+          <section class="ep-flow-panel ep-flow-stage" id="stageAdversarial" data-stage="adversarial">
+            <div class="ep-flow-section-head">
+              <div>
+                <span>生成草稿</span>
+                <h2>导出前核对</h2>
+              </div>
+              <button class="ep-flow-btn ep-flow-btn-primary" type="button" id="runAdversarialBtn">
+                <i data-lucide="shield-check" aria-hidden="true"></i>
+                <span>重新核对</span>
+              </button>
+            </div>
+            <div class="ep-flow-gate-grid" id="gateGrid"></div>
+            <div class="ep-flow-issue-ledger" id="issueLedger"></div>
+          </section>
+
+          <section class="ep-flow-panel ep-flow-stage" id="stageReport" data-stage="report">
+            <div class="ep-flow-section-head">
+              <div>
+                <span>生成草稿</span>
+                <h2>判读草稿总览</h2>
+              </div>
+              <div class="ep-flow-action-row">
+                <button class="ep-flow-btn ep-flow-btn-ghost" type="button" id="exportCsvBtn" disabled>
+                  <i data-lucide="table" aria-hidden="true"></i>
+                  <span>导出候选窗口表</span>
+                </button>
+                <button class="ep-flow-btn ep-flow-btn-primary" type="button" id="exportReportJsonBtn" disabled>
+                  <i data-lucide="download" aria-hidden="true"></i>
+                  <span>下载判读草稿数据</span>
+                </button>
+              </div>
+            </div>
+
+            <article class="ep-flow-report" id="reportPreview" aria-label="判读草稿总览">
+              <header>
+                <div>
+                  <p class="ep-flow-kicker">候选窗口判读摘要</p>
+                  <h2>癫痫样候选窗口判读草稿</h2>
+                  <p id="reportBoundary">
+                    本草稿描述候选窗口的人工判读记录，不生成诊断意见、治疗建议或用药依据。
+                  </p>
+                </div>
+                <span class="ep-flow-report-status" id="reportStatusBadge">未生成</span>
+              </header>
+              <section class="ep-flow-report-summary" id="reportSummary"></section>
+              <section class="ep-flow-figure-grid">
+                <figure>
+                  <canvas id="timelineFigure" width="920" height="250" role="img" aria-describedby="timelineFigureDesc"></canvas>
+                  <p class="ep-flow-sr-only" id="timelineFigureDesc">候选窗口时间轴，按人工判读状态区分，仅展示候选判读草稿。</p>
+                  <figcaption>图 1. 当前候选窗口时间轴，按人工判读状态区分。</figcaption>
+                </figure>
+                <figure>
+                  <canvas id="funnelFigure" width="560" height="250" role="img" aria-describedby="funnelFigureDesc"></canvas>
+                  <p class="ep-flow-sr-only" id="funnelFigureDesc">候选窗口、已有人工状态、暂列入判读草稿窗口的数量漏斗。</p>
+                  <figcaption>图 2. 候选窗口到暂列入判读草稿窗口的判读漏斗。</figcaption>
+                </figure>
+                <figure>
+                  <canvas id="densityFigure" width="560" height="250" role="img" aria-describedby="densityFigureDesc"></canvas>
+                  <p class="ep-flow-sr-only" id="densityFigureDesc">已判读纳入草稿的候选数，按记录小时归一化，仅作预览值；不代表发作频率、疾病活动度或全记录负荷估计。</p>
+                  <figcaption>图 3. 已判读纳入草稿的候选数（按记录小时归一化，预览值）；不代表发作频率、疾病活动度或全记录负荷估计。</figcaption>
+                </figure>
+                <figure>
+                  <canvas id="qcFigure" width="560" height="250" role="img" aria-describedby="qcFigureDesc"></canvas>
+                  <p class="ep-flow-sr-only" id="qcFigureDesc">通道参与与伪迹风险概览，用于判读草稿质控。</p>
+                  <figcaption>图 4. 通道参与与伪迹风险概览。</figcaption>
+                </figure>
+              </section>
+              <section class="ep-flow-report-columns">
+                <article>
+                  <h3>观察摘要</h3>
+                  <p id="reportInterpretation">完成人工判读后生成摘要。</p>
+                </article>
+                <article>
+                  <h3>方法与限制</h3>
+                  <p id="reportMethods">完成记录读取与人工判读后生成方法说明。</p>
+                </article>
+              </section>
+              <details class="ep-flow-report-details" id="reportEventDetails">
+                <summary id="reportEventSummary">查看候选判读明细</summary>
+                <div class="ep-flow-table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>候选编号</th>
+                        <th>时间</th>
+                        <th>类型</th>
+                        <th>通道</th>
+                        <th>证据</th>
+                        <th>人工判读</th>
+                        <th>备注</th>
+                      </tr>
+                    </thead>
+                    <tbody id="reportEventRows"></tbody>
+                  </table>
+                </div>
+              </details>
+            </article>
+          </section>
+        </section>
+
+        <aside class="ep-flow-side" aria-label="当前进度">
+          <section class="ep-flow-panel ep-flow-next" id="nextActionPanel">
+            <span>当前下一步</span>
+            <h2 id="nextActionTitle">选择合成示例数据</h2>
+            <p id="nextActionText">选择 10 分钟合成示例，或登记 EDF 文件。</p>
+            <button class="ep-flow-btn ep-flow-btn-primary" type="button" id="nextActionBtn">
+              <i data-lucide="arrow-right" aria-hidden="true"></i>
+              <span>继续</span>
+            </button>
+          </section>
+
+          <section class="ep-flow-panel">
+            <div class="ep-flow-side-head">
+              <span>记录</span>
+              <strong>最近进度</strong>
+            </div>
+            <ol class="ep-flow-audit" id="auditList"></ol>
+          </section>
+        </aside>
+      </div>
+
+      <div class="ep-flow-toast" id="toast" role="status" aria-live="polite"></div>
+    </main>
+
+    <script src="./epilepsy-full-flow-preview.js?v=20260708-review-handoff-v1"></script>
+  </body>
+</html>

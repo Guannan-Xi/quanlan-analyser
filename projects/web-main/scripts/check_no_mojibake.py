@@ -1,0 +1,72 @@
+from __future__ import annotations
+
+import re
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_TARGETS = ["frontend", "outputs/eeglab-mne-release", "backend", "eeg_core", "worker", "docs", "README.md"]
+BAD_PATTERNS = [
+    (re.compile(r"\?\?\?"), "three or more question marks, usually lost CJK text"),
+    (re.compile(r"\ufffd"), "Unicode replacement character"),
+    (
+        re.compile(
+            r"(杩愯惀|璐︽埛|瀹㈡埛|娌欑洅|鍙戠エ|妯℃嫙|绋庡彿|閭|绛夊緟|寮€绁|涓婁紶|鍒嗘瀽|褰撳墠|鏈粦)"
+        ),
+        "common UTF-8 Chinese text decoded as GBK/CP936 mojibake",
+    ),
+    (
+        re.compile(
+            r"(鍒嗘瀽|鏁版嵁|閫傚悎|甯哥敤|杩涢樁|璐﹀彿|鐧诲綍|娉ㄥ唽|绠＄悊|瀵嗙爜|棰勮|浜や粯|澶嶆牳|浣撻獙|鐢ㄤ簬|丳SD|丒RP|€\?)"
+        ),
+        "common short Chinese mojibake phrase",
+    ),
+]
+TEXT_SUFFIXES = {".js", ".mjs", ".html", ".css", ".py", ".md", ".json", ".txt", ".ps1"}
+SKIP_PARTS = {"node_modules", "__pycache__", ".git", "test-results"}
+
+
+def iter_files(target: Path):
+    if target.is_file():
+        yield target
+        return
+    if not target.exists():
+        return
+    for path in target.rglob("*"):
+        if any(part in SKIP_PARTS for part in path.parts):
+            continue
+        if path.is_file() and path.suffix.lower() in TEXT_SUFFIXES:
+            yield path
+
+
+def main() -> int:
+    targets = [ROOT / item for item in (sys.argv[1:] or DEFAULT_TARGETS)]
+    failures = []
+    for target in targets:
+        for path in iter_files(target):
+            try:
+                text = path.read_text(encoding="utf-8")
+            except UnicodeDecodeError:
+                try:
+                    text = path.read_text(encoding="utf-8-sig")
+                except UnicodeDecodeError:
+                    rel = path.relative_to(ROOT)
+                    failures.append(f"{rel}: file is not valid UTF-8 text")
+                    continue
+            rel = path.relative_to(ROOT)
+            for line_no, line in enumerate(text.splitlines(), 1):
+                if rel.as_posix() == "scripts/check_no_mojibake.py" and 're.compile(r"' in line:
+                    continue
+                for pattern, reason in BAD_PATTERNS:
+                    if pattern.search(line):
+                        failures.append(f"{rel}:{line_no}: {reason}: {line[:180]}")
+    if failures:
+        print("Mojibake/readiness text check failed:")
+        print("\n".join(failures))
+        return 1
+    print("Mojibake/readiness text check passed.")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

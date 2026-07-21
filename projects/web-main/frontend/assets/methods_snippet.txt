@@ -1,0 +1,5 @@
+Methods snippet for manuscript
+
+EEG data were represented and processed with MNE-Python. Continuous data were annotated with event markers and segmented into epochs from -200 to 800 ms around stimulus onset. Epochs were baseline-corrected using the -200 to 0 ms pre-stimulus interval. Subject-level ERP metrics were extracted as mean amplitudes within an a priori P300 window of 280-420 ms. Resting-state band-power metrics were summarized at the subject level before group statistics.
+
+Inferential statistics were performed on subject-level estimates. Paired contrasts were tested with one-sample t tests on within-subject differences, and p values were corrected across planned contrasts using Benjamini-Hochberg FDR. Time-resolved ERP inference used a one-sample cluster permutation test on target-standard difference waves. Figures were exported at 300 dpi, and all plotted effects are accompanied by CSV files containing subject-level values and statistical summaries.

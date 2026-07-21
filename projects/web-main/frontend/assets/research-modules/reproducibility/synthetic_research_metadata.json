@@ -1,0 +1,11 @@
+{
+  "sampling_rate_hz": 256,
+  "duration_sec": 60,
+  "channels": "32-channel 10-20 montage",
+  "event_id": {
+    "standard": 1,
+    "target": 2
+  },
+  "n_subjects": 24,
+  "guardrail": "synthetic software-test data only"
+}

@@ -1,0 +1,1013 @@
+/*
+  Workbench spacious overrides 2026-07-06.
+  Scope: independent analysis/lab pages only. Keep the first viewport focused on work areas.
+*/
+
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+button,
+.btn,
+.ww-ghost,
+.ep-flow-btn,
+.ep-flow-file-btn {
+  border-radius: 7px !important;
+}
+
+/* Epilepsy full-flow preview */
+.ep-flow-app {
+  width: min(100%, 1880px);
+  padding: 12px 18px 28px;
+}
+
+.ep-flow-topbar {
+  min-height: 42px;
+}
+
+.ep-flow-brand span {
+  font-size: 12px;
+}
+
+.ep-flow-brand strong {
+  font-size: 14px;
+}
+
+.ep-flow-top-actions,
+.ep-flow-action-row {
+  gap: 6px;
+}
+
+.ep-flow-btn,
+.ep-flow-file-btn {
+  min-height: 32px;
+  padding: 0 10px;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.ep-flow-btn svg,
+.ep-flow-file-btn svg,
+.ep-flow-decision svg,
+.ep-flow-callout svg {
+  width: 14px;
+  height: 14px;
+}
+
+.ep-flow-hero {
+  grid-template-columns: minmax(0, 1fr) minmax(240px, 360px);
+  gap: 14px;
+  align-items: center;
+  margin-top: 0;
+  padding: 8px 0;
+}
+
+.ep-flow-kicker {
+  margin-bottom: 5px;
+  font-size: 11px;
+}
+
+.ep-flow-hero h1 {
+  max-width: 680px;
+  font-size: clamp(24px, 2vw, 34px);
+  line-height: 1.13;
+}
+
+.ep-flow-hero p {
+  max-width: 860px;
+  margin-top: 7px;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.ep-flow-scope {
+  padding: 10px 12px;
+  border-radius: 8px;
+}
+
+.ep-flow-scope strong {
+  margin-top: 4px;
+  font-size: 14px;
+}
+
+.ep-flow-scope small {
+  margin-top: 5px;
+  line-height: 1.42;
+}
+
+.ep-flow-stepper {
+  gap: 6px;
+  margin: 6px 0 8px;
+}
+
+.ep-flow-stepper button {
+  min-height: 38px;
+  padding: 6px 8px;
+  gap: 7px;
+}
+
+.ep-flow-stepper span {
+  width: 20px;
+  height: 20px;
+  font-size: 11px;
+}
+
+.ep-flow-stepper strong {
+  font-size: 12px;
+}
+
+.ep-flow-context {
+  grid-template-columns: 1.3fr repeat(4, minmax(106px, 1fr));
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.ep-flow-context article {
+  min-height: 44px;
+  padding: 7px 9px;
+  border-radius: 7px;
+}
+
+.ep-flow-context span,
+.ep-flow-folder span,
+.ep-flow-qc-card span,
+.ep-flow-report-summary span {
+  font-size: 11px;
+}
+
+.ep-flow-context strong {
+  margin-top: 3px;
+  font-size: 13px;
+}
+
+.ep-flow-shell {
+  grid-template-columns: minmax(0, 1fr) clamp(280px, 18vw, 320px);
+  gap: 10px;
+}
+
+.ep-flow-stage {
+  padding: 14px;
+}
+
+.ep-flow-section-head {
+  margin-bottom: 12px;
+}
+
+.ep-flow-section-head h2,
+.ep-flow-next h2 {
+  font-size: 18px;
+}
+
+.ep-flow-folder {
+  padding: 9px 10px;
+  margin-bottom: 10px;
+}
+
+.ep-flow-sample-grid,
+.ep-flow-qc-grid,
+.ep-flow-gate-grid {
+  gap: 10px;
+}
+
+.ep-flow-sample-card,
+.ep-flow-qc-card,
+.ep-flow-gate-card,
+.ep-flow-callout,
+.ep-flow-method-note,
+.ep-flow-review-form,
+.ep-flow-event-card,
+.ep-flow-report {
+  border-radius: 8px;
+}
+
+.ep-flow-sample-card {
+  padding: 11px;
+}
+
+.ep-flow-sample-card strong {
+  font-size: 14px;
+}
+
+.ep-flow-sample-card small {
+  margin-top: 6px;
+}
+
+.ep-flow-callout,
+.ep-flow-method-note {
+  margin-top: 10px;
+  padding: 9px 10px;
+}
+
+.ep-flow-side {
+  gap: 10px;
+}
+
+.ep-flow-side .ep-flow-panel:not(.ep-flow-next),
+.ep-flow-next {
+  padding: 12px;
+}
+
+.ep-flow-gate-list,
+.ep-flow-audit {
+  max-height: 220px;
+  overflow: auto;
+}
+
+.ep-flow-review-layout {
+  grid-template-columns: minmax(280px, 330px) minmax(0, 1fr);
+}
+
+.ep-flow-event-list {
+  max-height: min(58vh, 560px);
+}
+
+/* Waveform workbench */
+body:has(.ww-shell) {
+  background: linear-gradient(180deg, #f8fbfd 0%, #eef5f8 100%);
+}
+
+.ww-shell {
+  width: min(100%, 1880px);
+  max-width: none;
+  padding: 14px 20px 28px;
+}
+
+.ww-topbar {
+  gap: 14px;
+  margin-bottom: 10px;
+  align-items: center;
+}
+
+.ww-eyebrow {
+  font-size: 11px;
+  letter-spacing: 0;
+}
+
+.ww-topbar h1,
+.ww-shell h1 {
+  margin: 3px 0 4px;
+  font-size: clamp(24px, 2vw, 30px);
+  line-height: 1.14;
+}
+
+.ww-topbar p {
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.ww-top-actions {
+  gap: 7px;
+}
+
+.ww-card,
+.ww-context div,
+.ww-toolbar-band,
+.ww-canvas-wrap,
+.ww-overview,
+.ww-side-panel,
+.ww-draft,
+.ww-draft-grid span,
+.ww-help {
+  border-radius: 8px;
+}
+
+.ww-card {
+  box-shadow: none;
+}
+
+.ww-workbench-switch {
+  border-radius: 8px;
+}
+
+.ww-shell button,
+.ww-ghost {
+  min-height: 32px;
+  padding: 6px 10px;
+  border-radius: 7px;
+  font-size: 13px;
+}
+
+.ww-context {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  padding: 8px;
+  margin-bottom: 10px;
+}
+
+.ww-context div {
+  padding: 8px 10px;
+}
+
+.ww-context span {
+  margin-bottom: 3px;
+  font-size: 11px;
+}
+
+.ww-context strong {
+  font-size: 13px;
+}
+
+.ww-workbench {
+  padding: 10px;
+}
+
+.ww-main-grid {
+  grid-template-columns: minmax(0, 1fr) clamp(276px, 18vw, 320px);
+  gap: 10px;
+}
+
+.ww-canvas-wrap {
+  min-height: clamp(420px, calc(100vh - 285px), 620px);
+}
+
+#wwCanvas {
+  height: clamp(420px, calc(100vh - 285px), 620px);
+}
+
+.ww-overview {
+  margin-top: 7px;
+  padding: 7px 9px;
+}
+
+.ww-overview-track {
+  height: 22px;
+}
+
+.ww-legend,
+.ww-status {
+  margin-top: 7px;
+  gap: 6px;
+}
+
+.ww-legend span,
+.ww-status span,
+.ww-status em {
+  padding: 5px 7px;
+  font-size: 12px;
+}
+
+.ww-toolbar {
+  grid-template-columns: minmax(210px, 0.65fr) minmax(360px, 1.45fr) minmax(300px, 0.9fr);
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 10px;
+}
+
+.ww-toolbar-band {
+  gap: 7px;
+  padding: 9px;
+}
+
+.ww-band-head strong {
+  font-size: 13px;
+}
+
+.ww-band-head span,
+.ww-layer-note {
+  font-size: 11px;
+}
+
+.ww-display-controls {
+  grid-template-columns: repeat(3, minmax(96px, 1fr));
+  gap: 7px;
+}
+
+.ww-control {
+  gap: 4px;
+  min-width: 100px;
+}
+
+.ww-control select,
+.ww-control input,
+.ww-epoch-controls select {
+  min-height: 34px;
+  border-radius: 7px;
+}
+
+.ww-group {
+  gap: 6px;
+}
+
+.ww-mode-group button,
+.ww-browse-group button,
+.ww-ghost-mini {
+  min-height: 30px;
+  padding: 5px 8px;
+}
+
+.ww-side-panel {
+  padding: 10px;
+  top: 10px;
+}
+
+.ww-side-header h2 {
+  margin: 0;
+  font-size: 16px;
+}
+
+#wwActionHint,
+.ww-draft,
+.ww-help {
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.ww-draft {
+  min-height: 76px;
+  padding: 8px;
+  margin-top: 8px;
+}
+
+.ww-review-actions,
+.ww-candidate-actions,
+.ww-history-actions,
+.ww-side-actions {
+  gap: 6px;
+  margin-top: 8px;
+}
+
+/* Module lab */
+body:has(#moduleLab) {
+  background: linear-gradient(180deg, #f8fbfb 0%, #eef6f5 100%);
+}
+
+.lab-hero {
+  padding: 10px clamp(16px, 2vw, 30px);
+  box-shadow: none;
+}
+
+.lab-hero.detail-top {
+  padding-bottom: 10px;
+}
+
+.lab-nav {
+  max-width: 1880px;
+}
+
+.brand-mark {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+}
+
+.brand strong {
+  font-size: 15px;
+}
+
+.lab-nav a:not(.brand),
+.pill {
+  min-height: 32px;
+  padding: 6px 10px;
+}
+
+.lab-wrap {
+  max-width: 1880px;
+  padding: 14px 20px 42px;
+}
+
+.module-hero {
+  min-height: 0;
+  padding: 16px 18px;
+  border-radius: 8px;
+  background:
+    linear-gradient(112deg, rgba(5, 30, 39, 0.98), rgba(8, 78, 80, 0.94)),
+    url("./assets/research-modules/figures/qlanalyser-neuron-firing-bg.png") right center / auto 110% no-repeat;
+  box-shadow: none;
+}
+
+.module-hero::before,
+.module-hero::after {
+  display: none;
+}
+
+.hero-kicker {
+  gap: 6px;
+}
+
+.status {
+  min-height: 22px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+}
+
+.module-hero .eyebrow {
+  margin-top: 10px;
+}
+
+.module-hero h1 {
+  max-width: 980px;
+  margin: 5px 0;
+  font-size: clamp(26px, 2.4vw, 38px);
+  line-height: 1.12;
+}
+
+.module-hero p {
+  max-width: 1080px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.hero-proof-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  max-width: 1040px;
+  gap: 8px;
+  margin: 10px 0 6px;
+}
+
+.hero-proof-grid div {
+  padding: 8px 10px;
+  border-radius: 8px;
+}
+
+.boundary-note {
+  padding: 7px 10px;
+  border-radius: 8px;
+}
+
+.module-index.panel {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 10px 0;
+  padding: 8px;
+  border-radius: 8px;
+  overflow-x: auto;
+}
+
+.module-index div {
+  flex: 1 0 260px;
+  padding: 7px 8px;
+  border-radius: 8px;
+}
+
+.module-index span {
+  margin-bottom: 4px;
+  font-size: 11px;
+  letter-spacing: 0;
+}
+
+.module-index a {
+  margin: 2px 4px 2px 0;
+  padding: 4px 7px;
+  font-size: 12px;
+}
+
+.panel,
+.module-card,
+.demo-status,
+.empty,
+.method-panel,
+.runner-form fieldset,
+.advanced-params,
+.source-form {
+  border-radius: 8px !important;
+}
+
+.panel,
+.module-card {
+  box-shadow: none;
+}
+
+.lab-source-panel {
+  grid-template-columns: minmax(0, 0.9fr) minmax(360px, 1.1fr) minmax(260px, 0.8fr);
+  gap: 10px;
+  padding: 12px;
+}
+
+.source-copy h2 {
+  font-size: clamp(20px, 1.6vw, 26px);
+}
+
+.source-form {
+  padding: 9px;
+}
+
+.runner-form {
+  gap: 9px;
+}
+
+.runner-form fieldset {
+  gap: 8px;
+  padding: 9px;
+}
+
+.runner-form input,
+.runner-form select {
+  min-height: 34px;
+  padding: 6px 9px;
+}
+
+.btn {
+  min-height: 34px;
+  padding: 6px 10px;
+  font-size: 13px;
+}
+
+.workflow-section {
+  margin-top: 14px;
+}
+
+.section-intro {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+}
+
+.section-intro h2 {
+  font-size: clamp(20px, 1.8vw, 28px);
+}
+
+.module-grid {
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 10px;
+}
+
+.method-group-card {
+  padding: 10px;
+  gap: 8px;
+}
+
+.method-group-card > h2 {
+  font-size: 18px;
+}
+
+.method-group-card > p,
+.module-card p {
+  font-size: 13px;
+  line-height: 1.42;
+}
+
+.module-card-top span,
+.module-card-top strong {
+  min-height: 22px;
+  padding: 3px 7px;
+}
+
+.method-panel {
+  gap: 9px;
+  padding: 9px;
+}
+
+.method-panel-head {
+  padding-bottom: 6px;
+}
+
+.method-panel-head strong {
+  font-size: 14px;
+}
+
+.method-boundary-notes {
+  gap: 4px;
+  padding: 8px;
+}
+
+.method-boundary-notes span,
+.runner-form small,
+.empty-run-state {
+  font-size: 12px;
+}
+
+.empty-run-state,
+.demo-status,
+.artifact {
+  padding: 8px 10px;
+}
+
+@media (min-width: 1800px) {
+  .module-grid {
+    grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  }
+
+  .ww-main-grid {
+    grid-template-columns: minmax(0, 1fr) 320px;
+  }
+}
+
+@media (max-width: 1180px) {
+  .ep-flow-shell,
+  .ww-main-grid,
+  .lab-source-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .ep-flow-side,
+  .ww-side-panel {
+    position: static;
+  }
+
+  .ep-flow-hero {
+    grid-template-columns: 1fr;
+  }
+
+  .ep-flow-context {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 980px) {
+  .ww-toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .ww-canvas-wrap,
+  #wwCanvas {
+    min-height: 420px;
+    height: 420px;
+  }
+
+  .module-index.panel {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .module-index div {
+    flex-basis: auto;
+  }
+}
+
+@media (max-width: 720px) {
+  .ep-flow-app,
+  .ww-shell,
+  .lab-wrap {
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+
+  .ep-flow-stepper,
+  .ep-flow-context,
+  .ep-flow-sample-grid,
+  .ep-flow-qc-grid,
+  .ep-flow-gate-grid,
+  .ep-flow-candidate-strip,
+  .hero-proof-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .ep-flow-topbar,
+  .ep-flow-section-head,
+  .ww-topbar,
+  .lab-nav {
+    display: grid;
+    gap: 8px;
+  }
+
+  .ww-context {
+    grid-template-columns: 1fr;
+  }
+
+  .module-hero {
+    padding: 14px;
+  }
+}
+
+/* Second pass: make tool pages feel like workbenches, not landing pages. */
+.module-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 0.62fr);
+  column-gap: 18px;
+  row-gap: 8px;
+  align-items: end;
+  min-height: 0 !important;
+  padding: 12px 16px !important;
+}
+
+.module-hero .hero-kicker,
+.module-hero .eyebrow,
+.module-hero h1,
+.module-hero > p:not(.boundary-note) {
+  grid-column: 1;
+}
+
+.module-hero h1 {
+  font-size: clamp(24px, 1.9vw, 32px) !important;
+}
+
+.module-hero .hero-proof-grid {
+  grid-column: 2;
+  grid-row: 1 / span 4;
+  align-self: stretch;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 6px;
+  max-width: none;
+  margin: 0;
+}
+
+.module-hero .hero-proof-grid div {
+  display: grid;
+  align-content: center;
+  min-height: 48px;
+  padding: 7px 9px;
+}
+
+.module-hero .boundary-note {
+  grid-column: 1 / -1;
+  margin: 2px 0 0;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.module-index.panel {
+  max-height: 74px;
+  align-items: stretch;
+}
+
+.module-index div {
+  flex-basis: 220px;
+  overflow: hidden;
+}
+
+.module-index div:nth-child(3) {
+  flex-basis: 520px;
+}
+
+.lab-source-panel {
+  grid-template-columns: minmax(0, 0.72fr) minmax(420px, 1fr) minmax(260px, 0.78fr);
+  padding: 10px;
+}
+
+.lab-source-panel .source-copy p:not(.eyebrow) {
+  line-height: 1.38;
+}
+
+.lab-source-panel .source-form {
+  display: grid;
+  grid-template-columns: minmax(160px, 0.8fr) minmax(220px, 1fr) auto;
+  align-items: end;
+  gap: 8px;
+}
+
+.lab-source-panel .source-actions {
+  align-items: end;
+  gap: 6px;
+}
+
+.lab-source-panel .source-actions .btn {
+  white-space: nowrap;
+}
+
+.workflow-section:first-of-type {
+  margin-top: 10px;
+}
+
+.ww-toolbar {
+  order: 0;
+  margin: 0 0 8px;
+  padding: 0 0 8px;
+  border-top: 0;
+  border-bottom: 1px solid var(--ww-line);
+}
+
+.ww-shell[data-customer-mode="clean"]:not([data-advanced-open="true"]) .ww-toolbar {
+  grid-template-columns: minmax(240px, max-content) minmax(420px, 1fr);
+}
+
+.ww-shell[data-customer-mode="clean"]:not([data-advanced-open="true"]) .ww-toolbar-band {
+  width: auto;
+}
+
+.ww-shell[data-customer-mode="clean"]:not([data-advanced-open="true"]) .ww-toolbar-band-write {
+  display: none;
+}
+
+.ww-shell[data-customer-mode="clean"]:not([data-advanced-open="true"]) .ww-toolbar-band-display {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: end;
+}
+
+.ww-shell[data-customer-mode="clean"]:not([data-advanced-open="true"]) .ww-toolbar-band-display .ww-band-head {
+  min-width: 92px;
+}
+
+.ww-shell[data-customer-mode="clean"]:not([data-advanced-open="true"]) .ww-toolbar-advanced-toggle {
+  align-self: end;
+}
+
+.ww-canvas-wrap {
+  min-height: clamp(440px, calc(100vh - 340px), 650px);
+}
+
+#wwCanvas {
+  height: clamp(440px, calc(100vh - 340px), 650px);
+}
+
+.ep-flow-sample-grid {
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+}
+
+.ep-flow-next .ep-flow-btn-primary {
+  min-height: 34px;
+}
+
+@media (max-width: 1180px) {
+  .module-hero {
+    grid-template-columns: 1fr;
+  }
+
+  .module-hero .hero-proof-grid,
+  .module-hero .boundary-note {
+    grid-column: 1;
+    grid-row: auto;
+  }
+
+  .module-hero .hero-proof-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .lab-source-panel .source-form {
+    grid-template-columns: 1fr;
+  }
+
+  .ww-toolbar {
+    order: 2;
+    margin: 10px 0 0;
+    padding: 10px 0 0;
+    border-top: 1px solid var(--ww-line);
+    border-bottom: 0;
+  }
+}
+
+@media (min-width: 1500px) {
+  .module-hero {
+    grid-template-columns: minmax(0, 1fr) minmax(360px, 0.5fr);
+  }
+
+  .module-index.panel {
+    max-height: 66px;
+  }
+}
+
+/* Third pass: module lab is a tool surface, so keep the method list in the first viewport. */
+.module-hero {
+  display: block;
+  padding: 10px 14px !important;
+}
+
+.module-hero .hero-kicker,
+.module-hero .hero-proof-grid {
+  display: none;
+}
+
+.module-hero .eyebrow {
+  margin-top: 0;
+}
+
+.module-hero h1 {
+  max-width: 1120px;
+  margin: 3px 0 4px;
+  font-size: clamp(22px, 1.55vw, 30px) !important;
+}
+
+.module-hero > p:not(.boundary-note) {
+  max-width: 1180px;
+  font-size: 13px;
+  line-height: 1.38;
+}
+
+.module-hero .boundary-note {
+  display: block;
+  margin-top: 6px;
+  padding: 5px 8px;
+  font-size: 11px;
+  line-height: 1.32;
+}
+
+.module-index.panel {
+  max-height: 58px;
+  margin: 8px 0;
+}
+
+.module-index div {
+  padding: 5px 7px;
+}
+
+.module-index a {
+  padding: 3px 6px;
+}
+
+.lab-source-panel {
+  padding: 8px;
+}
+
+.lab-source-panel .source-copy p:not(.eyebrow) {
+  display: none;
+}
+
+.source-copy h2 {
+  margin: 2px 0 0;
+  font-size: clamp(18px, 1.35vw, 22px);
+}
+
+.lab-source-panel .source-form {
+  padding: 7px;
+}
+
+.lab-source-panel .demo-status {
+  padding: 7px 8px;
+}
+
+.workflow-section {
+  margin-top: 10px;
+}

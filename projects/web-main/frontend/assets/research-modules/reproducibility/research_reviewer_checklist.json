@@ -1,0 +1,14 @@
+{
+  "required_before_interpretation": [
+    "确认事件码、任务范式和通道布局。",
+    "确认滤波、参考、坏道、ICA 和 epoch 规则。",
+    "每张发表图都配受试者级表格。",
+    "明确写出统计单位是 subject，不是 trial。",
+    "TFR / PAC / Connectivity 先做 surrogate 与多重比较控制再启用。"
+  ],
+  "visual_quality": [
+    "PNG 至少 300 dpi，同时保留 SVG。",
+    "使用色盲友好 teal / coral / steel 调色。",
+    "必须标清零时点、单位、阈值和不确定性。"
+  ]
+}

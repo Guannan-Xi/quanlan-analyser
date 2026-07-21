@@ -1,0 +1,21 @@
+slug,name,family,effect,channels,duration_s,sfreq_hz,edf_bytes,effect_metric,effect_detectability,review_grade
+rest_eyes_open_closed,静息态睁闭眼,resting_state,alpha_reactivity,12,60,256,373904,10_hz_power_proxy,677.677,excellent
+auditory_oddball_p300,听觉 Oddball P300,erp,p300,12,60,256,373664,posterior_positive_difference_uv,3.568,excellent
+visual_oddball_p300,视觉 Oddball P300,erp,p300,12,60,256,373664,posterior_positive_difference_uv,3.481,excellent
+go_nogo_inhibition,Go/No-Go 抑制控制,cognitive_control,n2_p3,12,60,256,373424,frontal_n2_difference_uv,4.17,excellent
+flanker_conflict_ern,Flanker 冲突与错误监控,cognitive_control,ern_conflict,12,60,256,373904,frontal_ern_uv,4.674,excellent
+stroop_conflict,Stroop 冲突,cognitive_control,n450,12,60,256,373904,frontal_n450_difference_uv,3.794,excellent
+nback_working_memory,N-back 工作记忆,cognition,frontal_theta,12,60,256,373544,frontal_theta_proxy,1091.614,excellent
+face_n170,面孔知觉 N170,erp,n170,12,60,256,373544,occipital_n170_difference_uv,4.722,excellent
+semantic_n400,语义违反 N400,language,n400,12,60,256,373784,posterior_n400_difference_uv,4.192,excellent
+auditory_mmn,听觉 MMN,erp,mmn,12,60,256,373664,frontal_mmn_difference_uv,4.262,excellent
+visual_search_n2pc,视觉搜索 N2pc,attention,n2pc,12,60,256,373904,contralateral_n2pc_uv,3.059,excellent
+motor_imagery_lr,左右手运动想象,bci,mu_beta_erd,12,60,256,373784,10_hz_power_proxy,3235.322,excellent
+motor_execution_mrp,运动执行准备电位,motor,mrp,12,60,256,373784,central_mrp_uv,4.653,excellent
+ssvep_frequency_tagging,SSVEP 频率标记,bci,ssvep,12,60,256,373904,10_hz_power_proxy,3586.192,excellent
+auditory_assr_40hz,40 Hz 听觉稳态 ASSR,steady_state,assr,12,60,256,373784,40_hz_power_proxy,87.971,excellent
+emotional_lpp,情绪图片 LPP,affective,lpp,12,60,256,373784,posterior_positive_difference_uv,3.369,excellent
+error_related_negativity,错误相关负波 ERN,performance_monitoring,ern,12,60,256,373664,frontal_ern_uv,3.96,excellent
+sleep_spindle_kcomplex,睡眠纺锤与 K-complex,sleep,sleep_events,12,60,256,373784,sleep_event_detectability,1504.12,excellent
+meditation_alpha_theta,冥想 Alpha/Theta,resting_state,alpha_theta,12,60,256,373784,9.5_hz_power_proxy,9608.283,excellent
+somatosensory_sep,躯体感觉诱发 SEP,sensory,sep,12,60,256,373784,central_sep_peak_to_baseline_uv,10.101,excellent

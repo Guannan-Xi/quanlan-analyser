@@ -1,0 +1,1 @@
+Resting-state spectral power is summarized from Welch PSD on EEG channels after reference and filter choices are fixed. Canonical delta/theta/alpha/beta/low-gamma bands are exported with subject-level tables.

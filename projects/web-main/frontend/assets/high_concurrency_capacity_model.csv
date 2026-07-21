@@ -1,0 +1,6 @@
+scenario,concurrent_users,active_uploads,avg_file_gb,analysis_jobs_per_hour,api_replicas,upload_signer_replicas,cpu_workers,render_workers,redis_shards,postgres_read_replicas,object_storage_put_gbps,notes
+pilot_lab,20,5,2,10,2,2,4,2,1,0,0.2,single lab pilot
+department,200,40,10,80,4,3,16,4,1,1,1.0,department shared platform
+multi_lab_saas,1000,200,20,500,8,6,80,12,3,2,5.0,multiple institutions
+enterprise_batch,5000,1000,50,2000,20,12,300,40,6,4,20.0,large batch import and nightly processing
+national_scale,20000,4000,50,8000,60,40,1200,160,12,8,80.0,requires multi-region object storage and strict tenant isolation

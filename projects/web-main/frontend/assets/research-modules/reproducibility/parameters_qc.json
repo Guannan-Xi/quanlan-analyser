@@ -1,0 +1,14 @@
+{
+  "formats": [
+    "EDF",
+    "BDF",
+    "FIF",
+    "BrainVision VHDR",
+    "EEGLAB SET",
+    "CNT"
+  ],
+  "min_sampling_rate_hz": 100,
+  "min_duration_sec": 5,
+  "flat_threshold_uv": 1,
+  "extreme_threshold_uv": 1000
+}

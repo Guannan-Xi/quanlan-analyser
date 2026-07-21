@@ -1,0 +1,9 @@
+onset	duration	trial_type
+4.000	0.200	tone_40hz
+10.000	0.200	silence
+16.000	0.200	tone_40hz
+22.000	0.200	silence
+28.000	0.200	tone_40hz
+34.000	0.200	silence
+40.000	0.200	tone_40hz
+46.000	0.200	silence

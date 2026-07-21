@@ -1,0 +1,32 @@
+{
+  "slug": "visual_search_n2pc",
+  "name": "视觉搜索 N2pc",
+  "family": "attention",
+  "effect": "n2pc",
+  "events": {
+    "target_left": 14,
+    "target_right": 4
+  },
+  "channels": 12,
+  "duration_s": 60,
+  "sfreq_hz": 256,
+  "edf_bytes": 373904,
+  "effect_detectability": 3.059,
+  "effect_metric": "contralateral_n2pc_uv",
+  "review_grade": "excellent",
+  "coverage": {
+    "upload": true,
+    "event_parsing": true,
+    "epoching": true,
+    "time_frequency": false,
+    "erp": true,
+    "statistics_ready": true
+  },
+  "recommended_outputs": [
+    "events.tsv",
+    "QC",
+    "subject-level CSV",
+    "publication figure",
+    "manifest"
+  ]
+}

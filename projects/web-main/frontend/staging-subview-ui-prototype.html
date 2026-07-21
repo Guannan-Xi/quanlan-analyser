@@ -1,0 +1,881 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>QLanalyser | 癫痫样事件分析子视图原型</title>
+  <style>
+    :root {
+      --bg: #f5f7fb;
+      --card: #ffffff;
+      --card-soft: #f8fbff;
+      --line: #dbe3ef;
+      --line-strong: #b9c6d8;
+      --text: #172033;
+      --muted: #687789;
+      --subtle: #8b98a8;
+      --brand: #315f9d;
+      --brand-2: #2c96dc;
+      --brand-soft: #edf6ff;
+      --ok: #157347;
+      --warn: #a15c00;
+      --danger: #b42318;
+      --event: #3e9f9a;
+      --selection: rgba(49, 95, 157, 0.14);
+      --candidate: #c06a3a;
+      --shadow: 0 18px 42px rgba(15, 23, 42, 0.08);
+      --radius: 18px;
+      --sidebar: 248px;
+      font-family: "Inter", "Segoe UI", "Microsoft YaHei", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    button,
+    input,
+    select {
+      font: inherit;
+    }
+
+    .shell {
+      min-height: 100vh;
+      display: grid;
+      grid-template-columns: var(--sidebar) minmax(0, 1fr);
+    }
+
+    .sidebar {
+      background: #0f263f;
+      color: #eaf2fb;
+      padding: 22px 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 8px 8px 18px;
+      border-bottom: 1px solid rgba(255,255,255,0.12);
+    }
+
+    .brand-mark {
+      width: 42px;
+      height: 42px;
+      border-radius: 14px;
+      background: linear-gradient(135deg, #74c0fc, #315f9d);
+      display: grid;
+      place-items: center;
+      font-weight: 800;
+      color: #fff;
+    }
+
+    .brand small {
+      display: block;
+      color: rgba(234,242,251,0.7);
+      margin-top: 2px;
+    }
+
+    .nav {
+      display: grid;
+      gap: 6px;
+    }
+
+    .nav button {
+      width: 100%;
+      border: 0;
+      background: transparent;
+      color: rgba(234,242,251,0.78);
+      border-radius: 14px;
+      padding: 11px 12px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      cursor: default;
+      text-align: left;
+    }
+
+    .nav button.active {
+      background: rgba(255,255,255,0.12);
+      color: #fff;
+      box-shadow: inset 3px 0 0 #74c0fc;
+    }
+
+    .nav-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: currentColor;
+      opacity: 0.9;
+    }
+
+    .main {
+      min-width: 0;
+      padding: 22px 24px 30px;
+      display: grid;
+      gap: 16px;
+    }
+
+    .topbar {
+      min-height: 68px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    .breadcrumbs {
+      color: var(--muted);
+      font-size: 13px;
+      margin-bottom: 4px;
+    }
+
+    .topbar h1 {
+      margin: 0;
+      font-size: 26px;
+      letter-spacing: -0.03em;
+    }
+
+    .topbar p {
+      margin: 4px 0 0;
+      color: var(--muted);
+      max-width: 760px;
+      line-height: 1.45;
+    }
+
+    .top-actions {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      white-space: nowrap;
+    }
+
+    .btn {
+      border: 1px solid var(--line);
+      background: var(--card);
+      color: var(--text);
+      border-radius: 12px;
+      padding: 10px 13px;
+      cursor: pointer;
+      min-height: 40px;
+    }
+
+    .btn.primary {
+      background: var(--brand);
+      border-color: var(--brand);
+      color: #fff;
+      box-shadow: 0 10px 24px rgba(49,95,157,0.24);
+    }
+
+    .btn.ghost {
+      background: transparent;
+      color: var(--brand);
+    }
+
+    .btn:disabled {
+      color: var(--subtle);
+      background: #f1f4f8;
+      border-color: #e1e7f0;
+      cursor: not-allowed;
+      box-shadow: none;
+    }
+
+    .context-card,
+    .task-callout,
+    .panel {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+    }
+
+    .context-card {
+      padding: 14px 16px;
+      display: grid;
+      grid-template-columns: minmax(0, 1.2fr) repeat(3, minmax(130px, 0.5fr));
+      gap: 12px;
+      align-items: center;
+    }
+
+    .context-item {
+      min-width: 0;
+      border-right: 1px solid var(--line);
+      padding-right: 12px;
+    }
+
+    .context-item:last-child {
+      border-right: 0;
+      padding-right: 0;
+    }
+
+    .context-item span {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      margin-bottom: 4px;
+    }
+
+    .context-item strong {
+      display: block;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 14px;
+    }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      border-radius: 999px;
+      padding: 6px 10px;
+      font-size: 12px;
+      border: 1px solid var(--line);
+      color: var(--muted);
+      background: #fff;
+    }
+
+    .chip.ok {
+      color: var(--ok);
+      background: #eef9f3;
+      border-color: #ccebd8;
+    }
+
+    .chip.warn {
+      color: var(--warn);
+      background: #fff8ed;
+      border-color: #f1d4a8;
+    }
+
+    .task-callout {
+      padding: 13px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      border-left: 4px solid var(--brand-2);
+      box-shadow: none;
+    }
+
+    .task-callout strong {
+      display: block;
+      margin-bottom: 3px;
+    }
+
+    .task-callout span {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .workspace {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(320px, 360px);
+      gap: 16px;
+      align-items: start;
+    }
+
+    .signal-column,
+    .decision-column {
+      display: grid;
+      gap: 14px;
+      min-width: 0;
+    }
+
+    .toolbar {
+      padding: 12px;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+    }
+
+    .mode-group,
+    .display-group {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .seg {
+      border: 1px solid var(--line);
+      background: #fff;
+      border-radius: 999px;
+      padding: 8px 12px;
+      color: var(--muted);
+      cursor: pointer;
+    }
+
+    .seg.active {
+      background: var(--brand-soft);
+      color: var(--brand);
+      border-color: #b9d8f5;
+      font-weight: 700;
+    }
+
+    .seg:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+
+    .wave-panel {
+      overflow: hidden;
+    }
+
+    .wave-header {
+      padding: 14px 16px 0;
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: flex-start;
+    }
+
+    .wave-header h2 {
+      margin: 0;
+      font-size: 18px;
+    }
+
+    .wave-header p {
+      margin: 5px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .wave-canvas-wrap {
+      margin: 12px 16px 0;
+      border: 1px solid var(--line);
+      background: linear-gradient(#ffffff, #fbfdff);
+      border-radius: 16px;
+      min-height: 420px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .wave-canvas {
+      width: 100%;
+      height: 420px;
+      display: block;
+    }
+
+    .wave-overlay {
+      position: absolute;
+      top: 12px;
+      left: 14px;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      pointer-events: none;
+    }
+
+    .selection-band {
+      position: absolute;
+      top: 52px;
+      bottom: 34px;
+      left: 45%;
+      width: 92px;
+      border: 1px solid rgba(49,95,157,0.34);
+      background: var(--selection);
+      border-radius: 8px;
+      display: none;
+    }
+
+    .selection-band.visible {
+      display: block;
+    }
+
+    .timeline {
+      padding: 12px 16px 16px;
+    }
+
+    .timeline-label {
+      display: flex;
+      justify-content: space-between;
+      color: var(--muted);
+      font-size: 12px;
+      margin-bottom: 8px;
+    }
+
+    .overview {
+      height: 42px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: #f6f9fd;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .overview::before {
+      content: "";
+      position: absolute;
+      inset: 9px 12px;
+      background:
+        linear-gradient(90deg, transparent 0 8%, rgba(62,159,154,0.28) 8% 9%, transparent 9% 28%, rgba(62,159,154,0.2) 28% 29%, transparent 29% 55%, rgba(192,106,58,0.32) 55% 56%, transparent 56% 100%),
+        repeating-linear-gradient(90deg, #cbd7e6 0 1px, transparent 1px 28px);
+      opacity: 0.8;
+      border-radius: 8px;
+    }
+
+    .window-thumb {
+      position: absolute;
+      top: 6px;
+      left: 38%;
+      width: 18%;
+      height: 30px;
+      border-radius: 10px;
+      border: 2px solid var(--brand);
+      background: rgba(49,95,157,0.12);
+      cursor: grab;
+    }
+
+    .epoch-strip {
+      padding: 0 16px 16px;
+      display: grid;
+      grid-template-columns: repeat(12, minmax(34px, 1fr));
+      gap: 6px;
+    }
+
+    .epoch {
+      height: 30px;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      background: #f8fafc;
+      color: var(--muted);
+      font-size: 11px;
+      display: grid;
+      place-items: center;
+    }
+
+    .epoch.candidate {
+      border-color: #e7b690;
+      background: #fff3ea;
+      color: var(--candidate);
+      font-weight: 700;
+    }
+
+    .epoch.selected {
+      border-color: var(--brand);
+      background: var(--brand-soft);
+      color: var(--brand);
+      box-shadow: 0 0 0 2px rgba(49,95,157,0.1);
+    }
+
+    .decision-card {
+      padding: 16px;
+    }
+
+    .decision-card h3 {
+      margin: 0 0 8px;
+      font-size: 16px;
+    }
+
+    .decision-card p {
+      margin: 0 0 12px;
+      color: var(--muted);
+      line-height: 1.5;
+      font-size: 13px;
+    }
+
+    .stack {
+      display: grid;
+      gap: 10px;
+    }
+
+    .field {
+      display: grid;
+      gap: 6px;
+    }
+
+    .field label {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .field textarea {
+      resize: vertical;
+      min-height: 72px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 10px;
+      color: var(--text);
+    }
+
+    .action-row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .audit-item {
+      border: 1px solid var(--line);
+      background: var(--card-soft);
+      border-radius: 12px;
+      padding: 10px 11px;
+      font-size: 13px;
+    }
+
+    .audit-item strong {
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    .empty-note {
+      border: 1px dashed var(--line-strong);
+      border-radius: 14px;
+      padding: 12px;
+      color: var(--muted);
+      background: #fbfdff;
+      font-size: 13px;
+    }
+
+    .save-state {
+      border-left: 4px solid var(--warn);
+      padding-left: 11px;
+    }
+
+    .sleep-card {
+      opacity: 0.78;
+    }
+
+    .sleep-card .btn {
+      width: 100%;
+      justify-content: center;
+    }
+
+    .boundary {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.5;
+      padding: 12px 16px 16px;
+      border-top: 1px solid var(--line);
+      background: #fbfdff;
+    }
+
+    @media (max-width: 1120px) {
+      .shell {
+        grid-template-columns: 88px minmax(0, 1fr);
+      }
+
+      .brand-copy,
+      .nav span {
+        display: none;
+      }
+
+      .context-card {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .workspace {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 640px) {
+      .shell {
+        grid-template-columns: 1fr;
+      }
+
+      .sidebar {
+        position: sticky;
+        top: 0;
+        z-index: 5;
+        flex-direction: row;
+        overflow-x: auto;
+        padding: 10px 12px;
+      }
+
+      .brand {
+        border-bottom: 0;
+        padding: 0;
+      }
+
+      .nav {
+        display: flex;
+        min-width: max-content;
+      }
+
+      .main {
+        padding: 14px;
+      }
+
+      .topbar {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      .task-callout {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      .context-card {
+        grid-template-columns: 1fr;
+      }
+
+      .context-item {
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+        padding: 0 0 10px;
+      }
+
+      .context-item:last-child {
+        border-bottom: 0;
+        padding-bottom: 0;
+      }
+
+      .wave-canvas-wrap,
+      .wave-canvas {
+        min-height: 320px;
+        height: 320px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell" data-testid="ql-main-navigation-frame">
+    <aside class="sidebar" aria-label="QLanalyser 主导航">
+      <div class="brand">
+        <div class="brand-mark">QL</div>
+        <div class="brand-copy">
+          <strong>QLanalyser</strong>
+          <small>科研脑电分析平台</small>
+        </div>
+      </div>
+      <nav class="nav">
+        <button type="button"><span class="nav-dot"></span><span>项目管理</span></button>
+        <button type="button"><span class="nav-dot"></span><span>数据管理</span></button>
+        <button type="button"><span class="nav-dot"></span><span>数据准备</span></button>
+        <button class="active" type="button" aria-current="page"><span class="nav-dot"></span><span>分析任务</span></button>
+        <button type="button"><span class="nav-dot"></span><span>结果查看</span></button>
+        <button type="button"><span class="nav-dot"></span><span>报告交付</span></button>
+      </nav>
+    </aside>
+
+    <main class="main" data-testid="staging-subview">
+      <header class="topbar">
+        <div>
+          <div class="breadcrumbs">分析任务 / 癫痫样事件初筛与人工复核</div>
+          <h1>癫痫样事件分析台</h1>
+          <p>继承已确认的数据准备方案，在同一个 QLanalyser 工作流内查看模型候选、操作波形并记录人工矫正。此页面用于科研数据分析支持，不用于临床诊断。</p>
+        </div>
+        <div class="top-actions">
+          <span class="chip ok">数据准备已确认</span>
+          <button class="btn ghost" type="button" data-testid="same-frame-results-link">查看结果面板</button>
+        </div>
+      </header>
+
+      <section class="context-card" aria-label="继承上下文" data-testid="staging-context-header">
+        <div class="context-item">
+          <span>项目 / 数据</span>
+          <strong>Demo Oddball EEG · sub-001_task-oddball.edf</strong>
+        </div>
+        <div class="context-item">
+          <span>分析任务</span>
+          <strong>epilepsy_ml_task_0428</strong>
+        </div>
+        <div class="context-item">
+          <span>准备方案</span>
+          <strong>prep_plan_17 · rev 3</strong>
+        </div>
+        <div class="context-item">
+          <span>合同版本</span>
+          <strong>data-prep v0.2</strong>
+        </div>
+      </section>
+
+      <section class="task-callout" data-testid="single-task-status">
+        <div>
+          <strong>候选结果已载入，可进行波形检查</strong>
+          <span>当前显示模型候选与人工矫正草稿状态；正式发布到结果查看属于下一阶段合同，不在此原型中伪装完成。</span>
+        </div>
+        <span class="chip ok">SourceReady · Browse</span>
+      </section>
+
+      <section class="workspace">
+        <div class="signal-column">
+          <section class="panel toolbar" aria-label="波形操作工具栏">
+            <div class="mode-group" data-testid="staging-mode-toolbar">
+              <button class="seg active" type="button" data-mode="browse">浏览</button>
+              <button class="seg" type="button" data-mode="inspect">查看候选</button>
+              <button class="seg" type="button" data-mode="correct">人工矫正</button>
+            </div>
+            <div class="display-group">
+              <span class="chip" data-testid="active-mode-chip">当前：浏览，不写入</span>
+              <button class="btn" type="button">- 缩小振幅</button>
+              <button class="btn" type="button">+ 放大振幅</button>
+            </div>
+          </section>
+
+          <section class="panel wave-panel" aria-label="EEG 波形与候选事件">
+            <div class="wave-header">
+              <div>
+                <h2>EEG / EMG / ACC 联动波形</h2>
+                <p>滚轮平移，Ctrl/⌘ + 滚轮缩放；只有进入人工矫正并选择片段后才会写入草稿。</p>
+              </div>
+              <span class="chip">24 s / page · 8 通道 · 200 µV/row</span>
+            </div>
+            <div class="wave-canvas-wrap" data-testid="waveform-viewport">
+              <svg class="wave-canvas" viewBox="0 0 1200 420" role="img" aria-label="模拟 EEG 波形界面">
+                <defs>
+                  <pattern id="grid" width="60" height="40" patternUnits="userSpaceOnUse">
+                    <path d="M 60 0 L 0 0 0 40" fill="none" stroke="#edf1f7" stroke-width="1"/>
+                  </pattern>
+                </defs>
+                <rect width="1200" height="420" fill="url(#grid)"/>
+                <g font-size="12" fill="#687789">
+                  <text x="18" y="42">Fp1</text>
+                  <text x="18" y="92">Fp2</text>
+                  <text x="18" y="142">C3</text>
+                  <text x="18" y="192">C4</text>
+                  <text x="18" y="242">O1</text>
+                  <text x="18" y="292">O2</text>
+                  <text x="18" y="342">EMG</text>
+                  <text x="18" y="392">ACC</text>
+                </g>
+                <g stroke="#2f4f6f" stroke-width="1.7" fill="none" opacity="0.92">
+                  <path d="M70,42 C120,24 160,58 210,38 S300,44 350,35 S450,70 520,36 S620,24 690,48 S780,42 850,29 S970,60 1130,38"/>
+                  <path d="M70,92 C130,78 180,102 230,86 S330,92 380,80 S470,112 545,84 S650,72 710,98 S820,93 900,76 S1020,104 1130,88"/>
+                  <path d="M70,142 C122,128 174,155 230,136 S350,145 410,133 S510,168 575,137 S690,124 748,153 S880,144 960,129 S1050,158 1130,139"/>
+                  <path d="M70,192 C128,175 184,207 235,187 S350,198 410,179 S520,220 575,186 S700,175 760,203 S880,194 958,180 S1060,210 1130,190"/>
+                  <path d="M70,242 C130,225 180,259 240,237 S340,248 420,230 S510,268 585,238 S700,226 760,252 S880,245 956,230 S1060,260 1130,240"/>
+                  <path d="M70,292 C130,274 185,305 238,288 S355,296 420,282 S520,315 588,287 S704,276 760,303 S886,294 965,281 S1062,309 1130,290"/>
+                  <path d="M70,342 C120,339 150,348 205,336 S310,350 370,339 S480,352 535,338 S650,350 720,340 S840,349 920,339 S1010,350 1130,341"/>
+                  <path d="M70,392 C150,390 230,395 310,391 S470,394 550,391 S700,395 780,392 S940,394 1130,392"/>
+                </g>
+                <g stroke="#3e9f9a" stroke-width="1.2" opacity="0.34">
+                  <line x1="222" y1="22" x2="222" y2="404"/>
+                  <line x1="612" y1="22" x2="612" y2="404"/>
+                  <line x1="808" y1="22" x2="808" y2="404"/>
+                </g>
+                <g stroke="#c06a3a" stroke-width="2" opacity="0.62">
+                  <line x1="566" y1="22" x2="566" y2="404"/>
+                  <line x1="590" y1="22" x2="590" y2="404"/>
+                </g>
+                <text x="540" y="23" fill="#a15c00" font-size="12">候选事件</text>
+                <g fill="#687789" font-size="11">
+                  <text x="70" y="414">00:02:00</text>
+                  <text x="1070" y="414">00:02:24</text>
+                </g>
+              </svg>
+              <div class="selection-band" data-testid="selection-band"></div>
+              <div class="wave-overlay">
+                <span class="chip ok">当前窗口已就绪</span>
+                <span class="chip">事件层：浅显</span>
+              </div>
+            </div>
+            <div class="timeline" aria-label="唯一时间导航">
+              <div class="timeline-label">
+                <span>全程概览 · 拖动蓝框定位时间窗</span>
+                <span>00:02:00 - 00:02:24</span>
+              </div>
+              <div class="overview" data-testid="single-timeline-overview">
+                <div class="window-thumb" role="slider" aria-label="当前时间窗位置" aria-valuemin="0" aria-valuemax="100" aria-valuenow="42"></div>
+              </div>
+            </div>
+            <div class="epoch-strip" aria-label="Epoch 候选条">
+              <div class="epoch">118</div>
+              <div class="epoch">119</div>
+              <div class="epoch candidate">120</div>
+              <div class="epoch candidate selected">121</div>
+              <div class="epoch candidate selected">122</div>
+              <div class="epoch">123</div>
+              <div class="epoch">124</div>
+              <div class="epoch">125</div>
+              <div class="epoch candidate">126</div>
+              <div class="epoch">127</div>
+              <div class="epoch">128</div>
+              <div class="epoch">129</div>
+            </div>
+            <div class="boundary">科研支持边界：这里显示的是算法候选和人工标注记录，不代表诊断、确诊、治疗建议或临床分诊。</div>
+          </section>
+        </div>
+
+        <aside class="decision-column" aria-label="人工矫正与保存">
+          <section class="panel decision-card" data-testid="correction-panel">
+            <h3>当前选择</h3>
+            <p>已选中 Epoch 121-122。浏览模式不会写入；进入人工矫正后，阶段按钮才会产生草稿动作。</p>
+            <div class="action-row">
+              <button class="btn" type="button" data-testid="mark-candidate" disabled title="请先进入人工矫正模式">标为癫痫样候选</button>
+              <button class="btn" type="button" data-testid="mark-non-candidate" disabled title="请先进入人工矫正模式">标为非候选</button>
+            </div>
+          </section>
+
+          <section class="panel decision-card">
+            <h3>草稿动作</h3>
+            <div class="stack">
+              <div class="audit-item">
+                <strong>尚未写入人工矫正</strong>
+                <span>当前处于浏览模式，所有操作只影响查看位置和选区。</span>
+              </div>
+              <div class="action-row">
+                <button class="btn" type="button" disabled title="暂无草稿动作">撤销</button>
+                <button class="btn" type="button" disabled title="暂无已撤销动作">重做</button>
+                <button class="btn" type="button" disabled title="暂无草稿可清空">清空草稿</button>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel decision-card">
+            <h3>保存与结果</h3>
+            <p class="save-state">P0 原型只展示保存合同：修正结果保存后，后续将作为正式 artifact 进入结果查看。当前不显示“已发布”。</p>
+            <div class="action-row">
+              <button class="btn primary" type="button" disabled title="需要产生人工矫正草稿后才能保存">保存矫正草稿</button>
+              <button class="btn ghost" type="button" data-testid="same-frame-results-link-secondary">在结果查看中定位此任务</button>
+            </div>
+          </section>
+
+          <section class="panel decision-card sleep-card" data-testid="sleep-p2-card">
+            <h3>睡眠分期工作台</h3>
+            <p>睡眠分期使用同一套主导航框架和波形分期壳，但需等待真实 sleep task、stage schema、hypnogram 和 Results card 完成后再开放。</p>
+            <button class="btn" type="button" disabled title="P2：尚未进入外部发布范围">P2 设计中，暂不开放</button>
+          </section>
+
+          <section class="panel decision-card">
+            <h3>设计说明</h3>
+            <div class="empty-note">
+              本原型刻意不放上传、实验室数据选择、返回主程序、第二条进度条和发布按钮，避免把子视图做成独立工具。
+            </div>
+          </section>
+        </aside>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const modeButtons = Array.from(document.querySelectorAll("[data-mode]"));
+    const activeModeChip = document.querySelector("[data-testid='active-mode-chip']");
+    const selectionBand = document.querySelector("[data-testid='selection-band']");
+    const writeButtons = [
+      document.querySelector("[data-testid='mark-candidate']"),
+      document.querySelector("[data-testid='mark-non-candidate']")
+    ];
+
+    const modeCopy = {
+      browse: "当前：浏览，不写入",
+      inspect: "当前：查看候选，不写入",
+      correct: "当前：人工矫正，可写入草稿"
+    };
+
+    modeButtons.forEach((button) => {
+      button.addEventListener("click", () => {
+        modeButtons.forEach((item) => item.classList.toggle("active", item === button));
+        const mode = button.dataset.mode;
+        activeModeChip.textContent = modeCopy[mode];
+        selectionBand.classList.toggle("visible", mode !== "browse");
+        writeButtons.forEach((item) => {
+          item.disabled = mode !== "correct";
+          item.title = mode === "correct" ? "写入一条可撤销的人工矫正草稿" : "请先进入人工矫正模式";
+        });
+      });
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,1 @@
+ERP module output. Target and standard grand averages include uncertainty bands and a confirmatory P300 window. Topographies show scalp distribution at representative latencies, with subject-level paired effect estimates exported separately.

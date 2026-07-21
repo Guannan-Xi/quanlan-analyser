@@ -1,0 +1,73 @@
+{
+  "schema_version": "qlanalyser-customer-oddball-case-v1",
+  "generated_at": "2026-06-22T08:39:02.433365+00:00",
+  "case_name": "customer_oddball_case",
+  "source": {
+    "edf": "teaching_oddball.edf",
+    "events_tsv": "teaching_oddball_events.tsv",
+    "analysis_reference_manifest": "customer_analysis_reference_manifest.json",
+    "learning_case_summary": "customer_oddball_run_summary.json"
+  },
+  "analysis_notes": [
+    "Files in this folder are customer-facing aliases of the teaching oddball sample.",
+    "The EDF/event pair is duplicated under sub-001 and sub-002 names so the UI can offer multiple selectable examples without dead links.",
+    "Images were generated from the teaching oddball sample and summarize the Pz waveform and the 340 ms target-standard topography."
+  ],
+  "files": [
+    {
+      "path": "sub-001_oddball.edf",
+      "size_bytes": 243880,
+      "sha256": "9c07eb2ec2e74ead0439d7c97af63f6a1564fe36ef88fc0db451411e550d2dd7"
+    },
+    {
+      "path": "sub-002_oddball.edf",
+      "size_bytes": 243880,
+      "sha256": "9c07eb2ec2e74ead0439d7c97af63f6a1564fe36ef88fc0db451411e550d2dd7"
+    },
+    {
+      "path": "sub-001_events.tsv",
+      "size_bytes": 826,
+      "sha256": "5b76226745881a823998f2be12b6a5d13562cb9c058735f2c352246cf1131925"
+    },
+    {
+      "path": "sub-002_events.tsv",
+      "size_bytes": 826,
+      "sha256": "5b76226745881a823998f2be12b6a5d13562cb9c058735f2c352246cf1131925"
+    },
+    {
+      "path": "customer_subject_level_metrics.csv",
+      "size_bytes": 4050,
+      "sha256": "ecc5c543cbc6765fb4ca93a02be5aae1519e2f673222e3a5002a7a54ea5ad254"
+    },
+    {
+      "path": "customer_statistics_summary.csv",
+      "size_bytes": 861,
+      "sha256": "d53c84001594e0e648320401cf20456a3d3e061fb34110f1d9bf9e2361493ff5"
+    },
+    {
+      "path": "customer_methods.txt",
+      "size_bytes": 979,
+      "sha256": "e67e432e9b21167437e02a5dbaecbaaac0d57cf0ffc853ee55a402518da2d820"
+    },
+    {
+      "path": "customer_figure_caption.txt",
+      "size_bytes": 643,
+      "sha256": "5707f242403b02daea964cbf815ea9d53efcc6863d63f92795fd4be5908a0fd2"
+    },
+    {
+      "path": "customer_oddball_erp_pz.png",
+      "size_bytes": 137018,
+      "sha256": "fada9574708471f94ef1077c673a34d7305cfa2f98b82401659f9e00e8c5c791"
+    },
+    {
+      "path": "customer_oddball_p300_topomap.png",
+      "size_bytes": 133608,
+      "sha256": "b553d31a909e46c658e00ba9e8fe91653af15f30e1618f812b1518c300fc04c0"
+    },
+    {
+      "path": "customer_analysis_reference_manifest.json",
+      "size_bytes": 1026,
+      "sha256": "2127fd5b0bd146abbb1d81d402ba92250b8fa0479d80ce07218ab88cc4fda6ec"
+    }
+  ]
+}

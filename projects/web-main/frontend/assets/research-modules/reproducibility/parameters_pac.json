@@ -1,0 +1,13 @@
+{
+  "status": "preview_not_enabled_in_v01",
+  "method": "PAC / CFC with surrogate testing",
+  "phase_frequency_hz": [
+    2,
+    12
+  ],
+  "amplitude_frequency_hz": [
+    30,
+    120
+  ],
+  "surrogate_count_minimum": 200
+}

@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>Data_info</class>
+ <widget class="QMainWindow" name="Data_info">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>640</width>
+    <height>360</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>MainWindow</string>
+  </property>
+  <widget class="QWidget" name="centralwidget">
+   <layout class="QVBoxLayout" name="verticalLayout">
+    <item>
+     <widget class="QTextEdit" name="textEdit"/>
+    </item>
+   </layout>
+  </widget>
+  <widget class="QMenuBar" name="menubar">
+   <property name="geometry">
+    <rect>
+     <x>0</x>
+     <y>0</y>
+     <width>640</width>
+     <height>22</height>
+    </rect>
+   </property>
+   <widget class="QMenu" name="menuPreprocess">
+    <property name="title">
+     <string>Preprocess</string>
+    </property>
+    <addaction name="actionFilter"/>
+    <addaction name="actionReview_and_Rejection"/>
+    <addaction name="actionData_Select"/>
+   </widget>
+   <widget class="QMenu" name="menuAnalysis_module">
+    <property name="title">
+     <string>Analysis module</string>
+    </property>
+    <addaction name="actionBasical_analysis"/>
+    <addaction name="actionEMG_analysis"/>
+    <addaction name="actionECG_analysis_Sleep_analysis_Epilepsy_analysis_Anesthesia_analysis"/>
+    <addaction name="action_Sleep_analysis_Epilepsy_analysis_Anesthesia_analysis"/>
+    <addaction name="actionEpilepsy_analysisAnesthesia_analysis"/>
+    <addaction name="actionAnesthesia_analysis"/>
+   </widget>
+   <addaction name="menuPreprocess"/>
+   <addaction name="menuAnalysis_module"/>
+  </widget>
+  <widget class="QStatusBar" name="statusbar"/>
+  <action name="actionFilter">
+   <property name="text">
+    <string>Filter</string>
+   </property>
+  </action>
+  <action name="actionReview_and_Rejection">
+   <property name="text">
+    <string>Review and Rejection</string>
+   </property>
+  </action>
+  <action name="actionBasical_analysis">
+   <property name="text">
+    <string>Basical analysis</string>
+   </property>
+  </action>
+  <action name="actionEMG_analysis">
+   <property name="text">
+    <string>EMG analysis</string>
+   </property>
+  </action>
+  <action name="actionECG_analysis_Sleep_analysis_Epilepsy_analysis_Anesthesia_analysis">
+   <property name="text">
+    <string>ECG analysis</string>
+   </property>
+  </action>
+  <action name="action_Sleep_analysis_Epilepsy_analysis_Anesthesia_analysis">
+   <property name="text">
+    <string>Sleep analysis</string>
+   </property>
+  </action>
+  <action name="actionEpilepsy_analysisAnesthesia_analysis">
+   <property name="text">
+    <string>Epilepsy analysis</string>
+   </property>
+  </action>
+  <action name="actionAnesthesia_analysis">
+   <property name="text">
+    <string>Anesthesia analysis</string>
+   </property>
+  </action>
+  <action name="actionData_Select">
+   <property name="text">
+    <string>Data Select</string>
+   </property>
+  </action>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>癫痫样候选窗口复核草稿预览 - QLanalyser</title>
+    <meta name="description" content="QLanalyser 癫痫样候选窗口人工复核后的草稿预览。" />
+    <link rel="stylesheet" href="./epilepsy-report-preview.css?v=20260706-preview-v7" />
+    <script src="./vendor/lucide.min.js"></script>
+  </head>
+  <body>
+    <main class="ep-report-app" data-testid="epilepsy-report-preview">
+      <header class="ep-report-top">
+        <div class="ep-brand">
+          <div class="ep-kicker">
+            <i data-lucide="file-chart-column" aria-hidden="true"></i>
+            <span>癫痫样候选窗口复核记录</span>
+          </div>
+          <h1>复核草稿详情</h1>
+          <p id="reportSubtitle">本页内容为科研筛查辅助材料，不作为诊疗或用药依据。</p>
+        </div>
+        <div class="ep-top-actions">
+          <label class="ep-file-btn" for="reviewJsonInput">
+            <i data-lucide="upload" aria-hidden="true"></i>
+            <span>载入候选复核记录</span>
+          </label>
+          <input id="reviewJsonInput" type="file" accept=".json,application/json" hidden />
+          <a class="ep-btn ep-btn-secondary" href="./epilepsy-review-preview.html" id="returnFromReportBtn">
+            <i data-lucide="square-pen" aria-hidden="true"></i>
+            <span>返回复核</span>
+          </a>
+          <button class="ep-btn ep-btn-primary" type="button" id="exportReportBtn">
+            <i data-lucide="download" aria-hidden="true"></i>
+            <span>下载复核草稿数据</span>
+          </button>
+        </div>
+      </header>
+
+      <section class="ep-report-banner" aria-label="草稿边界">
+        <strong id="overallStatement">等待载入复核记录。</strong>
+        <span>使用草稿时，建议先查看候选复核表，再结合图表与方法边界进行评估；所有下载操作须通过后端真实 EDF 窗口证据校验后方可执行。</span>
+      </section>
+
+      <section class="ep-scope-grid" aria-label="草稿使用边界">
+        <article>
+          <span>本草稿能说明什么</span>
+          <p>当前候选包中哪些片段已被人工复核、哪些被纳入草稿，以及对应的证据窗口和复核记录。</p>
+        </article>
+        <article>
+          <span>本草稿不能说明什么</span>
+          <p>不能判断个体疾病状态，不能代表全记录负荷估计，也不能替代完整科研统计或二次复核。</p>
+        </article>
+        <article>
+          <span>下一步还缺什么</span>
+          <p>补齐未复核/存疑候选，核对真实 EDF 证据、QC manifest、方法参数和导出追溯包。</p>
+        </article>
+      </section>
+
+      <section class="ep-summary-grid" aria-label="草稿摘要">
+        <article>
+          <span>记录</span>
+          <strong id="recordName">-</strong>
+          <small id="recordMeta">-</small>
+        </article>
+        <article>
+          <span>纳入草稿候选</span>
+          <strong id="confirmedMetric">-</strong>
+          <small id="eventRateMetric">-</small>
+        </article>
+        <article>
+          <span>存疑 / 未复核</span>
+          <strong id="pendingMetric">-</strong>
+          <small>不写成结论</small>
+        </article>
+        <article>
+          <span>复核覆盖</span>
+          <strong id="coverageMetric">-</strong>
+          <small id="coverageHint">-</small>
+        </article>
+      </section>
+
+      <section class="ep-report-layout">
+        <aside class="ep-report-nav" aria-label="草稿目录">
+          <a href="#summarySection" class="is-active">草稿摘要</a>
+          <a href="#eventsSection">候选复核表</a>
+          <a href="#figuresSection">图表预览</a>
+          <a href="#methodsSection">方法</a>
+          <a href="#auditSection">追溯</a>
+        </aside>
+
+        <div class="ep-report-main">
+          <section class="ep-section" id="summarySection">
+            <div class="ep-section-head">
+              <div>
+                <span>摘要</span>
+                <h2>草稿摘要</h2>
+              </div>
+              <button class="ep-icon-btn" type="button" id="copySummaryBtn" title="复制摘要">
+                <i data-lucide="copy" aria-hidden="true"></i>
+              </button>
+            </div>
+            <div class="ep-two-col">
+              <div class="ep-interpretation">
+                <h3>复核摘要</h3>
+                <p id="interpretationText">-</p>
+              </div>
+              <div class="ep-interpretation muted">
+                <h3>草稿边界</h3>
+                <p>本草稿只呈现算法候选经人工复核后的科研筛查记录，不判断个体疾病状态，不提供诊疗判断或用药建议。</p>
+              </div>
+            </div>
+          </section>
+
+          <section class="ep-section" id="eventsSection">
+            <div class="ep-section-head">
+              <div>
+                <span>复核表</span>
+                <h2>候选复核表</h2>
+              </div>
+              <button class="ep-btn ep-btn-secondary compact" type="button" id="exportCsvBtn">
+                <i data-lucide="table" aria-hidden="true"></i>
+                <span>导出候选复核表</span>
+              </button>
+            </div>
+            <div class="ep-table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>候选编号</th>
+                    <th>复核窗口</th>
+                    <th>原始候选</th>
+                    <th>类型</th>
+                    <th>通道</th>
+                    <th>证据摘要</th>
+                    <th>状态</th>
+                    <th>复核记录</th>
+                  </tr>
+                </thead>
+                <tbody id="eventTableBody"></tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="ep-section" id="figuresSection">
+            <div class="ep-section-head">
+              <div>
+                <span>图表</span>
+                <h2>图表预览</h2>
+              </div>
+              <button class="ep-icon-btn" type="button" id="redrawBtn" title="重绘图表">
+                <i data-lucide="refresh-cw" aria-hidden="true"></i>
+              </button>
+            </div>
+            <div class="ep-figure-grid">
+              <figure class="ep-figure wide">
+                <canvas id="timelineFigure" width="1200" height="260" role="img" aria-describedby="timelineFigureCaption"></canvas>
+                <figcaption id="timelineFigureCaption">当前候选包时间轴：展示纳入草稿、不纳入草稿、存疑和未复核候选的分布。</figcaption>
+              </figure>
+              <figure class="ep-figure">
+                <canvas id="waveformFigure" width="760" height="360" role="img" aria-describedby="waveformFigureCaption"></canvas>
+                <figcaption id="waveformFigureCaption">候选波形版式示意：当前预览为合成波形，不代表真实数据；正式草稿中会替换为实际 EDF 波形窗口。</figcaption>
+              </figure>
+              <figure class="ep-figure">
+                <canvas id="funnelFigure" width="760" height="360" role="img" aria-describedby="funnelFigureCaption"></canvas>
+                <figcaption id="funnelFigureCaption">复核漏斗：候选片段到纳入草稿候选的状态流。</figcaption>
+              </figure>
+              <figure class="ep-figure">
+                <canvas id="densityFigure" width="760" height="320" role="img" aria-describedby="densityFigureCaption"></canvas>
+                <figcaption id="densityFigureCaption">已复核纳入草稿的候选数（按记录小时归一化，预览值）：该数值不表示发作频率、疾病活动度，也不代表全记录负荷估计。</figcaption>
+              </figure>
+              <figure class="ep-figure">
+                <canvas id="qcFigure" width="760" height="320" role="img" aria-describedby="qcFigureCaption"></canvas>
+                <figcaption id="qcFigureCaption">通道证据概览：EEG、EMG、ACC 对候选判读的参与情况。</figcaption>
+              </figure>
+            </div>
+          </section>
+
+          <section class="ep-section" id="methodsSection">
+            <div class="ep-section-head">
+              <div>
+                <span>方法</span>
+                <h2>方法与边界</h2>
+              </div>
+              <button class="ep-icon-btn" type="button" id="copyMethodsBtn" title="复制方法说明">
+                <i data-lucide="clipboard" aria-hidden="true"></i>
+              </button>
+            </div>
+            <div class="ep-method-grid">
+              <article>
+                <h3>数据与通道</h3>
+                <p id="dataMethodText">-</p>
+              </article>
+              <article>
+                <h3>检测与复核</h3>
+                <p id="reviewMethodText">-</p>
+              </article>
+              <article>
+                <h3>草稿规则</h3>
+                <p>仅“已复核纳入草稿”的候选进入草稿摘要、代表图及预览归一化统计；“不纳入草稿”的候选不参与统计；存疑或尚未复核的候选列为“待确认”，不据此写成结论。</p>
+              </article>
+              <article>
+                <h3>局限性</h3>
+                <p>当前数据缺少同步视频和外部人工标注；EMG/ACC 仅能辅助判断运动或肌电伪迹，不能单独确认候选性质；自动检测的敏感性和特异性需通过外部标注集进行验证。</p>
+              </article>
+            </div>
+          </section>
+
+          <section class="ep-section" id="auditSection">
+            <div class="ep-section-head">
+              <div>
+                <span>追溯</span>
+                <h2>复核追溯</h2>
+              </div>
+              <span class="ep-contract" id="contractLabel">-</span>
+            </div>
+            <div class="ep-audit-list" id="auditList"></div>
+          </section>
+        </div>
+      </section>
+    </main>
+
+    <script src="./epilepsy-report-preview.js?v=20260707-review-storage-v1"></script>
+  </body>
+</html>

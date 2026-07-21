@@ -1,0 +1,8 @@
+file_size_gb,uplink_mbps,chunk_mb,concurrency,effective_mbps,estimated_minutes,chunk_count,strategy
+1,20,32,3,16,8.5,32,slow_network_safe_resume
+10,20,32,3,16,85.3,320,slow_network_safe_resume
+10,100,64,4,82,16.7,160,balanced_lab_network
+50,100,64,4,82,83.3,800,balanced_lab_network
+50,500,128,6,425,16.1,400,high_throughput_direct_object_store
+100,500,128,6,425,32.1,800,high_throughput_direct_object_store
+500,1000,128,8,850,80.3,4000,large_multisubject_batch

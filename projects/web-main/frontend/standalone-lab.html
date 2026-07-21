@@ -1,0 +1,523 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>在线脑电分析实验室</title>
+<style>
+:root{--bg:#f8fafc;--card:#fff;--bdr:#e2e8f0;--t:#1e293b;--m:#64748b;--a:#6366f1;--g:#10b981;--r:#ef4444;--ra:10px}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:"Microsoft YaHei","Segoe UI",system-ui,sans-serif;background:var(--bg);color:var(--t);min-height:100vh}
+.wrap{max-width:860px;margin:0 auto;padding:2rem 1.25rem}
+header{text-align:center;margin-bottom:2rem}
+header h1{font-size:1.5rem;margin-bottom:.25rem}
+header p{color:var(--m);font-size:.85rem;line-height:1.5}
+.banner{background:#fef3c7;border:1px solid #fbbf24;border-radius:var(--ra);padding:.65rem;font-size:.78rem;color:#92400e;margin-top:.75rem;line-height:1.5}
+
+.sec{margin-bottom:2rem}
+.sec-title{font-size:.8rem;text-transform:uppercase;letter-spacing:.06em;color:var(--m);margin-bottom:.5rem;padding-left:.25rem}
+
+.card{background:var(--card);border:1px solid var(--bdr);border-radius:var(--ra);padding:1.25rem;margin-bottom:.75rem}
+.card h2{font-size:1.05rem;margin-bottom:.25rem;display:flex;align-items:center;gap:.45rem}
+.card p.desc{color:var(--m);font-size:.82rem;margin-bottom:.75rem;line-height:1.5}
+.badge{font-size:.62rem;padding:.12rem .45rem;border-radius:99px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;white-space:nowrap}
+.badge-dev{background:#e0e7ff;color:#4338ca}.badge-tool{background:#f1f5f9;color:#475569}
+.badge-stable{background:#d1fae5;color:#065f46}.badge-beta{background:#fef3c7;color:#92400e}
+
+label{display:block;font-size:.78rem;font-weight:600;margin-bottom:.15rem;color:var(--t)}
+input,select{width:100%;padding:.4rem .55rem;border:1px solid var(--bdr);border-radius:6px;font-size:.82rem;font-family:inherit;background:#fff}
+input:focus,select:focus{outline:none;border-color:var(--a)}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:.55rem}
+.row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:.55rem}
+.row4{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:.55rem}
+.adv{font-size:.75rem;color:var(--m);cursor:pointer;user-select:none;margin-top:.5rem;display:inline-block}
+.adv-box{display:none;margin-top:.5rem;padding:.65rem;background:#f8fafc;border-radius:6px;border:1px solid var(--bdr)}
+.adv-box.open{display:block}
+
+.btn{display:inline-flex;align-items:center;gap:.3rem;padding:.45rem .9rem;border-radius:6px;font-size:.82rem;font-weight:600;cursor:pointer;border:none;font-family:inherit;transition:.15s;text-decoration:none}
+.btn-primary{background:var(--a);color:#fff}.btn-primary:hover{background:#4f46e5}
+.btn-outline{background:#fff;border:1px solid var(--bdr);color:var(--t)}.btn-outline:hover{background:#f1f5f9}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn-row{display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin-top:.6rem}
+
+.result{margin-top:.6rem;padding:.55rem;border-radius:6px;font-size:.78rem;line-height:1.5}
+.result-ok{background:#d1fae5;color:#065f46}.result-err{background:#fee2e2;color:#991b1b}.result-info{background:#e0e7ff;color:#3730a3}
+.art-list{display:flex;flex-wrap:wrap;gap:.3rem;margin-top:.4rem}
+.art{padding:.2rem .5rem;background:#fff;border:1px solid var(--bdr);border-radius:4px;font-size:.72rem;text-decoration:none;color:var(--a)}.art:hover{background:#eef2ff}
+
+.link-card{display:flex;align-items:center;justify-content:space-between;gap:.6rem}
+.link-card .info{flex:1}
+
+.waveform-box{border:1px solid var(--bdr);border-radius:8px;overflow:hidden;background:#fff;margin-top:.6rem}
+.waveform-box canvas{display:block;width:100%;height:auto;cursor:grab}
+.waveform-hint{font-size:.68rem;color:var(--m);padding:.3rem .5rem;display:flex;gap:.6rem;align-items:center}
+.waveform-hint span{white-space:nowrap}
+
+footer{text-align:center;margin-top:2rem;padding-top:1rem;border-top:1px solid var(--bdr);font-size:.72rem;color:var(--m)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+<h1>🧠 在线脑电分析实验室</h1>
+<p>无需登录 · 上传你的 EEG 文件或使用内置演示数据 · 零 QLanalyser 依赖<br>所有分析通过公开端点运行，工件直接下载</p>
+<div class="banner">⚠️ 非医疗科研工具：不提供临床诊断、治疗建议或自动睡眠分期结论。上传文件不持久保存，分析后立即清理。</div>
+</header>
+
+<!-- ═══ 数据来源 ═══ -->
+<div class="card" id="upload-card">
+<h2>📁 数据来源</h2>
+<div class="row">
+<div>
+<label>默认测试脑电数据
+<select id="sample-select"><option value="">加载中…</option></select></label>
+</div>
+<div>
+<label style="visibility:hidden">.</label>
+<div style="display:flex;gap:.5rem;align-items:center;padding-top:.15rem">
+<button class="btn btn-primary" onclick="loadSelectedSample()" id="sample-btn">加载示例数据</button>
+<button class="btn btn-outline" onclick="clearUpload()" id="clear-btn" style="display:none">清除</button>
+</div>
+</div>
+</div>
+<div class="row" style="margin-top:.6rem">
+<div>
+<label>或上传 EEG 文件 (.fif / .edf / .bdf)<input type="file" id="lab-file" accept=".fif,.edf,.bdf" style="padding:.3rem"/></label>
+</div>
+<div>
+<label style="visibility:hidden">.</label>
+<button class="btn btn-outline" onclick="handleUpload()" id="upload-btn">检查文件 & 预览波形</button>
+</div>
+</div>
+<div style="font-size:.7rem;color:var(--m);margin-top:.35rem;display:flex;gap:.45rem;align-items:center;flex-wrap:wrap">
+<span>📂 默认测试脑电目录:</span>
+<code id="sample-root" style="background:#f1f5f9;padding:.1rem .35rem;border-radius:3px">work/sample_data/</code>
+<button class="btn btn-outline" style="padding:.2rem .5rem;font-size:.7rem" onclick="copySampleRoot()" type="button">复制目录</button>
+<span>浏览器不能强制文件选择框默认打开本地目录；上方下拉框已直接读取该目录。</span>
+</div>
+<div id="file-preview" style="display:none"></div>
+<div class="waveform-box" id="wf-box" style="display:none">
+<canvas id="wf-canvas"></canvas>
+<div class="waveform-hint"><span>🖱 滚轮缩放</span><span>🖱 拖拽平移</span><span>🔍 下方分析可用此文件</span></div>
+</div>
+</div>
+
+<!-- ═══ 频谱分析 ═══ -->
+<div class="sec">
+<div class="sec-title">📊 频谱分析</div>
+
+<!-- PSD -->
+<div class="card">
+<h2>Welch PSD 功率谱 <span class="badge badge-stable">稳定</span></h2>
+<p class="desc">Welch 周期图法估计各通道功率谱密度，分解 delta/theta/alpha/beta/low‑gamma 五个经典频段，输出通道级频段功率表。</p>
+<div class="row">
+<label>最低频率 (Hz)<input id="psd-fmin" type="number" value="1" step="0.5"/></label>
+<label>最高频率 (Hz)<input id="psd-fmax" type="number" value="40" step="1"/></label>
+</div>
+<span class="adv" onclick="this.nextElementSibling.classList.toggle('open')">▶ 高级参数</span>
+<div class="adv-box">
+<div class="row">
+<label>高通滤波 (Hz, 0=关)<input id="psd-hp" type="number" value="1"/></label>
+<label>低通滤波 (Hz, 0=关)<input id="psd-lp" type="number" value="0"/></label>
+</div>
+</div>
+<div class="btn-row"><button class="btn btn-primary" onclick="runDemo('psd','psd-btn','psd-result',psdParams)" id="psd-btn">▶ 运行</button></div>
+<div id="psd-result"></div>
+</div>
+
+<!-- Multitaper PSD -->
+<div class="card">
+<h2>Multitaper PSD <span class="badge badge-beta">Beta</span></h2>
+<p class="desc">多锥谱估计提供比 Welch 法更高的频率分辨率。适合需要精确分辨邻近频率成分的场景（如 alpha 峰频、窄带振荡）。</p>
+<div class="row">
+<label>最低频率 (Hz)<input id="mt-fmin" type="number" value="1"/></label>
+<label>最高频率 (Hz)<input id="mt-fmax" type="number" value="40"/></label>
+</div>
+<span class="adv" onclick="this.nextElementSibling.classList.toggle('open')">▶ 高级参数</span>
+<div class="adv-box">
+<div class="row3">
+<label>带宽 (Hz)<input id="mt-bw" type="number" value="4"/></label>
+<label>自适应<select id="mt-adaptive"><option value="">否</option><option value="true">是</option></select></label>
+<label>归一化<select id="mt-norm"><option value="length" selected>按长度</option><option value="full">完整</option></select></label>
+</div>
+</div>
+<div class="btn-row"><button class="btn btn-primary" onclick="runDemo('multitaper_psd_tfr','mt-btn','mt-result',mtPsdParams)" id="mt-btn">▶ 运行</button></div>
+<div id="mt-result"></div>
+</div>
+</div>
+
+<!-- ═══ 事件相关分析 ═══ -->
+<div class="sec">
+<div class="sec-title">⚡ 事件相关分析</div>
+
+<!-- ERP -->
+<div class="card">
+<h2>ERP / P300 <span class="badge badge-stable">稳定</span></h2>
+<p class="desc">按 Standard/Target 事件分段，基线校正后叠加平均。自动提取 N100、P200、P300 成分幅值与潜伏期。适用 Oddball 范式。</p>
+<div class="row3">
+<label>Standard 事件码<input id="erp-std" type="number" value="1"/></label>
+<label>Target 事件码<input id="erp-tgt" type="number" value="2"/></label>
+<label>参考方式<select id="erp-ref"><option value="average" selected>平均参考</option><option value="keep_current">保留原参考</option></select></label>
+</div>
+<span class="adv" onclick="this.nextElementSibling.classList.toggle('open')">▶ 高级参数</span>
+<div class="adv-box">
+<div class="row4">
+<label>分段开始 (s)<input id="erp-tmin" type="number" value="-0.2" step="0.1"/></label>
+<label>分段结束 (s)<input id="erp-tmax" type="number" value="0.8" step="0.1"/></label>
+<label>高通 (Hz)<input id="erp-hp" type="number" value="0.1"/></label>
+<label>低通 (Hz)<input id="erp-lp" type="number" value="30"/></label>
+</div>
+</div>
+<div class="btn-row"><button class="btn btn-primary" onclick="runDemo('erp','erp-btn','erp-result',erpParams)" id="erp-btn">▶ 运行</button></div>
+<div id="erp-result"></div>
+</div>
+
+<!-- TFR -->
+<div class="card">
+<h2>TFR 时频分析 <span class="badge badge-beta">Beta</span></h2>
+<p class="desc">Morlet 小波变换计算事件相关频谱扰动 (ERSP) 与试次间相位一致性 (ITC)。揭示事件后功率随时间-频率的动态变化，不做统计推断。</p>
+<div class="row">
+<label>事件编号 (可选)<input id="tfr-ev" type="text" value="" placeholder="留空=全部事件或2(target)"/></label>
+<label>频率网格 (Hz, 逗号分隔)<input id="tfr-freqs" type="text" value="8,13,30"/></label>
+</div>
+<span class="adv" onclick="this.nextElementSibling.classList.toggle('open')">▶ 高级参数</span>
+<div class="adv-box">
+<div class="row4">
+<label>分段开始 (s)<input id="tfr-tmin" type="number" value="-0.2" step="0.1"/></label>
+<label>分段结束 (s)<input id="tfr-tmax" type="number" value="0.8" step="0.1"/></label>
+<label>小波周期数<input id="tfr-cycles" type="number" value="3"/></label>
+<label>降采样步长<input id="tfr-decim" type="number" value="2"/></label>
+</div>
+</div>
+<div class="btn-row"><button class="btn btn-primary" onclick="runDemo('tfr','tfr-btn','tfr-result',tfrParams)" id="tfr-btn">▶ 运行</button></div>
+<div id="tfr-result"></div>
+</div>
+
+<!-- Multitaper TFR -->
+<div class="card">
+<h2>Multitaper TFR <span class="badge badge-beta">Beta</span></h2>
+<p class="desc">多锥法事件锁定时频分析，通过多个正交锥度窗口平滑频谱估计。适合需要高时频分辨率的窄带振荡分析。</p>
+<div class="row">
+<label>频率网格 (Hz)<input id="mtt-freqs" type="text" value="8,13,30"/></label>
+<label>时间-带宽积<input id="mtt-tbw" type="number" value="4"/></label>
+</div>
+<span class="adv" onclick="this.nextElementSibling.classList.toggle('open')">▶ 高级参数</span>
+<div class="adv-box">
+<div class="row3">
+<label>分段开始 (s)<input id="mtt-tmin" type="number" value="-0.2" step="0.1"/></label>
+<label>分段结束 (s)<input id="mtt-tmax" type="number" value="0.8" step="0.1"/></label>
+<label>基线模式<select id="mtt-bmode"><option value="logratio" selected>logratio</option><option value="mean">mean</option><option value="percent">percent</option><option value="zscore">zscore</option></select></label>
+</div>
+</div>
+<div class="btn-row"><button class="btn btn-primary" onclick="runDemo('multitaper_psd_tfr','mtt-btn','mtt-result',mtTfrParams)" id="mtt-btn">▶ 运行</button></div>
+<div id="mtt-result"></div>
+</div>
+</div>
+
+<!-- ═══ 连接与耦合 ═══ -->
+<div class="sec">
+<div class="sec-title">🔗 连接与耦合</div>
+
+<!-- PAC V2 -->
+<div class="card">
+<h2>PAC 相位‑振幅耦合 <span class="badge badge-dev">V2</span></h2>
+<p class="desc">计算同一通道内低频相位对高频振幅的调制强度。支持三种耦合度量：Tort MI、Mean Vector Length、KL 散度。</p>
+<div class="row3">
+<label>耦合度量<select id="pac-metric"><option value="mi" selected>MI (Tort)</option><option value="mvl">MVL (向量长度)</option><option value="kl_divergence">KL 散度</option></select></label>
+<label>替代检验次数<input id="pac-surr" type="number" value="20" min="1" max="200"/></label>
+<label>通道<input id="pac-ch" type="text" value="Cz,Pz"/></label>
+</div>
+<span class="adv" onclick="this.nextElementSibling.classList.toggle('open')">▶ 高级参数</span>
+<div class="adv-box">
+<div class="row3">
+<label>相位频率 (Hz)<input id="pac-pf" type="text" value="4,6,8"/></label>
+<label>振幅频率 (Hz)<input id="pac-af" type="text" value="30,50,70"/></label>
+<label>相位分箱数<input id="pac-bins" type="number" value="18"/></label>
+</div>
+</div>
+<div class="btn-row"><button class="btn btn-primary" onclick="runDemo('pac_v2','pac-btn','pac-result',pacV2Params)" id="pac-btn">▶ 运行</button></div>
+<div id="pac-result"></div>
+</div>
+
+<!-- Connectivity -->
+<div class="card">
+<h2>功能连接 <span class="badge badge-beta">Beta</span></h2>
+<p class="desc">计算通道间 Pearson 相关或 FFT 相干性。输出连接矩阵、边排序（Top-N 最强边）。结果描述通道对之间的统计关联，不等于因果方向或信息流。</p>
+<div class="row3">
+<label>方法<select id="conn-method"><option value="correlation" selected>Pearson 相关</option><option value="coherence">FFT 相干性</option></select></label>
+<label>最低频率 (Hz)<input id="conn-fmin" type="number" value="8"/></label>
+<label>最高频率 (Hz)<input id="conn-fmax" type="number" value="13"/></label>
+</div>
+<span class="adv" onclick="this.nextElementSibling.classList.toggle('open')">▶ 高级参数</span>
+<div class="adv-box">
+<div class="row3">
+<label>分段长度 (s)<input id="conn-seg" type="number" value="4"/></label>
+<label>Top-N 边数<input id="conn-topn" type="number" value="20"/></label>
+<label>参考方式<select id="conn-ref"><option value="average" selected>平均参考</option><option value="keep_original">保留原参考</option></select></label>
+</div>
+</div>
+<div class="btn-row"><button class="btn btn-primary" onclick="runDemo('connectivity','conn-btn','conn-result',connParams)" id="conn-btn">▶ 运行</button></div>
+<div id="conn-result"></div>
+</div>
+</div>
+
+<!-- ═══ 空间分析 ═══ -->
+<div class="sec">
+<div class="sec-title">🗺️ 空间分析</div>
+
+<!-- Reference / CSD -->
+<div class="card">
+<h2>参考变换 / CSD <span class="badge badge-beta">Beta</span></h2>
+<p class="desc">切换 EEG 参考方式（平均参考、双极参考、指定通道）或计算头皮 Current Source Density。CSD 是拉普拉斯空间滤波，可增强局部皮层活动的空间分辨率，需 montage 信息。</p>
+<div class="row">
+<label>空间滤波模式<select id="csd-mode"><option value="csd" selected>CSD 电流源密度</option><option value="average">平均参考</option><option value="keep_original">保留原参考</option><option value="specific_channels">指定参考通道</option><option value="bipolar">双极参考</option></select></label>
+<label>预览通道 (逗号分隔)<input id="csd-preview" type="text" value="Fz,Cz,Pz,Oz"/></label>
+</div>
+<div class="btn-row"><button class="btn btn-primary" onclick="runDemo('reference_csd','csd-btn','csd-result',csdParams)" id="csd-btn">▶ 运行</button></div>
+<div id="csd-result"></div>
+</div>
+</div>
+
+<!-- ═══ 波形审阅 ═══ -->
+<div class="card">
+<div class="link-card">
+<div class="info">
+<h2>🔬 EDF 波形审阅器 <span class="badge badge-tool">工具</span></h2>
+<p class="desc">上传 EDF 文件，双窗口对比多通道波形，滤波、缩放、出版级 SVG 快照导出。独立工具，不依赖实验室后端。</p>
+</div>
+<a class="btn btn-outline" href="./lab-edf-reviewer.html">打开工具 →</a>
+</div>
+</div>
+
+<footer>独立脑电分析实验室 · 演示数据驱动 · 无需登录 · 零 QLanalyser 认证依赖 · 非医疗科研工具</footer>
+</div>
+
+<script>
+const API='/api';
+let uploadedFileName=null, uploadedFileMeta=null, uploadedFileBytes=null;
+let sampleFiles=[], sampleRoot='work/sample_data/';
+function $(id){return document.getElementById(id)}
+function esc(s){return String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function fl(raw){return String(raw||'').split(',').map(s=>Number(s.trim())).filter(n=>Number.isFinite(n))}
+function isLocalHost(){return ['localhost','127.0.0.1','::1'].includes(location.hostname)}
+
+/* ── Sample data + file upload & preview ── */
+async function loadSampleList(){
+  const sel=$('sample-select');
+  try{
+    const r=await fetch(`${API}/lab/demo/sample-files`);
+    if(!r.ok)throw new Error(`HTTP ${r.status}`);
+    const data=await r.json();sampleFiles=data.samples||[];
+    sampleRoot=isLocalHost()&&data.root?data.root:'work/sample_data/';
+    $('sample-root').textContent=sampleRoot;
+    sel.innerHTML=sampleFiles.map(s=>`<option value="${esc(s.filename)}">${esc(s.label)} — ${esc(s.filename)} (${Math.round(s.size_bytes/1024)} KB)</option>`).join('');
+  }catch(err){
+    sel.innerHTML=`<option value="">示例数据加载失败</option>`;
+  }
+}
+
+async function copySampleRoot(){
+  try{
+    await navigator.clipboard.writeText(sampleRoot);
+    const preview=$('file-preview');preview.style.display='block';
+    preview.innerHTML=`<div class="result result-info">已复制默认测试脑电目录：${esc(sampleRoot)}</div>`;
+  }catch(_){
+    window.prompt('复制默认测试脑电目录',sampleRoot);
+  }
+}
+
+async function loadSelectedSample(){
+  const filename=$('sample-select').value;
+  const preview=$('file-preview'),btn=$('sample-btn');
+  if(!filename){preview.style.display='block';preview.innerHTML='<div class="result result-err">请选择示例数据</div>';return}
+  btn.disabled=true;preview.style.display='block';preview.innerHTML='<div class="result result-info">加载示例数据…</div>';
+  try{
+    const r=await fetch(`${API}/lab/demo/sample-files/${encodeURIComponent(filename)}`);
+    if(!r.ok)throw new Error(`示例数据读取失败 HTTP ${r.status}`);
+    const bytes=await r.arrayBuffer();
+    await setLoadedFile(filename,bytes);
+  }catch(err){preview.innerHTML=`<div class="result result-err">❌ ${esc(err.message)}</div>`}
+  finally{btn.disabled=false}
+}
+
+async function setLoadedFile(filename,bytes){
+  uploadedFileBytes=bytes;uploadedFileName=filename;
+  const blob=new Blob([uploadedFileBytes]);
+  const fd=new FormData();fd.append('file',blob,filename);
+  const r=await fetch(`${API}/lab/edf-reviewer/inspect`,{method:'POST',body:fd});
+  if(!r.ok){const e=await r.json().catch(()=>({}));throw new Error(e.detail||'无法解析文件')}
+  uploadedFileMeta=await r.json();
+  const preview=$('file-preview');preview.style.display='block';
+  preview.innerHTML=`<div class="result result-ok">
+    <strong>${esc(filename)}</strong> — ${uploadedFileMeta.sfreq?.toFixed(1)} Hz · ${uploadedFileMeta.duration?.toFixed(1)}s · ${uploadedFileMeta.channel_count} 通道
+    <div style="font-size:.7rem;color:var(--m);margin-top:.2rem">通道: ${(uploadedFileMeta.channels||[]).slice(0,12).map(esc).join(', ')}${(uploadedFileMeta.channels||[]).length>12?'…':''}</div>
+  </div>`;
+  const chs=uploadedFileMeta.channels||[];
+  const eegChs=chs.filter(c=>c.toUpperCase().startsWith('EEG')||(!c.toUpperCase().startsWith('ACC')&&!c.toUpperCase().startsWith('ECG')&&!c.toUpperCase().startsWith('EOG')&&!c.toUpperCase().startsWith('EMG'))).slice(0,12);
+  const wfd=new FormData();wfd.append('file',blob,filename);wfd.append('channels',JSON.stringify(eegChs));wfd.append('max_points','4000');
+  const wr=await fetch(`${API}/lab/edf-reviewer/waveform`,{method:'POST',body:wfd});
+  if(wr.ok){wfPayload=await wr.json();drawWaveform(wfPayload)}
+  $('clear-btn').style.display='inline-flex';
+}
+
+async function handleUpload(){
+  const inp=$('lab-file'),preview=$('file-preview'),btn=$('upload-btn');
+  const f=inp.files[0];
+  if(!f){preview.style.display='block';preview.innerHTML='<div class="result result-err">请先选择文件</div>';return}
+  btn.disabled=true;preview.style.display='block';preview.innerHTML='<div class="result result-info">读取文件 & 生成波形预览…</div>';
+  try{
+    const bytes=await f.arrayBuffer();
+    await setLoadedFile(f.name,bytes);
+  }catch(err){
+    preview.innerHTML=`<div class="result result-err">❌ ${esc(err.message)}</div>`;
+    uploadedFileBytes=null;uploadedFileName=null;uploadedFileMeta=null;wfPayload=null;
+    $('wf-box').style.display='none';
+  }finally{btn.disabled=false}
+}
+
+function clearUpload(){
+  uploadedFileBytes=null;uploadedFileName=null;uploadedFileMeta=null;wfPayload=null;
+  $('lab-file').value='';$('file-preview').style.display='none';$('wf-box').style.display='none';$('clear-btn').style.display='none';
+  wfOffset=0;wfGain=1;
+}
+
+/* ── Canvas waveform renderer ── */
+let wfPayload=null,wfOffset=0,wfGain=1;
+const COLORS=['#155c9c','#157a77','#7c4dff','#c2410c','#0f766e','#9333ea','#b45309','#0369a1','#0891b2','#4f46e5','#db2777','#ea580c'];
+const WF_LEFT=92,WF_RIGHT=24,WF_TOP=32,WF_BOTTOM=36,WF_H=420;
+const WF_MAX_PTS=2800;
+
+function drawWaveform(payload){
+  if(!payload||!payload.times||!payload.values)return;
+  wfPayload=payload;$('wf-box').style.display='block';
+  const c=$('wf-canvas'),box=$('wf-box');c.width=box.clientWidth*2||1600;c.height=WF_H;
+  wfOffset=0;wfGain=1;
+  _renderWf();
+}
+
+function _renderWf(){
+  const p=wfPayload;if(!p)return;
+  const c=$('wf-canvas'),ctx=c.getContext('2d');
+  const W=c.width,H=c.height,plotW=W-WF_LEFT-WF_RIGHT,plotH=H-WF_TOP-WF_BOTTOM;
+  ctx.clearRect(0,0,W,H);ctx.fillStyle='#fff';ctx.fillRect(0,0,W,H);
+
+  const chs=p.channels||[],vals=p.values||[],times=p.times||[];
+  const totalDur=times[times.length-1]-times[0],maxWin=Math.min(60,totalDur);
+  const winSec=Math.min(maxWin,Math.max(2,totalDur*wfGain));
+  const maxOff=Math.max(0,totalDur-winSec);
+  wfOffset=Math.min(maxOff,Math.max(0,wfOffset));
+  const t0=times[0]+wfOffset,t1=t0+winSec;
+
+  let si=0;while(si<times.length&&times[si]<t0)si++;
+  let ei=si;while(ei<times.length&&times[ei]<=t1)ei++;si=Math.max(0,si-1);ei=Math.max(si+2,ei);
+  const count=ei-si,step=Math.max(1,Math.ceil(count/WF_MAX_PTS));
+  const idxs=[];
+  for(let i=si;i<ei;i+=step)idxs.push(i);
+  if(idxs[idxs.length-1]!==ei-1)idxs.push(ei-1);
+
+  const n=Math.min(12,chs.length),rh=plotH/n,ht=rh*0.44;
+  const visMax=vals.slice(0,n).map(r=>{let m=1e-9;for(const i of idxs){const a=Math.abs(r[i]);if(isFinite(a)&&a>m)m=a}return m});
+
+  function xFor(t){return WF_LEFT+((t-t0)/winSec)*plotW}
+  function yFor(ci,v){return WF_TOP+rh*(ci+0.5)-(v/visMax[ci])*ht}
+
+  // Grid
+  ctx.strokeStyle='#f1f5f9';ctx.lineWidth=1;
+  for(let k=0;k<=5;k++){const x=xFor(t0+winSec*k/5);ctx.beginPath();ctx.moveTo(x,WF_TOP);ctx.lineTo(x,WF_TOP+plotH);ctx.stroke()}
+
+  // Channels
+  for(let ci=0;ci<n;ci++){
+    const yBase=WF_TOP+rh*(ci+0.5);
+    ctx.fillStyle='#475569';ctx.font='14px "Microsoft YaHei",sans-serif';ctx.fillText(chs[ci],6,yBase+5);
+    ctx.strokeStyle='#e5e7eb';ctx.beginPath();ctx.moveTo(WF_LEFT,yBase);ctx.lineTo(W-WF_RIGHT,yBase);ctx.stroke();
+
+    ctx.strokeStyle=COLORS[ci%COLORS.length];ctx.lineWidth=1.3;ctx.beginPath();
+    for(let j=0;j<idxs.length;j++){const i=idxs[j];const x=xFor(times[i]),y=yFor(ci,vals[ci][i]);j===0?ctx.moveTo(x,y):ctx.lineTo(x,y)}
+    ctx.stroke();
+  }
+
+  // Time axis
+  ctx.fillStyle='#334155';ctx.font='13px "Microsoft YaHei",sans-serif';
+  for(let k=0;k<=5;k++){const t=t0+winSec*k/5,x=xFor(t);ctx.fillText(t.toFixed(1)+'s',x-18,WF_TOP+plotH+20)}
+  ctx.fillText('时间 (秒)',W/2-24,H-6);
+
+  // Scale bar
+  if(n>0&&visMax[n-1]>0){
+    const barH=40,barX=WF_LEFT-60,barY=WF_TOP+barH;
+    const uv=barH/(visMax[n-1]||1);
+    ctx.strokeStyle='#94a3b8';ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(barX,barY-barH);ctx.lineTo(barX,barY);ctx.stroke();
+    ctx.fillStyle='#64748b';ctx.font='11px "Microsoft YaHei",sans-serif';
+    ctx.fillText(uv.toFixed(1),barX-28,barY-barH/2+4);
+  }
+}
+
+// Mouse wheel zoom
+document.addEventListener('wheel',e=>{
+  if(!e.target.closest('.waveform-box'))return;
+  if(!wfPayload)return;e.preventDefault();
+  if(e.ctrlKey||e.metaKey){wfGain*=e.deltaY<0?1.2:1/1.2;wfGain=Math.max(0.5,Math.min(20,wfGain))}
+  else{wfOffset+=e.deltaY>0?0.5:-0.5}
+  _renderWf();
+},{passive:false});
+
+// Drag pan on canvas
+$('wf-canvas').addEventListener('mousedown',e=>{
+  if(!wfPayload)return;
+  const c=$('wf-canvas'),startX=e.clientX,startOff=wfOffset,startGain=wfGain;
+  function onMove(ev){wfOffset=startOff-(ev.clientX-startX)/c.clientWidth*wfGain*10;_renderWf()}
+  function onUp(){document.removeEventListener('mousemove',onMove);document.removeEventListener('mouseup',onUp)}
+  document.addEventListener('mousemove',onMove);document.addEventListener('mouseup',onUp);
+});
+
+/* ── Shared runner ── */
+async function runDemo(module,btnId,resultId,paramFn){
+  const btn=$(btnId),box=$(resultId);
+  btn.disabled=true;box.innerHTML='<div class="result result-info">运行中…</div>';
+  try{
+    const params=paramFn?paramFn():{};
+
+    if(uploadedFileBytes){
+      // ── Upload + analyze path ──
+      const fd=new FormData();
+      fd.append('file',new Blob([uploadedFileBytes]),uploadedFileName);
+      fd.append('module',module);
+      fd.append('parameters_json',JSON.stringify(params));
+      const r=await fetch(`${API}/lab/demo/analyze-upload`,{method:'POST',body:fd});
+      if(!r.ok){const e=await r.json().catch(()=>({}));throw new Error(e.detail||`HTTP ${r.status}`)}
+      const result=await r.json();
+      const links=(result.artifacts||[]).map(a=>
+        `<a class="art" href="${API}/lab/demo/upload-result/${result.run_id}/download/${encodeURIComponent(a.filename)}" target="_blank">${esc(a.label)}</a>`
+      ).join('');
+      box.innerHTML=`<div class="result result-ok">✅ 完成 (${esc(uploadedFileName)})<div class="art-list">${links||'(无工件)'}</div></div>`;
+    }else{
+      // ── Demo dataset path ──
+      const r=await fetch(`${API}/lab/demo/run/${module}/configured`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({parameters_json:params})});
+      if(!r.ok){const e=await r.json().catch(()=>({}));throw new Error(e.detail||`HTTP ${r.status}`)}
+      const task=await r.json();
+      if(task.status!=='completed')throw new Error(`任务状态: ${task.status}`);
+      let arts=[];
+      try{const ar=await fetch(`${API}/lab/demo/artifacts/${task.id}`);if(ar.ok)arts=await ar.json()}catch(_){}
+      const links=(arts||[]).map(a=>`<a class="art" href="${API}/lab/demo/artifacts/${task.id}/download/${encodeURIComponent(a.label||'')}" target="_blank">${esc(a.label||'')}</a>`).join('');
+      box.innerHTML=`<div class="result result-ok">✅ 完成 (演示数据)<div class="art-list">${links||'(无工件)'}</div></div>`;
+    }
+  }catch(err){
+    box.innerHTML=`<div class="result result-err">❌ ${esc(err.message)}</div>`;
+  }finally{btn.disabled=false}
+}
+
+/* ── Param builders ── */
+function psdParams(){return{fmin:parseFloat($('psd-fmin').value)||1,fmax:parseFloat($('psd-fmax').value)||40,l_freq:parseFloat($('psd-hp').value)||0,h_freq:parseFloat($('psd-lp').value)||0,include_channel_table:true}}
+function mtPsdParams(){return{analysis_family:'psd',fmin:parseFloat($('mt-fmin').value)||1,fmax:parseFloat($('mt-fmax').value)||40,bandwidth:parseFloat($('mt-bw').value)||4,adaptive:$('mt-adaptive').value==='true',low_bias:true,remove_dc:true,normalization:$('mt-norm').value||'length'}}
+function erpParams(){return{event_id:{standard:parseInt($('erp-std').value)||1,target:parseInt($('erp-tgt').value)||2},event_id_confirmed:true,tmin:parseFloat($('erp-tmin').value)||-0.2,tmax:parseFloat($('erp-tmax').value)||0.8,baseline:[null,0],l_freq:parseFloat($('erp-hp').value)||0.1,h_freq:parseFloat($('erp-lp').value)||30,reference:$('erp-ref').value||'average'}}
+function tfrParams(){const ev=$('tfr-ev').value.trim();return{event_id:ev?parseInt(ev):null,tmin:parseFloat($('tfr-tmin').value)||-0.2,tmax:parseFloat($('tfr-tmax').value)||0.8,baseline:[-0.2,0],freqs:fl($('tfr-freqs').value),n_cycles:parseFloat($('tfr-cycles').value)||3,decim:parseInt($('tfr-decim').value)||2,return_itc:true,average:true}}
+function mtTfrParams(){return{analysis_family:'tfr',tmin:parseFloat($('mtt-tmin').value)||-0.2,tmax:parseFloat($('mtt-tmax').value)||0.8,baseline:[-0.2,0],baseline_mode:$('mtt-bmode').value||'logratio',freqs:fl($('mtt-freqs').value),n_cycles:7,time_bandwidth:parseFloat($('mtt-tbw').value)||4,use_fft:true,zero_mean:true,decim:1,average:true,return_itc:true}}
+function pacV2Params(){return{coupling_metric:$('pac-metric').value||'mi',n_surrogates:parseInt($('pac-surr').value)||20,channels:String($('pac-ch').value).split(',').map(s=>s.trim()).filter(Boolean),phase_freqs:fl($('pac-pf').value),amp_freqs:fl($('pac-af').value),n_phase_bins:parseInt($('pac-bins').value)||18,time_window:{start_sec:0,end_sec:20}}}
+function connParams(){return{method:$('conn-method').value||'correlation',fmin:parseFloat($('conn-fmin').value)||8,fmax:parseFloat($('conn-fmax').value)||12,segment_length_sec:parseFloat($('conn-seg').value)||4,edge_top_n:parseInt($('conn-topn').value)||20,reference:$('conn-ref').value||'average'}}
+function csdParams(){return{reference_mode:$('csd-mode').value||'csd',preview:{start_sec:0,duration_sec:8,channels:String($('csd-preview').value).split(',').map(s=>s.trim()).filter(Boolean)},csd:{sphere:'auto',lambda2:1e-5,stiffness:4,n_legendre_terms:50}}}
+
+loadSampleList();
+</script>
+</body>
+</html>

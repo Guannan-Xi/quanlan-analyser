@@ -1,0 +1,104 @@
+{
+  "goal": "Support concurrent EEG uploads, preprocessing jobs, statistics jobs, report rendering, and publication package generation without letting one tenant or one dataset overload the platform.",
+  "traffic_classes": {
+    "upload": {
+      "path": "browser -> object storage",
+      "api_role": "sign multipart URLs and record metadata only",
+      "scaling_unit": "upload sessions and signed-part requests",
+      "bottleneck_to_avoid": "application API proxying file bytes"
+    },
+    "metadata": {
+      "path": "API -> Redis/PostgreSQL",
+      "scaling_unit": "requests per second",
+      "bottleneck_to_avoid": "synchronous BIDS validation on request thread"
+    },
+    "analysis": {
+      "path": "queue -> CPU/GPU workers -> object storage derivatives",
+      "scaling_unit": "worker pods",
+      "bottleneck_to_avoid": "running MNE/EEGLAB jobs inside web API processes"
+    },
+    "figures_reports": {
+      "path": "queue -> render workers -> publication package",
+      "scaling_unit": "render workers",
+      "bottleneck_to_avoid": "large image/PDF generation during page requests"
+    }
+  },
+  "core_components": [
+    "API gateway with auth, tenant routing, and global rate limits",
+    "Stateless application API replicas",
+    "Redis cluster for short-lived sessions, upload progress, queue locks, and rate counters",
+    "PostgreSQL primary plus read replicas for durable metadata and audit logs",
+    "S3-compatible object storage for raw files, derivatives, figures, and reports",
+    "Queue broker with separate queues for preflight, QC, preprocessing, statistics, rendering, and cleanup",
+    "CPU worker pools for preprocessing/statistics",
+    "Optional GPU worker pools for deep learning or heavy source/localization workflows",
+    "Autoscaler based on queue depth, job age, CPU, memory, and object storage throughput",
+    "Observability stack for latency, queue time, upload retries, storage I/O, and per-tenant usage"
+  ],
+  "queue_design": {
+    "queues": [
+      "upload-preflight",
+      "bids-validation",
+      "qc-preview",
+      "preprocessing-cpu",
+      "time-frequency-cpu",
+      "source-localization-heavy",
+      "statistics",
+      "figure-render",
+      "publication-package",
+      "storage-lifecycle-cleanup"
+    ],
+    "isolation": [
+      "Per-tenant concurrency caps",
+      "Per-project active job caps",
+      "Priority queues for interactive previews vs long batch jobs",
+      "Dead-letter queue for failed analyses",
+      "Idempotency keys for every task"
+    ]
+  },
+  "rate_limits": {
+    "anonymous": "blocked except public demo assets",
+    "free_trial": {
+      "upload_sessions_per_hour": 10,
+      "signed_parts_per_minute": 300,
+      "active_analysis_jobs": 1
+    },
+    "lab_standard": {
+      "upload_sessions_per_hour": 200,
+      "signed_parts_per_minute": 6000,
+      "active_analysis_jobs": 8
+    },
+    "enterprise": {
+      "upload_sessions_per_hour": 2000,
+      "signed_parts_per_minute": 60000,
+      "active_analysis_jobs": 80
+    }
+  },
+  "autoscaling_policy": {
+    "api_replicas": "scale by p95 latency, CPU, and request rate",
+    "upload_signer": "scale by signed-part RPS and Redis latency",
+    "analysis_workers": "scale by queue depth, oldest job age, and average job duration",
+    "render_workers": "scale by publication/report queue depth",
+    "scale_down": "drain workers gracefully; never terminate a running MNE job without checkpoint or retry record"
+  },
+  "resilience": [
+    "Use idempotency keys for upload complete and task creation.",
+    "Store every task input/output manifest in object storage and PostgreSQL.",
+    "Use at-least-once queue semantics plus idempotent workers.",
+    "Backpressure long jobs instead of slowing down upload preflight.",
+    "Circuit-break report rendering when object storage or database p95 latency crosses threshold.",
+    "Retry failed chunks and jobs separately; never restart a whole dataset upload after one chunk failure."
+  ],
+  "observability": [
+    "p50/p95/p99 API latency",
+    "upload signed-part RPS",
+    "chunk retry rate",
+    "queue depth by queue",
+    "oldest job age",
+    "worker utilization",
+    "object storage GET/PUT throughput",
+    "PostgreSQL connection pool saturation",
+    "per-tenant billable EEG hours",
+    "analysis cost per pipeline version"
+  ]
+}

@@ -1,0 +1,1 @@
+Connectivity preview output. Alpha-band wPLI matrix and thresholded network graph demonstrate expected edge tables, thresholding transparency, and controls required before turning this into a production V01 workflow.

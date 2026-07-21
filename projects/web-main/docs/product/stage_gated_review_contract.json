@@ -1,0 +1,323 @@
+{
+  "schema_version": "qlanalyser-stage-gated-review-contract-v0.3",
+  "owner": "07 QLanalyser product owner",
+  "status": "mandatory",
+  "route_chain": [
+    "route_decision",
+    "execution_packet",
+    "executor_evidence",
+    "gpt55_acceptance",
+    "final_receipt",
+    "next_real_artifact"
+  ],
+  "executor_lanes": [
+    "script_validator",
+    "deepseek_text_worker",
+    "browser_ui_runner",
+    "local_validator",
+    "bounded_worker"
+  ],
+  "stage_order": [
+    "route_gate",
+    "requirement_gate",
+    "design_gate",
+    "implementation_gate",
+    "unit_static_gate",
+    "integration_gate",
+    "ui_interaction_gate",
+    "real_user_path_gate",
+    "artifact_report_gate",
+    "checkpoint_access_gate",
+    "release_decision_gate"
+  ],
+  "gates": {
+    "route_gate": {
+      "required": [
+        "task_id",
+        "owner",
+        "consumer",
+        "acceptance",
+        "route_decision"
+      ]
+    },
+    "requirement_gate": {
+      "required": [
+        "requirements",
+        "user_path",
+        "p0_p1_p2_acceptance",
+        "non_goals"
+      ]
+    },
+    "design_gate": {
+      "required": [
+        "detailed_design",
+        "api_or_state_model",
+        "test_plan"
+      ]
+    },
+    "implementation_gate": {
+      "required": [
+        "changed_files",
+        "scope_statement",
+        "diff_review"
+      ]
+    },
+    "unit_static_gate": {
+      "required": [
+        "syntax_or_compile_check",
+        "utf8_or_schema_check",
+        "command_output"
+      ]
+    },
+    "integration_gate": {
+      "required": [
+        "api_or_runner_evidence",
+        "service_health",
+        "output_paths"
+      ]
+    },
+    "ui_interaction_gate": {
+      "required": [
+        "browser_evidence",
+        "screenshots",
+        "state_coverage"
+      ]
+    },
+    "real_user_path_gate": {
+      "required": [
+        "ui_only_runner",
+        "upload_or_load_data",
+        "analysis_result",
+        "downloaded_report"
+      ]
+    },
+    "artifact_report_gate": {
+      "required": [
+        "zip_inventory",
+        "report_html_or_pdf",
+        "manifest",
+        "scientific_boundary"
+      ]
+    },
+    "checkpoint_access_gate": {
+      "required": [
+        "front_end_url",
+        "backend_health_url",
+        "test_account",
+        "credential_safety",
+        "checkpoint_path",
+        "validator_pass"
+      ]
+    },
+    "release_decision_gate": {
+      "required": [
+        "release_review_gate",
+        "failed_steps_empty",
+        "external_prerequisite_status",
+        "no_release_misclaim"
+      ]
+    }
+  },
+  "environment_coverage": {
+    "product_docs": [
+      "requirement_gate",
+      "design_gate"
+    ],
+    "frontend_ui": [
+      "design_gate",
+      "implementation_gate",
+      "unit_static_gate",
+      "ui_interaction_gate",
+      "real_user_path_gate"
+    ],
+    "backend_api": [
+      "design_gate",
+      "implementation_gate",
+      "unit_static_gate",
+      "integration_gate"
+    ],
+    "runner_worker": [
+      "design_gate",
+      "implementation_gate",
+      "unit_static_gate",
+      "integration_gate",
+      "artifact_report_gate"
+    ],
+    "artifact_report": [
+      "artifact_report_gate"
+    ],
+    "review_checkpoint": [
+      "checkpoint_access_gate"
+    ],
+    "release_deploy": [
+      "release_decision_gate"
+    ]
+  },
+  "forbidden": [
+    "advance_without_prior_gate_pass",
+    "claim_executor_without_execution_id_or_output",
+    "claim_review_ready_without_checkpoint_access_gate",
+    "claim_release_ready_with_failed_steps_or_missing_external_prereqs"
+  ],
+  "all_environments_review_required": true,
+  "environment_gates": [
+    {
+      "environment_id": "development_workspace",
+      "entry": "local repository and developer workstation",
+      "gate": "unit_static_gate",
+      "command_or_entry": "python -m py_compile scripts/acceptance_review_system_all_environments.py scripts/acceptance_stage_gated_review_policy.py scripts/run_release_review_gate.py && node --check scripts/acceptance_workflow_pages_ui_gate.mjs",
+      "blocking_rules": [
+        "syntax_error",
+        "mojibake_in_gate_script",
+        "missing_review_contract",
+        "missing_environment_gate"
+      ],
+      "evidence_path": "work/release_evidence/review_system_all_environments/review_system_all_environments.json",
+      "owner": "07 QLanalyser product owner",
+      "consumer": "all QLanalyser implementers and validators"
+    },
+    {
+      "environment_id": "frontend_ui_e2e",
+      "entry": "http://127.0.0.1:4174/index.html?customer_demo=auto&api=http%3A%2F%2F127.0.0.1%3A8001%2Fapi",
+      "gate": "ui_interaction_gate + real_user_path_gate",
+      "command_or_entry": "node scripts/acceptance_workflow_pages_ui_gate.mjs && node scripts/acceptance_edf_upload_to_results_ui_only.mjs",
+      "blocking_rules": [
+        "login_blocked",
+        "required_action_missing",
+        "disabled_action_without_reason",
+        "visible_mojibake",
+        "duplicate_or_internal_visible_marker",
+        "horizontal_overflow",
+        "finance_terms_outside_user_center",
+        "page_visual_review_missing",
+        "checkpoint_created_without_fresh_e2e_and_visual_evidence"
+      ],
+      "evidence_path": "work/release_evidence/ui_interaction_review/workflow_pages_gate/workflow_pages_ui_gate.json",
+      "owner": "07 frontend/product UI owner",
+      "consumer": "reviewer and customer demo user"
+    },
+    {
+      "environment_id": "backend_api_runner",
+      "entry": "http://127.0.0.1:8001/api/health and /api/tasks",
+      "gate": "integration_gate",
+      "command_or_entry": "python scripts/check_running_backend_contract.py --base-url http://127.0.0.1:8001/api --evidence-dir work/release_evidence/backend_contract",
+      "blocking_rules": [
+        "backend_unhealthy",
+        "task_route_missing",
+        "contract_field_missing",
+        "wrong_status_semantics"
+      ],
+      "evidence_path": "work/release_evidence/backend_contract/running_backend_contract_check.json",
+      "owner": "07 backend/API owner",
+      "consumer": "frontend UI, analysis runner, release gate"
+    },
+    {
+      "environment_id": "runner_artifact_report",
+      "entry": "EDF upload -> QC/prep -> PSD/ERP/TFR/PAC -> report ZIP",
+      "gate": "artifact_report_gate",
+      "command_or_entry": "python scripts/acceptance_report_artifact_label_readability.py && python scripts/inventory_latest_edf_e2e_report_zip.py",
+      "blocking_rules": [
+        "missing_required_artifact",
+        "internal_artifact_label_visible",
+        "unreadable_report_label",
+        "local_path_leak",
+        "report_zip_missing"
+      ],
+      "evidence_path": "work/release_evidence/report_artifact_label_readability/acceptance_report_artifact_label_readability.json",
+      "owner": "07 runner/report owner",
+      "consumer": "research customer and release reviewer"
+    },
+    {
+      "environment_id": "release_gate",
+      "entry": "release review runner",
+      "gate": "release_decision_gate",
+      "command_or_entry": "python scripts/run_release_review_gate.py",
+      "blocking_rules": [
+        "failed_release_step",
+        "missing_external_preflight_boundary",
+        "release_ready_misclaim",
+        "stage_gate_missing",
+        "e2e_status_not_passed",
+        "page_visual_review_missing"
+      ],
+      "evidence_path": "work/release_evidence/20260620-v01-acceptance/release_review_gate_run.json",
+      "owner": "07 final acceptance owner",
+      "consumer": "C0/owner review and deployment decision"
+    },
+    {
+      "environment_id": "checkpoint_review_access",
+      "entry": "latest checkpoint packet JSON/MD",
+      "gate": "checkpoint_access_gate",
+      "command_or_entry": "python scripts/validate_checkpoint_packet_access.py <latest-checkpoint.json> && python scripts/acceptance_checkpoint_packet_access.py <latest-checkpoint.json>",
+      "blocking_rules": [
+        "missing_frontend_link",
+        "missing_backend_health",
+        "missing_default_account",
+        "missing_credential_safety",
+        "missing_checkpoint_path",
+        "plain_secret_without_demo_boundary",
+        "checkpoint_created_without_fresh_e2e_and_visual_evidence"
+      ],
+      "evidence_path": "work/release_evidence/checkpoints/2026-06-23-1743-post-fix-ui-only-edf-e2e-review-gate-checkpoint.json",
+      "owner": "07 review access owner",
+      "consumer": "external reviewer"
+    },
+    {
+      "environment_id": "docs_living_system",
+      "entry": "docs/product/stage_gated_development_review_system.md and contract JSON",
+      "gate": "requirement_gate",
+      "command_or_entry": "python scripts/acceptance_stage_gated_review_policy.py && python scripts/acceptance_review_system_all_environments.py",
+      "blocking_rules": [
+        "missing_stage_order",
+        "missing_maintenance_rule",
+        "missing_environment_contract",
+        "conceptual_only_without_command"
+      ],
+      "evidence_path": "work/release_evidence/stage_gated_review_policy/acceptance_stage_gated_review_policy.json",
+      "owner": "07 product platform owner",
+      "consumer": "future QLanalyser development threads"
+    },
+    {
+      "environment_id": "cross_department_handoff",
+      "entry": "07+08+12/07A handoff, consumer, evidence flow",
+      "gate": "route_gate",
+      "command_or_entry": "QGCS task pool packet results and acceptance summary",
+      "blocking_rules": [
+        "missing_consumer",
+        "missing_executor_evidence",
+        "single_thread_closed_loop",
+        "acceptance_only_pretended"
+      ],
+      "evidence_path": "work/release_evidence/review_system_all_environments/review_system_all_environments.json",
+      "owner": "07 product owner",
+      "consumer": "08 science support, 12 review/deployment, 07A evidence acceleration"
+    }
+  ],
+  "pre_submission_quality_gate": {
+    "applies_before": [
+      "acceptance_submission",
+      "checkpoint_packet",
+      "review_artifact",
+      "release_gate_final_receipt"
+    ],
+    "required_commands": [
+      "node scripts/acceptance_edf_upload_to_results_ui_only.mjs",
+      "node scripts/acceptance_workflow_pages_ui_gate.mjs"
+    ],
+    "required_evidence": [
+      "work/release_evidence/edf_upload_to_results_ui_only/edf_upload_to_results_ui_only.json",
+      "work/release_evidence/ui_interaction_review/workflow_pages_gate/workflow_pages_ui_gate.json",
+      "page-level screenshots for login/dashboard/data preparation/analysis tasks/results/report delivery/review validation/user center",
+      "pass/fail issue list with blocker ownership"
+    ],
+    "blocking_rules": [
+      "e2e_status_not_passed",
+      "page_visual_review_missing",
+      "visible_mojibake_or_internal_jargon",
+      "required_action_missing_or_no_feedback",
+      "checkpoint_created_without_fresh_e2e_and_visual_evidence"
+    ],
+    "owner": "GPT-5.5/Codex final acceptance owner",
+    "consumer": "reviewer, checkpoint consumer, release decision owner"
+  }
+}

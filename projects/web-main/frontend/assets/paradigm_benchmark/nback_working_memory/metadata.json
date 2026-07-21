@@ -1,0 +1,32 @@
+{
+  "slug": "nback_working_memory",
+  "name": "N-back 工作记忆",
+  "family": "cognition",
+  "effect": "frontal_theta",
+  "events": {
+    "0back": 14,
+    "2back": 4
+  },
+  "channels": 12,
+  "duration_s": 60,
+  "sfreq_hz": 256,
+  "edf_bytes": 373544,
+  "effect_detectability": 1091.614,
+  "effect_metric": "frontal_theta_proxy",
+  "review_grade": "excellent",
+  "coverage": {
+    "upload": true,
+    "event_parsing": true,
+    "epoching": true,
+    "time_frequency": true,
+    "erp": false,
+    "statistics_ready": true
+  },
+  "recommended_outputs": [
+    "events.tsv",
+    "QC",
+    "subject-level CSV",
+    "publication figure",
+    "manifest"
+  ]
+}

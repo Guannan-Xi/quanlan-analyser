@@ -1,0 +1,81 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Documentation
+*.md
+docs/
+DESIGN.md
+PRODUCT.md
+README.md
+HANDOFF_*.md
+SECURITY_*.md
+AGENT*.md
+AGENTS.md
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*.swn
+.DS_Store
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+*.log
+
+# Development
+.env.local
+.env.*.local
+.env.quanlan-model.local*
+*.json.backup
+
+# Output directories
+outputs/
+work/
+worker/
+logs/
+
+# Security testing
+adversarial_*.py
+adversarial_*.json
+scripts/adversarial_*
+
+# Node modules (frontend is copied as-is)
+frontend/node_modules/
+
+# Deploy configs (use specific copies)
+deploy/
+
+# Agent configs
+.agents/
+.ai/
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+
+# Project state
+PROJECT_STATE.json

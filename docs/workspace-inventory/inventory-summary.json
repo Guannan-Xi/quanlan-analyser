@@ -1,0 +1,47 @@
+{
+  "schema_version": "workspace-inventory-v1",
+  "scope": [
+    "web-main",
+    "qeeg-64ch-research",
+    "spike-analysis"
+  ],
+  "excluded_from_modularization": [
+    "pc-qlanalyser"
+  ],
+  "file_count": 902,
+  "file_counts_by_project": {
+    "qeeg-64ch-research": 32,
+    "spike-analysis": 2,
+    "web-main": 868
+  },
+  "file_counts_by_category": {
+    "configuration-or-contract": 54,
+    "documentation": 310,
+    "other": 25,
+    "source": 437,
+    "static-evidence-or-asset": 76
+  },
+  "python_symbol_counts": {
+    "api-route": 112,
+    "class": 86,
+    "function": 1845,
+    "router-registration": 23
+  },
+  "frontend_entry_count": 48,
+  "generated_output_roots": [
+    {
+      "project": "qeeg-64ch-research",
+      "path": "projects/qeeg-64ch-research/results",
+      "file_count": 451,
+      "size_bytes": 247640859,
+      "sha256": "not-hashed-generated-output"
+    }
+  ],
+  "large_excluded_asset_count": 37,
+  "path_level_security_finding_count": 12,
+  "limitations": [
+    "Generated output payloads are indexed by root only and are not hashed file-by-file.",
+    "Secret scanning in this script is path-based; a separate content-signature scan is required before commit.",
+    "Inventory presence does not prove feature correctness, lifecycle, or release readiness."
+  ]
+}

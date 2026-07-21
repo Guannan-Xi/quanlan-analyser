@@ -1,0 +1,32 @@
+{
+  "slug": "ssvep_frequency_tagging",
+  "name": "SSVEP 频率标记",
+  "family": "bci",
+  "effect": "ssvep",
+  "events": {
+    "flicker_10hz": 4,
+    "flicker_15hz": 4
+  },
+  "channels": 12,
+  "duration_s": 60,
+  "sfreq_hz": 256,
+  "edf_bytes": 373904,
+  "effect_detectability": 3586.192,
+  "effect_metric": "10_hz_power_proxy",
+  "review_grade": "excellent",
+  "coverage": {
+    "upload": true,
+    "event_parsing": true,
+    "epoching": true,
+    "time_frequency": true,
+    "erp": false,
+    "statistics_ready": true
+  },
+  "recommended_outputs": [
+    "events.tsv",
+    "QC",
+    "subject-level CSV",
+    "publication figure",
+    "manifest"
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "status": "enabled_v01_static_demo",
+  "subjects": 24,
+  "alpha_reactivity_db_mean": 2.262,
+  "bands": [
+    "delta",
+    "theta",
+    "alpha",
+    "beta",
+    "low_gamma"
+  ],
+  "statistical_unit": "subject"
+}

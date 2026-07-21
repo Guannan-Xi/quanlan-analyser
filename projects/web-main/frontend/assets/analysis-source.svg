@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="520" viewBox="0 0 920 520">
+  <rect width="920" height="520" fill="#f7faf9"/>
+  <rect x="18" y="18" width="884" height="484" rx="8" fill="#ffffff" stroke="#d9e0e7"/>
+  <text x="42" y="58" font-family="Arial, Microsoft YaHei, sans-serif" font-size="25" font-weight="700" fill="#17202a">源定位分析示例</text>
+  <text x="42" y="86" font-family="Arial, Microsoft YaHei, sans-serif" font-size="14" fill="#6b7785">皮层激活分布、ROI 平均和条件对比</text>
+  <path d="M428 132 C560 98 708 166 720 284 C732 420 570 456 434 418 C286 376 230 260 300 174 C326 144 372 134 428 132Z" fill="#eef4f3" stroke="#526577" stroke-width="2"/><circle cx="452" cy="226" r="46" fill="#d95f43" opacity="0.72"/><circle cx="536" cy="258" r="68" fill="#d99a22" opacity="0.72"/><circle cx="396" cy="314" r="50" fill="#157a77" opacity="0.72"/><circle cx="610" cy="335" r="36" fill="#d95f43" opacity="0.72"/><text x="92" y="180" font-family="Arial" font-size="15" fill="#526577">dSPM inverse solution</text><text x="92" y="210" font-family="Arial" font-size="15" fill="#526577">BEM head model</text><text x="92" y="240" font-family="Arial" font-size="15" fill="#526577">Sensor-to-source projection</text>
+</svg>

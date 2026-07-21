@@ -1,0 +1,5 @@
+{
+    "exclude": [
+        "AR_analyser_PC/dist"
+    ]
+}

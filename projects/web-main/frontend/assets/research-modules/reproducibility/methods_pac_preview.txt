@@ -1,0 +1,1 @@
+PAC/CFC preview requires explicit phase and amplitude bands, filter strategy, boundary control, surrogate generation, and multiple-comparison correction before production use.

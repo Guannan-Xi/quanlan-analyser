@@ -1,0 +1,11 @@
+{
+  "status": "enabled_v01_static_demo",
+  "subjects": 24,
+  "events_total": 66,
+  "event_id": {
+    "standard": 1,
+    "target": 2
+  },
+  "p300_difference_uv_mean": 3.42,
+  "statistical_unit": "subject"
+}

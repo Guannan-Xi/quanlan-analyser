@@ -1,0 +1,340 @@
+# QLanalyser Aliyun CloudMonitor Configuration
+# 阿里云云监控告警规则配置
+
+# 说明：
+# 本配置文件用于记录阿里云云监控的推荐告警规则
+# 实际配置需要在阿里云控制台进行设置
+
+monitoring_config:
+  # 项目信息
+  project:
+    name: QLanalyser
+    environment: production
+    aliyun_region: cn-hangzhou
+
+  # 告警联系人组
+  alert_contacts:
+    - name: ops_team
+      phone: "+86-xxx-xxxx-xxxx"
+      email: ops@qlanalyser.online
+    - name: dev_team
+      email: dev@qlanalyser.online
+
+  # ECS 实例监控规则
+  ecs_monitoring:
+    # CPU 使用率告警
+    - metric: cpu_total
+      threshold: 80
+      comparison: ">="
+      evaluation_count: 3
+      period: 60
+      statistics: Average
+      alert_level: warning
+      description: "CPU 使用率持续 3 分钟超过 80%"
+      
+    - metric: cpu_total
+      threshold: 95
+      comparison: ">="
+      evaluation_count: 2
+      period: 60
+      statistics: Average
+      alert_level: critical
+      description: "CPU 使用率持续 2 分钟超过 95%"
+
+    # 内存使用率告警
+    - metric: memory_usedutilization
+      threshold: 85
+      comparison: ">="
+      evaluation_count: 3
+      period: 60
+      statistics: Average
+      alert_level: warning
+      description: "内存使用率持续 3 分钟超过 85%"
+      
+    - metric: memory_usedutilization
+      threshold: 95
+      comparison: ">="
+      evaluation_count: 2
+      period: 60
+      statistics: Average
+      alert_level: critical
+      description: "内存使用率持续 2 分钟超过 95%"
+
+    # 磁盘使用率告警
+    - metric: disk_usedutilization
+      threshold: 80
+      comparison: ">="
+      evaluation_count: 1
+      period: 300
+      statistics: Average
+      alert_level: warning
+      description: "磁盘使用率超过 80%"
+      
+    - metric: disk_usedutilization
+      threshold: 90
+      comparison: ">="
+      evaluation_count: 1
+      period: 300
+      statistics: Average
+      alert_level: critical
+      description: "磁盘使用率超过 90%（紧急）"
+
+    # 磁盘 IOPS 告警
+    - metric: disk_readiops
+      threshold: 3000
+      comparison: ">="
+      evaluation_count: 3
+      period: 60
+      statistics: Average
+      alert_level: warning
+      description: "磁盘读 IOPS 持续过高"
+
+    # 网络带宽告警
+    - metric: networkin_rate
+      threshold: 100
+      comparison: ">="
+      evaluation_count: 3
+      period: 60
+      statistics: Average
+      alert_level: warning
+      unit: Mbps
+      description: "入网带宽持续 3 分钟超过 100 Mbps"
+
+    - metric: networkout_rate
+      threshold: 100
+      comparison: ">="
+      evaluation_count: 3
+      period: 60
+      statistics: Average
+      alert_level: warning
+      unit: Mbps
+      description: "出网带宽持续 3 分钟超过 100 Mbps"
+
+  # 应用层监控（需要配置站点监控）
+  application_monitoring:
+    # HTTP 可用性监控
+    - type: http
+      url: https://qlanalyser.online/health
+      method: GET
+      expected_status: 200
+      timeout: 10
+      interval: 60
+      alert_on_failure: true
+      alert_level: critical
+      description: "健康检查失败"
+
+    # API 响应时间监控
+    - type: http
+      url: https://qlanalyser.online/api/health
+      method: GET
+      expected_status: 200
+      response_time_threshold: 3000
+      comparison: ">="
+      evaluation_count: 3
+      alert_level: warning
+      unit: ms
+      description: "API 响应时间持续超过 3 秒"
+
+    # SSL 证书过期监控
+    - type: ssl_certificate
+      url: https://qlanalyser.online
+      days_before_expire: 30
+      alert_level: warning
+      description: "SSL 证书将在 30 天内过期"
+
+    - type: ssl_certificate
+      url: https://qlanalyser.online
+      days_before_expire: 7
+      alert_level: critical
+      description: "SSL 证书将在 7 天内过期"
+
+  # Docker 容器监控（需要安装云监控插件）
+  docker_monitoring:
+    # 容器状态监控
+    - container: qlanalyser-backend
+      metric: status
+      expected: running
+      alert_on_stopped: true
+      alert_level: critical
+      description: "后端容器已停止"
+
+    - container: qlanalyser-frontend
+      metric: status
+      expected: running
+      alert_on_stopped: true
+      alert_level: critical
+      description: "前端容器已停止"
+
+    # 容器资源监控
+    - container: qlanalyser-backend
+      metric: cpu_usage
+      threshold: 90
+      comparison: ">="
+      evaluation_count: 3
+      period: 60
+      alert_level: warning
+      description: "后端容器 CPU 使用率过高"
+
+    - container: qlanalyser-backend
+      metric: memory_usage
+      threshold: 90
+      comparison: ">="
+      evaluation_count: 3
+      period: 60
+      alert_level: warning
+      description: "后端容器内存使用率过高"
+
+  # 日志监控（需要配置日志服务 SLS）
+  log_monitoring:
+    # 错误日志监控
+    - log_store: qlanalyser-app-logs
+      query: "level: ERROR"
+      threshold: 10
+      comparison: ">="
+      period: 300
+      alert_level: warning
+      description: "5 分钟内错误日志数超过 10 条"
+
+    - log_store: qlanalyser-app-logs
+      query: "level: CRITICAL"
+      threshold: 1
+      comparison: ">="
+      period: 60
+      alert_level: critical
+      description: "出现严重错误日志"
+
+    # 访问日志异常监控
+    - log_store: qlanalyser-nginx-logs
+      query: "status: 5*"
+      threshold: 50
+      comparison: ">="
+      period: 300
+      alert_level: warning
+      description: "5 分钟内 5xx 错误超过 50 次"
+
+    - log_store: qlanalyser-nginx-logs
+      query: "status: 4*"
+      threshold: 100
+      comparison: ">="
+      period: 300
+      alert_level: warning
+      description: "5 分钟内 4xx 错误超过 100 次"
+
+  # OSS 存储监控
+  oss_monitoring:
+    - bucket: qlanalyser-prod-data
+      metric: storage_size
+      threshold: 900
+      comparison: ">="
+      alert_level: warning
+      unit: GB
+      description: "OSS 存储空间接近配额"
+
+    - bucket: qlanalyser-prod-data
+      metric: request_count
+      threshold: 10000
+      comparison: ">="
+      period: 3600
+      alert_level: warning
+      description: "每小时 OSS 请求数超过 10000"
+
+  # 自定义业务指标监控
+  custom_metrics:
+    # 文件上传失败率
+    - metric: upload_failure_rate
+      threshold: 5
+      comparison: ">="
+      period: 300
+      alert_level: warning
+      unit: percent
+      description: "上传失败率超过 5%"
+
+    # 分析任务队列积压
+    - metric: pending_tasks_count
+      threshold: 50
+      comparison: ">="
+      period: 600
+      alert_level: warning
+      description: "待处理任务数超过 50"
+
+    # 活跃用户异常
+    - metric: active_users_count
+      threshold: 1000
+      comparison: ">="
+      period: 300
+      alert_level: info
+      description: "活跃用户数激增（可能是攻击）"
+
+# 告警发送配置
+alert_notification:
+  # 告警静默期（避免重复告警）
+  silence_period: 300  # 5 分钟
+
+  # 告警升级策略
+  escalation:
+    - level: warning
+      notify_after: 2  # 2 次告警后通知
+      channels: [email]
+    - level: critical
+      notify_after: 1  # 立即通知
+      channels: [email, sms, phone]
+
+  # 告警恢复通知
+  recovery_notification: true
+
+# 监控仪表盘
+dashboards:
+  - name: QLanalyser 系统概览
+    widgets:
+      - type: line_chart
+        title: CPU 使用率趋势
+        metric: cpu_total
+      - type: line_chart
+        title: 内存使用率趋势
+        metric: memory_usedutilization
+      - type: line_chart
+        title: 磁盘 IO
+        metrics: [disk_readiops, disk_writeiops]
+      - type: line_chart
+        title: 网络流量
+        metrics: [networkin_rate, networkout_rate]
+
+  - name: QLanalyser 应用监控
+    widgets:
+      - type: number
+        title: HTTP 可用性
+        metric: http_availability
+      - type: line_chart
+        title: API 响应时间
+        metric: api_response_time
+      - type: line_chart
+        title: 请求量 (QPS)
+        metric: request_per_second
+      - type: pie_chart
+        title: HTTP 状态码分布
+        metric: http_status_distribution
+
+# 配置步骤说明
+configuration_steps:
+  1. 登录阿里云控制台
+  2. 进入云监控服务（CloudMonitor）
+  3. 创建报警联系人和联系人组
+  4. 在 "主机监控" 中配置 ECS 告警规则
+  5. 在 "站点监控" 中配置 HTTP/HTTPS 可用性监控
+  6. （可选）安装云监控插件以获取更详细的系统指标
+  7. （可选）配置日志服务（SLS）进行日志分析和告警
+  8. 创建自定义仪表盘用于可视化监控
+
+# 推荐的第三方监控工具
+third_party_tools:
+  - name: Prometheus + Grafana
+    description: 开源监控解决方案，可与容器集成
+    
+  - name: Sentry
+    description: 应用错误追踪和性能监控
+    
+  - name: Datadog
+    description: 全栈监控平台（付费）
+    
+  - name: New Relic
+    description: 应用性能监控（APM）

@@ -1,0 +1,49 @@
+path,kind,line_count,api_calls,function_count,event_listener_count
+projects/web-main/frontend/app.js,js,10741,"['${state.apiBase}${path}', '${state.apiBase}/accounts', '${state.apiBase}/artifacts/${encodeURIComponent(artifact.id)}/download', '${state.apiBase}/epilepsy-workbench/${encodeURIComponent(taskId)}/events']",441,32
+projects/web-main/frontend/epilepsy-full-flow-preview.css,css,1522,[],0,0
+projects/web-main/frontend/epilepsy-full-flow-preview.html,html,353,[],0,0
+projects/web-main/frontend/epilepsy-full-flow-preview.js,js,2822,"['${API_BASE}${path}', '/lab/epilepsy-full-flow/records', '/lab/epilepsy-full-flow/records/${encodeURIComponent(record.id)}/candidates', '/lab/epilepsy-full-flow/records/${encodeURIComponent(record.id)}/preflight', '/lab/epilepsy-full-flow/records/${encodeURIComponent(record.id)}/waveform-window?${params.toString()}', '/lab/epilepsy-full-flow/review-sessions', '/lab/epilepsy-full-flow/review-sessions/${sessionId}/exports', '/lab/epilepsy-full-flow/review-sessions/${sessionId}/report']",157,24
+projects/web-main/frontend/epilepsy-report-preview.css,css,619,[],0,0
+projects/web-main/frontend/epilepsy-report-preview.html,html,225,[],0,0
+projects/web-main/frontend/epilepsy-report-preview.js,js,1410,"['${API_BASE}${path}', '/lab/epilepsy-full-flow/review-sessions/${sessionId}/exports', '/lab/epilepsy-full-flow/review-sessions/${sessionId}/report']",90,9
+projects/web-main/frontend/epilepsy-review-preview.css,css,883,[],0,0
+projects/web-main/frontend/epilepsy-review-preview.html,html,267,[],0,0
+projects/web-main/frontend/epilepsy-review-preview.js,js,1951,"['${API_BASE}${path}', '/lab/epilepsy-full-flow/records/${encodeURIComponent(record.id)}/waveform-window?${params.toString()}', '/lab/epilepsy-full-flow/review-sessions', '/lab/epilepsy-full-flow/review-sessions/${encodeURIComponent(saved.session_id)}/exports']",107,28
+projects/web-main/frontend/epilepsy-workbench.css,css,886,[],0,0
+projects/web-main/frontend/epilepsy-workbench.html,html,16,[],0,0
+projects/web-main/frontend/epilepsy-workbench.js,js,2950,[],170,58
+projects/web-main/frontend/expert-entry-demo.html,html,646,[],0,0
+projects/web-main/frontend/index.html,html,614,[],0,0
+projects/web-main/frontend/lab-edf-reviewer.css,css,528,[],0,0
+projects/web-main/frontend/lab-edf-reviewer.html,html,126,[],0,0
+projects/web-main/frontend/lab-edf-reviewer.js,js,394,"['/api/lab/edf-reviewer/inspect', '/api/lab/edf-reviewer/waveform']",24,8
+projects/web-main/frontend/module-lab.css,css,884,[],0,0
+projects/web-main/frontend/module-lab.html,html,17,[],0,0
+projects/web-main/frontend/module-lab.js,js,1412,[],57,6
+projects/web-main/frontend/open-design-entry-demo.css,css,287,[],0,0
+projects/web-main/frontend/open-design-entry-demo.html,html,80,[],0,1
+projects/web-main/frontend/qc-lab.css,css,14,[],0,0
+projects/web-main/frontend/qc-lab.html,html,16,[],0,0
+projects/web-main/frontend/qc-lab.js,js,575,[],67,43
+projects/web-main/frontend/research-module/connectivity.html,html,15,[],0,0
+projects/web-main/frontend/research-module/erp.html,html,15,[],0,0
+projects/web-main/frontend/research-module/pac.html,html,15,[],0,0
+projects/web-main/frontend/research-module/psd.html,html,15,[],0,0
+projects/web-main/frontend/research-module/qc.html,html,15,[],0,0
+projects/web-main/frontend/research-module/source_localization.html,html,31,[],0,0
+projects/web-main/frontend/research-module/tfr.html,html,15,[],0,0
+projects/web-main/frontend/research-modules.css,css,36,[],0,0
+projects/web-main/frontend/research-modules.html,html,77,[],0,0
+projects/web-main/frontend/research-modules.js,js,194,[],15,0
+projects/web-main/frontend/staging-subview-ui-prototype.html,html,882,[],0,1
+projects/web-main/frontend/standalone-lab.html,html,524,"['${API}/lab/demo/analyze-upload', '${API}/lab/demo/artifacts/${task.id}', '${API}/lab/demo/run/${module}/configured', '${API}/lab/demo/sample-files', '${API}/lab/demo/sample-files/${encodeURIComponent(filename)}', '${API}/lab/edf-reviewer/inspect', '${API}/lab/edf-reviewer/waveform']",27,4
+projects/web-main/frontend/styles.css,css,11730,[],0,0
+projects/web-main/frontend/timechart-eeg-benchmark.css,css,42,[],0,0
+projects/web-main/frontend/timechart-eeg-benchmark.html,html,89,[],0,0
+projects/web-main/frontend/timechart-eeg-benchmark.js,js,157,[],14,1
+projects/web-main/frontend/vendor/lucide.min.js,js,13,[],1,0
+projects/web-main/frontend/waveform-workbench-adapter.js,js,111,"['${base}${path}', '${base}/artifacts/${encodeURIComponent(id)}/download']",11,0
+projects/web-main/frontend/waveform-workbench.css,css,552,[],0,0
+projects/web-main/frontend/waveform-workbench.html,html,174,[],0,0
+projects/web-main/frontend/waveform-workbench.js,js,1737,[],88,34
+projects/web-main/frontend/workbench-spacious-overrides.css,css,1014,[],0,0

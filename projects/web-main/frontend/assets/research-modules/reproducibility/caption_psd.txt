@@ -1,0 +1,1 @@
+PSD module output. Welch spectra compare eyes-closed and eyes-open conditions with canonical band overlays. Bar/dot summaries retain subject-level paired estimates, and the alpha topomap summarizes spatial reactivity.

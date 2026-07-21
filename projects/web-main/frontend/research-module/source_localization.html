@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>QLanalyser 分析方法预览 - 源定位</title>
+    <link rel="stylesheet" href="../research-modules.css?v=20260622" />
+    <script src="../vendor/lucide.min.js"></script>
+  </head>
+  <body data-module="source_localization">
+    <main id="moduleApp" class="module-page" aria-live="polite">
+      <section class="module-shell">
+        <article class="module-card preview-card" aria-label="源定位方法，仅预览">
+          <div class="module-card-top"><span>仅预览</span><strong>源定位 / 逆解</strong></div>
+          <h1>源定位 / 逆解</h1>
+          <p>用于研究预览，当前不作为主线分析入口。该页只说明逆解、波束形成与源重建的前提和边界。</p>
+          <div class="demo-status">需要前置条件：前向模型、头模型、源空间，且输入应来自已完成质量检查与预处理的数据。</div>
+          <div class="demo-status">不适合直接接入：头皮空间预处理、无 MRI / 无头模，或试图把头皮地形图当成源定位结果。</div>
+          <div class="boundary-note">研究边界：仅用于方法预览和前提说明，不提供临床建议，不输出未经验证的源定位结论。</div>
+          <ul class="module-bullets">
+            <li>输入要求：已校验的连续 EEG 或分段数据</li>
+            <li>输出内容：源估计、投影或逆解预览，以及边界说明</li>
+            <li>复核重点：前提齐备、结果可解释、风险提示完整</li>
+          </ul>
+        </article>
+      </section>
+    </main>
+    <script src="../research-modules.js?v=20260622"></script>
+  </body>
+</html>

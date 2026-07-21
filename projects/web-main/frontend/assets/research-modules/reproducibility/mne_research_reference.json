@@ -1,0 +1,33 @@
+{
+  "mne": "https://mne.tools/stable/",
+  "docs_checked": [
+    {
+      "label": "mne.io.Raw",
+      "url": "https://mne.tools/stable/generated/mne.io.Raw.html"
+    },
+    {
+      "label": "mne.events_from_annotations",
+      "url": "https://mne.tools/stable/generated/mne.events_from_annotations.html"
+    },
+    {
+      "label": "mne.Epochs",
+      "url": "https://mne.tools/stable/generated/mne.Epochs.html"
+    },
+    {
+      "label": "mne.Evoked",
+      "url": "https://mne.tools/stable/generated/mne.Evoked.html"
+    },
+    {
+      "label": "mne.time_frequency.tfr_morlet",
+      "url": "https://mne.tools/stable/generated/mne.time_frequency.tfr_morlet.html"
+    },
+    {
+      "label": "mne.viz.plot_topomap",
+      "url": "https://mne.tools/stable/generated/mne.viz.plot_topomap.html"
+    },
+    {
+      "label": "mne.viz.plot_compare_evokeds",
+      "url": "https://mne.tools/stable/generated/mne.viz.plot_compare_evokeds.html"
+    }
+  ]
+}

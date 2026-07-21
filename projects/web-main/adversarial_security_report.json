@@ -1,0 +1,112 @@
+{
+  "summary": {
+    "total_tests": 17,
+    "p0_vulnerable": 4,
+    "p1_issues": 7,
+    "p2_issues": 0
+  },
+  "details": [
+    {
+      "scenario": "路径遍历防护: ../../etc/passwd",
+      "severity": "P0",
+      "status": "SAFE",
+      "details": "成功阻止路径遍历攻击"
+    },
+    {
+      "scenario": "路径遍历防护: ..\\..\\windows\\system.ini",
+      "severity": "P0",
+      "status": "SAFE",
+      "details": "成功阻止路径遍历攻击"
+    },
+    {
+      "scenario": "正常路径: normal.edf",
+      "severity": "P2",
+      "status": "SAFE",
+      "details": "正常: normal.edf"
+    },
+    {
+      "scenario": "跨项目文件访问",
+      "severity": "P0",
+      "status": "VULNERABLE",
+      "details": "get_eeg_file()不验证项目归属，用户可通过/eeg/files/{any_id}访问任意文件"
+    },
+    {
+      "scenario": "文件大小限制",
+      "severity": "P1",
+      "status": "PARTIAL",
+      "details": "最大2GB限制存在，但无解压大小检查"
+    },
+    {
+      "scenario": "Zip炸弹防护",
+      "severity": "P1",
+      "status": "VULNERABLE",
+      "details": "无解压限制，42KB可解压成4.5GB导致DoS"
+    },
+    {
+      "scenario": "特殊字符文件名",
+      "severity": "P1",
+      "status": "VULNERABLE",
+      "details": "Path().name保留特殊字符，未清理null byte、<>:|等"
+    },
+    {
+      "scenario": "并发上传同名文件",
+      "severity": "P2",
+      "status": "SAFE",
+      "details": "new_id()保证文件ID唯一性，不会覆盖"
+    },
+    {
+      "scenario": "文件格式验证",
+      "severity": "P1",
+      "status": "PARTIAL",
+      "details": "仅验证扩展名.edf/.bdf等，无Magic Number检查，可伪造"
+    },
+    {
+      "scenario": "文件删除清理",
+      "severity": "P0",
+      "status": "VULNERABLE",
+      "details": "delete_eeg_file()只标记status=deleted，不调用object_storage删除物理文件"
+    },
+    {
+      "scenario": "级联删除",
+      "severity": "P0",
+      "status": "VULNERABLE",
+      "details": "delete_project()不级联删除文件，产生孤儿文件永久占用空间"
+    },
+    {
+      "scenario": "磁盘空间耗尽",
+      "severity": "P1",
+      "status": "PARTIAL",
+      "details": "有通用Exception处理，但错误提示不明确，用户不知道是空间问题"
+    },
+    {
+      "scenario": "损坏文件处理",
+      "severity": "P2",
+      "status": "SAFE",
+      "details": "metadata_service.extract_metadata()有try-except，优雅降级"
+    },
+    {
+      "scenario": "JSON并发安全",
+      "severity": "P1",
+      "status": "PARTIAL",
+      "details": "本地文件系统安全，但NFS环境下文件锁不可靠"
+    },
+    {
+      "scenario": "SHA256碰撞",
+      "severity": "P2",
+      "status": "SAFE",
+      "details": "使用SHA256哈希，当前无实际碰撞威胁"
+    },
+    {
+      "scenario": "临时文件清理",
+      "severity": "P1",
+      "status": "PARTIAL",
+      "details": "正常流程清理.uploading文件，但进程kill -9会泄露"
+    },
+    {
+      "scenario": "JSON损坏恢复",
+      "severity": "P0",
+      "status": "VULNERABLE",
+      "details": "load_registry()无备份机制，projects.json损坏会丢失全部元数据"
+    }
+  ]
+}
