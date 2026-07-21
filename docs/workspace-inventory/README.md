@@ -30,9 +30,11 @@ python scripts/scan_baseline_safety.py --fail-on-block
 - `security-path-review.csv`：客户/患者/秘密样式路径的人工复核入口；
 - `baseline-safety-scan.json`：内容级签名扫描结果，只记录路径/规则/行号，不记录命中的值；
 - `feature-ledger.csv`：功能—源路径—模块—层级—状态总账；
+- `feature-ledger-summary.json`：记录分类数量、基线 commit、未分类计数及动态冻结状态；
 - `traceability-matrix.csv`：模块的前端/API/service/worker/domain/report/test/evidence 对照；
 - `duplicate-candidates.csv`：重复候选，只登记，不代表可删除；
-- `exclusions-and-risks.md`：排除项、已知风险和阻断条件。
+- `exclusions-and-risks.md`：排除项、已知风险和阻断条件；
+- `qeeg-dynamic-freeze.md`：QEEG 外部写入漂移及解除冻结的验收关口。
 
 ## 当前基线边界
 
