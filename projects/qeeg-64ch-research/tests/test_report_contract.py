@@ -4,6 +4,7 @@ import matplotlib.image as mpimg
 import numpy as np
 
 from qlanalyser_eeg64.report import DESIGN_SPEC, _COMPLEXITY_METRICS, _plot_complexity, validate_report_output
+from qlanalyser_eeg64.registry import METHOD_REGISTRY
 
 
 def test_complexity_figure_uses_independent_metric_panels(tmp_path):
@@ -36,3 +37,7 @@ def test_report_smoke_check_requires_all_report_artifacts(tmp_path):
         path = tmp_path / "assets" / filename
         mpimg.imsave(path, np.ones((2, 2, 3)))
     assert validate_report_output(tmp_path)["status"] == "passed"
+
+
+def test_registry_declares_recovered_html_renderer():
+    assert METHOD_REGISTRY["clinical_report_renderer"]["status"] == "implemented"

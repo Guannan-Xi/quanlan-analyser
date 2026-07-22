@@ -43,7 +43,7 @@ def run_recovered_full_pipeline(input_path, output_dir, *, qc: QCConfig | None =
     raw, input_preparation = prepare_analysis_raw(source_raw)
     cleaned, qc_result = run_auto_qc(raw, qc)
     result = _base_summary(source, source_raw, cleaned, input_preparation)
-    result.update({"pipeline": "qlanalyser_eeg64.recovered_full_recording", "input_preparation": input_preparation, "quality_control": qc_result, "safety_gate": qc_result["safety_gate"], "spectral": compute_spectral_features(cleaned, spectral), "gfp_gmd": compute_gfp_gmd(cleaned, gfp), "microstates": compute_microstates(cleaned, microstates, source_epoch_rows=qc_result["epochs"]), "complexity": compute_complexity(cleaned, complexity), "spatial_complexity": compute_spatial_complexity(cleaned), "connectivity": compute_connectivity(cleaned, connectivity), "coupling": compute_coupling(cleaned, coupling)})
+    result.update({"pipeline": "qlanalyser_eeg64.recovered_full_recording", "input_preparation": input_preparation, "quality_control": qc_result, "safety_gate": qc_result["safety_gate"], "spectral": compute_spectral_features(cleaned, spectral), "gfp_gmd": compute_gfp_gmd(cleaned, gfp, source_time_mapping=qc_result["source_time_mapping"]), "microstates": compute_microstates(cleaned, microstates, source_epoch_rows=qc_result["epochs"]), "complexity": compute_complexity(cleaned, complexity), "spatial_complexity": compute_spatial_complexity(cleaned), "connectivity": compute_connectivity(cleaned, connectivity), "coupling": compute_coupling(cleaned, coupling)})
     if include_aperiodic:
         result["aperiodic_spectrum"] = compute_aperiodic_spectrum(cleaned, aperiodic)
     return _write_summary(destination, result)

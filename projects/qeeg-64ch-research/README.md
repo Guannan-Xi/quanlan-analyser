@@ -19,7 +19,7 @@ analysis modules separate from report rendering.
 ```powershell
 cd D:\Quanlan\Codes\Python\qlanalyser-workspace\projects\qeeg-64ch-research
 python -m qlanalyser_eeg64 `
-  "D:\Quanlan\Data\安徽医科大\葛义俊\20260521182702_1.bdf" `
+  "D:\path\to\recording.bdf" `
   ".\results\v0.2.1-scientific-layout" `
   --include-aperiodic
 ```
@@ -41,4 +41,14 @@ as automatically approved.
 
 ```powershell
 python -m pytest -q
+```
+
+## Refresh saved report pages
+
+When `analysis_summary.json`, `visual_manifest.json`, and the existing assets
+are already present, refresh the HTML and historical compatibility CSVs without
+reopening the raw EEG recording:
+
+```powershell
+python -c "from qlanalyser_eeg64.report import refresh_report_from_saved_artifacts; refresh_report_from_saved_artifacts(r'.\results\v0.2.5-historical-html-complete\analysis_summary.json')"
 ```

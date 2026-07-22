@@ -55,7 +55,10 @@ def run_auto_qc(raw, config: QCConfig | None = None) -> tuple[mne.io.BaseRaw, di
         concatenated = mne.io.RawArray(retained_data, cleaned.info.copy(), verbose="ERROR")
     else:
         concatenated = cleaned.copy().crop(tmin=0, tmax=0, include_tmax=False)
-    source_epoch_rows = _add_analysis_coordinates(epoch_rows)
+    source_epoch_rows = _add_analysis_coordinates(
+        epoch_rows,
+        source_sampling_rate_hz=float(raw.info["sfreq"]),
+    )
     source_time_mapping = build_source_time_mapping(
         source_epoch_rows,
         source_duration_sec=float(raw.n_times / raw.info["sfreq"]),
@@ -148,13 +151,19 @@ def _screen_epochs(raw, config):
     return data, rows
 
 
-def _add_analysis_coordinates(epoch_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Attach concatenated-record coordinates without changing legacy epoch fields."""
+def _add_analysis_coordinates(
+    epoch_rows: list[dict[str, Any]],
+    *,
+    source_sampling_rate_hz: float,
+) -> list[dict[str, Any]]:
+    """Attach original and concatenated coordinates without changing legacy fields."""
     analysis_cursor = 0
     mapped_rows = []
     for row in epoch_rows:
         mapped = dict(row)
         sample_count = int(mapped["screened_sample_stop"] - mapped["screened_sample_start"])
+        mapped["source_sample_start"] = int(round(mapped["start_sec"] * source_sampling_rate_hz))
+        mapped["source_sample_stop"] = int(round(mapped["end_sec"] * source_sampling_rate_hz))
         if mapped["retained"]:
             mapped["analysis_sample_start"] = analysis_cursor
             analysis_cursor += sample_count
@@ -197,6 +206,7 @@ def build_source_time_mapping(
         required = {
             "epoch_index", "start_sec", "end_sec", "retained",
             "screened_sample_start", "screened_sample_stop",
+            "source_sample_start", "source_sample_stop",
             "analysis_sample_start", "analysis_sample_stop",
         }
         missing = required.difference(row)
@@ -205,16 +215,20 @@ def build_source_time_mapping(
         start_sec, end_sec = float(row["start_sec"]), float(row["end_sec"])
         screened_start = int(row["screened_sample_start"])
         screened_stop = int(row["screened_sample_stop"])
+        source_start = int(row["source_sample_start"])
+        source_stop = int(row["source_sample_stop"])
         if not (np.isfinite(start_sec) and np.isfinite(end_sec) and end_sec > start_sec):
             raise ValueError(f"source_epoch_rows[{fallback_index}] has invalid source times")
         if screened_stop <= screened_start:
             raise ValueError(f"source_epoch_rows[{fallback_index}] has invalid screened sample bounds")
+        if source_stop <= source_start:
+            raise ValueError(f"source_epoch_rows[{fallback_index}] has invalid original sample bounds")
         base = {
             "source_epoch_index": int(row["epoch_index"]),
             "source_start_sec": start_sec,
             "source_end_sec": end_sec,
-            "source_sample_start": int(round(start_sec * source_sampling_rate_hz)),
-            "source_sample_stop": int(round(end_sec * source_sampling_rate_hz)),
+            "source_sample_start": source_start,
+            "source_sample_stop": source_stop,
             "screened_sample_start": screened_start,
             "screened_sample_stop": screened_stop,
         }

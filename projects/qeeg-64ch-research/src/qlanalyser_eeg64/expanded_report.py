@@ -9,8 +9,11 @@ analysis modules.
 from __future__ import annotations
 
 import csv
+import hashlib
 import html
 import json
+import os
+import tempfile
 from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
@@ -30,6 +33,7 @@ from .microstates import (
     write_microstate_transition_counts_csv,
 )
 from .gfp import write_gfp_peak_topography_gmd_csv
+from .historical_exports import saved_gfp_report_limitations
 from .spectral import compute_alpha_spectral_dispersion, write_alpha_spectral_dispersion_csv
 
 
@@ -39,6 +43,51 @@ METHOD_LABELS = {
     "coherence": "相干 (Coherence)", "plv": "相位锁定值 (PLV)",
     "pli": "相位滞后指数 (PLI)", "aec": "振幅包络相关 (AEC)",
 }
+
+REQUIRED_REPORT_ASSET_KEYS = frozenset({
+    "qc", "clinical_scalp_waveform", "spectral", "cleaned_psd_detail",
+    "bandpower", "bandpower_relative", "bandpower_bars", "alpha",
+    "alpha_dispersion", "alpha_dispersion_topomaps", "alpha_hemisphere_views",
+    "beta_envelopes", "spectral_statistics", "band_peaks", "narrowband_abs",
+    "narrowband_rel", "ratios", "regional_bandpower", "hemispheric_asymmetry",
+    "gfp", "micro_templates", "micro_parameters", "micro_transition",
+    "micro_sequence", "micro_coverage", "micro_duration_distribution",
+    "micro_outgoing", "micro_total_contribution", "micro_transition_polar",
+    "micro_distribution_histograms", "micro_sequence_raster",
+    "micro_information_dynamics", "complexity", "multiscale_entropy", "omega",
+    "connectivity", "connectivity_nodes", "connectivity_regional", "coupling",
+    "pac_maps", "pac_curve", "coupling_regional", "aperiodic",
+})
+
+MICROSTATE_SEQUENCE_DYNAMICS_ASSET_KEYS = frozenset({
+    "micro_sample_markov",
+    "micro_sequence_dynamics",
+    "micro_transition_syntax",
+    "micro_dwell_survival",
+})
+
+MICROSTATE_EXTENDED_INFORMATION_ASSET_KEYS = frozenset({
+    "micro_lagged_information",
+    "micro_state_self_information",
+})
+
+VISUAL_MANIFEST_STATUS = "passed"
+VISUAL_MANIFEST_ARTIFACT_TYPE = "full_recording_qeeg_complete_method_atlas"
+LEGACY_REPORT_BUILD_CONTRACT_VERSION = 1
+REPORT_BUILD_CONTRACT_VERSION = 2
+REPORT_PAGE_NAMES = ("report.html", "technical-details.html")
+
+
+class ReportBundleTransactionError(RuntimeError):
+    """Report a publish failure whose rollback was not fully successful."""
+
+    def __init__(self, original_error, rollback_errors):
+        self.original_error = original_error
+        self.rollback_errors = tuple(rollback_errors)
+        targets = ", ".join(str(path) for path, _ in rollback_errors)
+        super().__init__(
+            f"Report bundle publish failed and rollback was incomplete for: {targets}"
+        )
 
 
 def render_full_historical_report(summary, raw_before, cleaned, destination, assets, tables, base):
@@ -97,15 +146,365 @@ def render_full_historical_report(summary, raw_before, cleaned, destination, ass
     }
     files.update(_plot_channel_psd_atlas_with_parameters(summary, assets))
     files.update(_plot_connectivity_atlas(summary, assets))
+    if summary.get("microstates", {}).get("sequence_dynamics"):
+        files.update(write_microstate_sequence_dynamics_outputs(summary, destination))
+    if summary.get("microstates", {}).get("lagged_information"):
+        files.update(write_microstate_extended_information_outputs(summary, destination))
+    published = _publish_report_bundle(summary, destination, files, base.DESIGN_SPEC)
+    report = published["report_path"]
+    technical = published["technical_path"]
+    manifest = published["visual_manifest_path"]
+    validation = published["validation"]
+    return {"report_path": report, "technical_path": technical, "assets": files, "tables_dir": tables, "visual_manifest_path": manifest, "validation": validation}
+
+
+def rerender_saved_report_pages(summary, destination, design_spec):
+    """Refresh HTML pages from a saved summary and existing visual manifest."""
+    destination = Path(destination)
+    manifest_path = destination / "visual_manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    files = _validate_visual_manifest(summary, destination, manifest)
+    _write_microstate_method_summary_csv(
+        summary.get("microstates", {}), destination / "tables"
+    )
+
+    published = _publish_report_bundle(summary, destination, files, design_spec, manifest)
+    published["assets"] = files
+    published["design_spec"] = design_spec
+    return published
+
+
+def _validate_visual_manifest(summary, destination, manifest):
+    if not isinstance(manifest, dict):
+        raise ValueError("visual_manifest.json must contain a JSON object")
+    if manifest.get("status") != VISUAL_MANIFEST_STATUS:
+        raise ValueError(f"visual_manifest.json has unsupported status: {manifest.get('status')!r}")
+    if manifest.get("artifact_type") != VISUAL_MANIFEST_ARTIFACT_TYPE:
+        raise ValueError(
+            "visual_manifest.json has unsupported artifact_type: "
+            f"{manifest.get('artifact_type')!r}"
+        )
+    files = _files_from_visual_manifest(destination, manifest)
+    _validate_manifest_report_build_binding(summary, manifest)
+    _validate_dynamic_report_assets(summary, files)
+    required = set(REQUIRED_REPORT_ASSET_KEYS)
+    if summary.get("microstates", {}).get("sequence_dynamics"):
+        required.update(MICROSTATE_SEQUENCE_DYNAMICS_ASSET_KEYS)
+    if summary.get("microstates", {}).get("lagged_information"):
+        required.update(MICROSTATE_EXTENDED_INFORMATION_ASSET_KEYS)
+    missing = sorted(required.difference(files))
+    if missing:
+        raise ValueError(f"visual_manifest.json is missing required report assets: {missing}")
+    return files
+
+
+def _validate_manifest_report_build_binding(summary, manifest):
+    report_build = manifest.get("report_build")
+    if report_build is None:
+        return
+    if not isinstance(report_build, dict):
+        raise ValueError("visual_manifest.json report_build must be an object")
+
+    summary_sha256 = _json_sha256(summary)
+    artifacts = manifest.get("artifacts")
+    asset_set_sha256 = _json_sha256(artifacts)
+    contract_version = report_build.get("contract_version")
+    if contract_version not in {
+        LEGACY_REPORT_BUILD_CONTRACT_VERSION,
+        REPORT_BUILD_CONTRACT_VERSION,
+    }:
+        raise ValueError("visual_manifest.json report_build contract_version is unsupported")
+    if report_build.get("summary_sha256") != summary_sha256:
+        raise ValueError("visual_manifest.json report_build summary_sha256 mismatch")
+    if report_build.get("asset_set_sha256") != asset_set_sha256:
+        raise ValueError("visual_manifest.json report_build asset_set_sha256 mismatch")
+    if report_build.get("asset_count") != len(artifacts):
+        raise ValueError("visual_manifest.json report_build asset_count mismatch")
+
+    identity_payload = {
+        "contract_version": contract_version,
+        "summary_sha256": summary_sha256,
+        "asset_set_sha256": asset_set_sha256,
+        "design_spec": manifest.get("design_spec"),
+    }
+    if contract_version == REPORT_BUILD_CONTRACT_VERSION:
+        limitations = saved_gfp_report_limitations(summary)
+        if manifest.get("report_limitations") != limitations:
+            raise ValueError("visual_manifest.json report_limitations mismatch")
+        warnings = manifest.get("warnings")
+        if not isinstance(warnings, list) or any(item not in warnings for item in limitations):
+            raise ValueError("visual_manifest.json warnings are missing report limitations")
+        limitations_sha256 = _json_sha256(limitations)
+        if report_build.get("limitations_sha256") != limitations_sha256:
+            raise ValueError("visual_manifest.json report_build limitations_sha256 mismatch")
+        identity_payload["limitations_sha256"] = limitations_sha256
+    expected_build_id = _json_sha256(identity_payload)
+    if report_build.get("id") != expected_build_id:
+        raise ValueError("visual_manifest.json report_build id mismatch")
+
+
+def _files_from_visual_manifest(destination, manifest):
+    destination = Path(destination).resolve()
+    files = {}
+    artifact_paths = set()
+    artifacts = manifest.get("artifacts")
+    if not isinstance(artifacts, list):
+        raise ValueError("visual_manifest.json artifacts must be a list")
+    for artifact in artifacts:
+        if not isinstance(artifact, dict):
+            raise ValueError("visual_manifest.json has a non-object artifact entry")
+        name = artifact.get("name")
+        relative = Path(str(artifact.get("path", "")))
+        if not name or name in files:
+            raise ValueError(f"visual_manifest.json has an invalid or duplicate artifact name: {name!r}")
+        if relative.parent != Path("assets") or relative.name in {"", ".", ".."}:
+            raise ValueError(f"visual_manifest.json has an unsupported artifact path: {relative}")
+        target = (destination / relative).resolve()
+        if not target.is_relative_to(destination) or not target.is_file() or target.stat().st_size == 0:
+            raise ValueError(f"visual_manifest.json references a missing or empty artifact: {relative}")
+        target_key = os.path.normcase(str(target))
+        if target_key in artifact_paths:
+            raise ValueError(f"visual_manifest.json has a duplicate artifact path: {relative}")
+        artifact_paths.add(target_key)
+        declared_size = artifact.get("size_bytes")
+        if not isinstance(declared_size, int) or isinstance(declared_size, bool) or declared_size != target.stat().st_size:
+            raise ValueError(
+                f"visual_manifest.json size_bytes mismatch for {relative}: "
+                f"declared {declared_size!r}, actual {target.stat().st_size}"
+            )
+        declared_sha256 = artifact.get("sha256")
+        if declared_sha256 is not None and declared_sha256 != _file_sha256(target):
+            raise ValueError(f"visual_manifest.json sha256 mismatch for {relative}")
+        files[str(name)] = relative.name
+    return files
+
+
+def _expected_dynamic_report_asset_keys(summary):
+    psd_channels = list(summary.get("spectral", {}).get("psd_uv2_per_hz", {}))
+    psd_keys = {f"psd_atlas_{page:02d}" for page in range(1, (len(psd_channels) + 7) // 8 + 1)}
+
+    connectivity_bands = summary.get("connectivity", {}).get("bands", {})
+    methods = set()
+    for band in connectivity_bands.values():
+        if isinstance(band, dict):
+            methods.update(band)
+    connectivity_keys = {f"connectivity_{method}" for method in methods}
+    return psd_keys, connectivity_keys
+
+
+def _validate_dynamic_report_assets(summary, files):
+    expected_psd, expected_connectivity = _expected_dynamic_report_asset_keys(summary)
+    actual_psd = {key for key in files if key.startswith("psd_atlas_")}
+    actual_connectivity = {
+        key for key in files
+        if key.startswith("connectivity_") and key not in REQUIRED_REPORT_ASSET_KEYS
+    }
+    errors = []
+    if actual_psd != expected_psd:
+        errors.append(
+            f"PSD atlas keys differ: expected {sorted(expected_psd)}, actual {sorted(actual_psd)}"
+        )
+    if actual_connectivity != expected_connectivity:
+        errors.append(
+            "connectivity atlas keys differ: expected "
+            f"{sorted(expected_connectivity)}, actual {sorted(actual_connectivity)}"
+        )
+    if errors:
+        raise ValueError("visual_manifest.json dynamic report assets are incomplete: " + "; ".join(errors))
+
+
+def _file_sha256(path):
+    digest = hashlib.sha256()
+    with Path(path).open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _json_sha256(value):
+    encoded = json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _report_build_contract(
+    summary, destination, files, design_spec, limitations=None
+):
+    destination = Path(destination)
+    if limitations is None:
+        limitations = saved_gfp_report_limitations(summary)
+    artifacts = []
+    for name in sorted(files):
+        relative = Path("assets") / files[name]
+        path = destination / relative
+        artifacts.append({
+            "name": name,
+            "path": relative.as_posix(),
+            "size_bytes": path.stat().st_size,
+            "sha256": _file_sha256(path),
+        })
+    summary_sha256 = _json_sha256(summary)
+    asset_set_sha256 = _json_sha256(artifacts)
+    limitations_sha256 = _json_sha256(limitations)
+    identity_payload = {
+        "contract_version": REPORT_BUILD_CONTRACT_VERSION,
+        "summary_sha256": summary_sha256,
+        "asset_set_sha256": asset_set_sha256,
+        "design_spec": design_spec,
+        "limitations_sha256": limitations_sha256,
+    }
+    return {
+        "id": _json_sha256(identity_payload),
+        "contract_version": REPORT_BUILD_CONTRACT_VERSION,
+        "summary_sha256": summary_sha256,
+        "asset_set_sha256": asset_set_sha256,
+        "asset_count": len(artifacts),
+        "limitations_sha256": limitations_sha256,
+    }, artifacts
+
+
+def _merge_manifest_warnings(existing, limitations):
+    if existing is None:
+        existing = []
+    if not isinstance(existing, list):
+        raise ValueError("visual_manifest.json warnings must be a list")
+    limitation_codes = {item["code"] for item in limitations}
+    merged = [
+        item for item in existing
+        if not (isinstance(item, dict) and item.get("code") in limitation_codes)
+    ]
+    merged.extend(limitations)
+    return merged
+
+
+def _publish_report_bundle(summary, destination, files, design_spec, source_manifest=None):
+    destination = Path(destination)
     report = destination / "report.html"
     technical = destination / "technical-details.html"
-    report.write_text(_clinical_html(summary, files), encoding="utf-8")
-    technical.write_text(_technical_html(summary, files, destination=destination), encoding="utf-8")
-    manifest = _write_manifest(destination, files, base.DESIGN_SPEC)
-    validation = validate_full_report(destination, files)
-    if validation["status"] != "passed":
-        raise RuntimeError("Expanded report validation failed: " + "; ".join(validation["errors"]))
-    return {"report_path": report, "technical_path": technical, "assets": files, "tables_dir": tables, "visual_manifest_path": manifest, "validation": validation}
+    manifest_path = destination / "visual_manifest.json"
+    limitations = saved_gfp_report_limitations(summary)
+    build, artifacts = _report_build_contract(
+        summary, destination, files, design_spec, limitations
+    )
+    report_text = _clinical_html_full(
+        summary,
+        files,
+        destination=destination,
+        build_id=build["id"],
+        report_limitations=limitations,
+    )
+    technical_text = _technical_html(
+        summary,
+        files,
+        destination=destination,
+        build_id=build["id"],
+        report_limitations=limitations,
+    )
+    build["pages"] = {
+        report.name: hashlib.sha256(report_text.encode("utf-8")).hexdigest(),
+        technical.name: hashlib.sha256(technical_text.encode("utf-8")).hexdigest(),
+    }
+    manifest = dict(source_manifest or {})
+    manifest.update({
+        "status": VISUAL_MANIFEST_STATUS,
+        "artifact_type": VISUAL_MANIFEST_ARTIFACT_TYPE,
+        "design_spec": design_spec,
+        "artifacts": artifacts,
+        "report_build": build,
+        "report_limitations": limitations,
+        "warnings": _merge_manifest_warnings(manifest.get("warnings"), limitations),
+    })
+    manifest_text = json.dumps(manifest, ensure_ascii=False, indent=2)
+
+    contents = {
+        report: report_text,
+        technical: technical_text,
+        manifest_path: manifest_text,
+    }
+
+    def validate_published_files():
+        validation = validate_full_report(destination, files)
+        if validation["status"] != "passed":
+            raise RuntimeError("Report bundle validation failed: " + "; ".join(validation["errors"]))
+        return validation
+
+    validation = _replace_text_files_transactionally(contents, validate_published_files)
+    return {
+        "report_path": report,
+        "technical_path": technical,
+        "visual_manifest_path": manifest_path,
+        "report_build": build,
+        "validation": validation,
+    }
+
+
+def _stage_text_file(path, content):
+    path = Path(path)
+    descriptor, temporary_name = tempfile.mkstemp(
+        dir=path.parent,
+        prefix=f".{path.name}.",
+        suffix=".tmp",
+    )
+    temporary = Path(temporary_name)
+    with os.fdopen(descriptor, "wb") as handle:
+        handle.write(content.encode("utf-8"))
+    return temporary
+
+
+def _commit_staged_file(staged, target):
+    os.replace(staged, target)
+
+
+def _restore_file(path, content):
+    path = Path(path)
+    if content is None:
+        path.unlink(missing_ok=True)
+        return
+    descriptor, temporary_name = tempfile.mkstemp(
+        dir=path.parent,
+        prefix=f".{path.name}.",
+        suffix=".rollback",
+    )
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(content)
+        os.replace(temporary_name, path)
+    finally:
+        Path(temporary_name).unlink(missing_ok=True)
+
+
+def _replace_text_files_transactionally(contents, validator=None):
+    originals = {
+        Path(path): Path(path).read_bytes() if Path(path).is_file() else None
+        for path in contents
+    }
+    staged = {}
+    committed = []
+    try:
+        for path, content in contents.items():
+            target = Path(path)
+            staged[target] = _stage_text_file(target, content)
+        for target, temporary in staged.items():
+            _commit_staged_file(temporary, target)
+            committed.append(target)
+        return validator() if validator is not None else None
+    except Exception as original_error:
+        rollback_errors = []
+        for path in reversed(committed):
+            try:
+                _restore_file(path, originals[path])
+            except Exception as rollback_error:
+                rollback_errors.append((path, rollback_error))
+        if rollback_errors:
+            raise ReportBundleTransactionError(original_error, rollback_errors) from original_error
+        raise
+    finally:
+        for temporary in staged.values():
+            temporary.unlink(missing_ok=True)
 
 
 def _save(fig, path):
@@ -689,6 +1088,543 @@ def _plot_microstate_information_dynamics(summary, path):
     return _save(fig, path)
 
 
+def _plot_microstate_lagged_information(summary, path):
+    """Plot pooled lagged information measures that are also exported as CSV."""
+    information = summary["microstates"].get("lagged_information")
+    rows = information.get("rows", []) if information else []
+    if not rows:
+        raise ValueError("microstate lagged information contains no rows")
+    lags = np.asarray([row["actual_lag_ms"] for row in rows], dtype=float)
+    mutual_information = np.asarray(
+        [np.nan if row["mutual_information_bits"] is None else row["mutual_information_bits"] for row in rows],
+        dtype=float,
+    )
+    normalized = np.asarray(
+        [np.nan if row["normalized_mutual_information"] is None else row["normalized_mutual_information"] for row in rows],
+        dtype=float,
+    )
+    conditional = np.asarray(
+        [np.nan if row["mean_conditional_self_information_bits"] is None else row["mean_conditional_self_information_bits"] for row in rows],
+        dtype=float,
+    )
+    marginal = np.asarray(
+        [np.nan if row["mean_marginal_self_information_bits"] is None else row["mean_marginal_self_information_bits"] for row in rows],
+        dtype=float,
+    )
+    fig, axes = plt.subplots(2, 1, figsize=(13, 8), sharex=True, constrained_layout=True)
+    axes[0].plot(lags, mutual_information, marker="o", color="#b45309", label="Mutual information (bits)")
+    axes[0].plot(lags, normalized, marker="s", color="#7c3aed", label="Normalized mutual information")
+    axes[0].set(title="Pooled lagged microstate information", ylabel="Information")
+    axes[0].legend(frameon=False, ncol=2)
+    axes[1].plot(lags, conditional, marker="o", color="#0f766e", label="Conditional self-information")
+    axes[1].plot(lags, marginal, marker="s", color="#1d4ed8", label="Marginal self-information")
+    axes[1].set(xlabel="Actual lag (ms)", ylabel="Bits", title="Predictability and state rarity")
+    axes[1].legend(frameon=False, ncol=2)
+    for axis in axes:
+        axis.grid(alpha=.22)
+    return _save(fig, path)
+
+
+def _plot_microstate_state_self_information(summary, path):
+    """Show occupancy and state self-information for every clustered state."""
+    information = summary["microstates"].get("lagged_information")
+    rows = information.get("state_self_information", []) if information else []
+    if not rows:
+        raise ValueError("microstate state self-information contains no rows")
+    states = [row["state"] for row in rows]
+    occupancy = [100 * float(row["occupancy_probability"]) for row in rows]
+    self_information = [
+        np.nan if row["self_information_bits"] is None else float(row["self_information_bits"])
+        for row in rows
+    ]
+    fig, axes = plt.subplots(1, 2, figsize=(12, 4.8), constrained_layout=True)
+    axes[0].bar(states, occupancy, color="#0f766e")
+    axes[0].set(title="Microstate occupancy", xlabel="State", ylabel="Occupancy (%)")
+    axes[1].bar(states, self_information, color="#b45309")
+    axes[1].set(title="State self-information", xlabel="State", ylabel="-log2(p(state)) (bits)")
+    for axis in axes:
+        axis.grid(axis="y", alpha=.22)
+    return _save(fig, path)
+
+
+def write_microstate_extended_information_outputs(summary, destination):
+    """Render saved lagged-information tables as visible report figures."""
+    destination = Path(destination)
+    assets = destination / "assets"
+    assets.mkdir(parents=True, exist_ok=True)
+    files = {
+        "micro_lagged_information": "microstate_lagged_information.png",
+        "micro_state_self_information": "microstate_state_self_information.png",
+    }
+    _plot_microstate_lagged_information(summary, assets / files["micro_lagged_information"])
+    _plot_microstate_state_self_information(summary, assets / files["micro_state_self_information"])
+    return files
+
+
+MICROSTATE_SEQUENCE_EXPORT_SCHEMA_VERSION = "1.1"
+MICROSTATE_SEQUENCE_METHOD_VERSION = "1.0"
+
+
+def write_microstate_sequence_dynamics_outputs(summary, destination):
+    """Export the optional, gap-aware microstate sequence result contract."""
+    dynamics = summary.get("microstates", {}).get("sequence_dynamics")
+    if not dynamics:
+        return {}
+
+    destination = Path(destination)
+    assets = destination / "assets"
+    tables = destination / "tables" / "sequence_dynamics"
+    assets.mkdir(parents=True, exist_ok=True)
+    tables.mkdir(parents=True, exist_ok=True)
+
+    table_specs = _microstate_sequence_table_specs(dynamics)
+    table_manifest = []
+    for filename, headers, rows in table_specs:
+        path = tables / filename
+        _write_deterministic_csv(path, headers, rows)
+        table_manifest.append(
+            {
+                "path": (Path("tables") / "sequence_dynamics" / filename).as_posix(),
+                "header": list(headers),
+                "row_count": len(rows),
+                "size_bytes": path.stat().st_size,
+                "sha256": _file_sha256(path),
+            }
+        )
+
+    manifest = {
+        "schema_version": MICROSTATE_SEQUENCE_EXPORT_SCHEMA_VERSION,
+        "method_version": MICROSTATE_SEQUENCE_METHOD_VERSION,
+        "artifact_type": "microstate_sequence_dynamics_tables",
+        "sequence_domain": dynamics.get("sequence_domain"),
+        "tables": table_manifest,
+    }
+    (tables / "manifest.json").write_text(
+        json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+    files = {
+        "micro_sample_markov": "microstate_sample_markov_matrix.png",
+        "micro_sequence_dynamics": "microstate_sequence_dynamics.png",
+        "micro_transition_syntax": "microstate_transition_syntax.png",
+        "micro_dwell_survival": "microstate_dwell_survival.png",
+    }
+    _plot_microstate_sample_markov(
+        dynamics, assets / files["micro_sample_markov"]
+    )
+    _plot_microstate_sequence_dynamics(
+        dynamics, assets / files["micro_sequence_dynamics"]
+    )
+    _plot_microstate_transition_syntax(
+        dynamics, assets / files["micro_transition_syntax"]
+    )
+    _plot_microstate_dwell_survival(
+        dynamics, assets / files["micro_dwell_survival"]
+    )
+    return files
+
+
+def _microstate_sequence_table_specs(dynamics):
+    states = list(dynamics["state_names"])
+    markov = dynamics["sample_markov"]
+    entropy_by_state = {
+        row["state"]: row
+        for row in markov["per_state_transition_entropy_bits_per_sample"]
+    }
+    stationary = markov.get("stationary_distribution") or {}
+    markov_headers = (
+        "from_state", "to_state", "observed_count", "row_total",
+        "transition_probability", "from_state_transition_entropy_bits_per_sample",
+        "from_state_status", "stationary_probability", "stationary_status",
+        "stationary_not_estimable_reason",
+        "empirical_first_order_entropy_rate_bits_per_sample",
+        "stationary_weighted_entropy_rate_bits_per_sample",
+    )
+    markov_rows = []
+    for from_index, from_state in enumerate(states):
+        entropy = entropy_by_state[from_state]
+        for to_index, to_state in enumerate(states):
+            markov_rows.append(
+                {
+                    "from_state": from_state,
+                    "to_state": to_state,
+                    "observed_count": markov["counts"][from_index][to_index],
+                    "row_total": markov["row_totals"][from_index],
+                    "transition_probability": markov["transition_matrix"][from_index][to_index],
+                    "from_state_transition_entropy_bits_per_sample": entropy["entropy_bits_per_sample"],
+                    "from_state_status": entropy["status"],
+                    "stationary_probability": stationary.get(from_state),
+                    "stationary_status": markov["stationary_status"],
+                    "stationary_not_estimable_reason": markov.get("stationary_not_estimable_reason"),
+                    "empirical_first_order_entropy_rate_bits_per_sample": markov.get("empirical_first_order_entropy_rate_bits_per_sample"),
+                    "stationary_weighted_entropy_rate_bits_per_sample": markov.get("stationary_weighted_entropy_rate_bits_per_sample"),
+                }
+            )
+
+    syntax = dynamics["jump_chain_syntax"]
+    syntax_headers = (
+        "from_state", "to_state", "structural_zero", "observed_count",
+        "from_state_transition_count", "from_state_segment_frequency_q",
+        "expected_conditional_probability", "expected_count", "raw_residual",
+        "pearson_residual", "status",
+    )
+    row_totals = dict(zip(states, syntax["row_totals"]))
+    syntax_rows = [
+        {
+            **cell,
+            "from_state_transition_count": row_totals[cell["from_state"]],
+            "from_state_segment_frequency_q": syntax["segment_state_frequency_q"][cell["from_state"]],
+        }
+        for cell in syntax["cells"]
+    ]
+
+    entropy_headers = (
+        "L", "status", "eligible_word_count", "observed_vocabulary_size",
+        "H_L_bits", "H_L_per_symbol_bits", "conditional_increment_bits",
+        "observed_vocabulary_json",
+    )
+    entropy_rows = [
+        {
+            **{key: row.get(key) for key in entropy_headers[:-1]},
+            "observed_vocabulary_json": json.dumps(
+                row.get("observed_vocabulary", []),
+                ensure_ascii=False,
+                separators=(",", ":"),
+            ),
+        }
+        for row in dynamics["block_entropy"]["orders"]
+    ]
+
+    lempel_ziv = dynamics["lempel_ziv"]
+    lz_headers = (
+        "scope", "block_index", "sequence_domain", "status",
+        "analysis_start_sec", "analysis_end_sec", "source_start_sec",
+        "source_end_sec", "sample_count_n", "raw_phrase_count_c_n",
+        "normalized_value", "K_active", "block_count", "short_block_count",
+        "normalization_formula", "normalization_scope",
+        "constant_alphabet_rule", "short_sequence_rule",
+    )
+    lz_common = {
+        "sequence_domain": lempel_ziv["sequence_domain"],
+        "K_active": lempel_ziv["K_active"],
+        "block_count": lempel_ziv["block_count"],
+        "short_block_count": lempel_ziv["short_block_count"],
+        "normalization_formula": lempel_ziv["normalization_formula"],
+        "normalization_scope": lempel_ziv["normalization_scope"],
+        "constant_alphabet_rule": lempel_ziv["constant_alphabet_rule"],
+        "short_sequence_rule": lempel_ziv["short_sequence_rule"],
+    }
+    lz_rows = [
+        {
+            **lz_common,
+            "scope": "pooled",
+            "block_index": None,
+            "status": lempel_ziv["status"],
+            "analysis_start_sec": None,
+            "analysis_end_sec": None,
+            "source_start_sec": None,
+            "source_end_sec": None,
+            "sample_count_n": lempel_ziv["eligible_sample_count"],
+            "raw_phrase_count_c_n": lempel_ziv["raw_phrase_count"],
+            "normalized_value": lempel_ziv["normalized_value"],
+        }
+    ]
+    blocks_by_index = {
+        block["block_index"]: block
+        for block in dynamics.get("continuous_blocks", {}).get("blocks", [])
+    }
+    for row in lempel_ziv["per_block"]:
+        block = blocks_by_index.get(row["block_index"], {})
+        lz_rows.append(
+            {
+                **lz_common,
+                "scope": "continuous_block",
+                "block_index": row["block_index"],
+                "status": row["status"],
+                "analysis_start_sec": block.get("analysis_start_sec"),
+                "analysis_end_sec": block.get("analysis_end_sec"),
+                "source_start_sec": block.get("source_start_sec"),
+                "source_end_sec": block.get("source_end_sec"),
+                "sample_count_n": row["sample_count_n"],
+                "raw_phrase_count_c_n": row["raw_phrase_count_c_n"],
+                "normalized_value": row["normalized_value"],
+            }
+        )
+
+    dwell_headers = (
+        "state", "status", "eligible_duration_count", "duration_samples",
+        "duration_ms", "duration_sec", "ecdf_probability", "survival_probability",
+    )
+    dwell_rows = []
+    for curve in dynamics["dwell_time"]["empirical_curves"]:
+        points = curve.get("points", []) or [{}]
+        dwell_rows.extend(
+            {
+                "state": curve["state"],
+                "status": curve["status"],
+                "eligible_duration_count": curve["eligible_duration_count"],
+                **{key: point.get(key) for key in dwell_headers[3:]},
+            }
+            for point in points
+        )
+
+    censor_counts = {
+        state: {"left": 0, "right": 0, "both": 0}
+        for state in states
+    }
+    for segment in dynamics["dwell_time"].get("segments", []):
+        counts = censor_counts[segment["state"]]
+        counts["left"] += int(bool(segment.get("left_censored")))
+        counts["right"] += int(bool(segment.get("right_censored")))
+        counts["both"] += int(
+            bool(segment.get("left_censored"))
+            and bool(segment.get("right_censored"))
+        )
+    duration_headers = (
+        "state", "status", "segment_count", "left_censored_segment_count",
+        "right_censored_segment_count", "both_censored_segment_count",
+        "total_duration_samples", "total_duration_ms", "total_duration_sec",
+        "mean_duration_samples", "mean_duration_ms", "mean_duration_sec",
+        "median_duration_samples", "median_duration_ms", "median_duration_sec",
+        "standard_deviation_duration_samples", "standard_deviation_duration_ms",
+        "standard_deviation_duration_sec", "p95_duration_samples",
+        "p95_duration_ms", "p95_duration_sec", "maximum_duration_samples",
+        "maximum_duration_ms", "maximum_duration_sec",
+    )
+    duration_rows = []
+    duration_summary = dynamics["duration_summary"]
+    duration_rows_source = (
+        duration_summary.get("per_state", [])
+        if isinstance(duration_summary, dict)
+        else duration_summary
+    )
+    for row in duration_rows_source:
+        counts = censor_counts[row["state"]]
+        duration_rows.append(
+            {
+                **{key: row.get(key) for key in duration_headers},
+                "left_censored_segment_count": counts["left"],
+                "right_censored_segment_count": counts["right"],
+                "both_censored_segment_count": counts["both"],
+            }
+        )
+
+    per_second = dynamics["per_second_distribution_summary"]
+    per_state = {row["state"]: row for row in per_second["per_state"]}
+    per_second_headers = (
+        "block_index", "start_sec", "end_sec", "sample_count",
+        "window_duration_sec", "state", "coverage_fraction", "occurrence_count",
+        "occurrences_per_sec", "dominant_state", "eligible_window_count",
+        "coverage_fraction_mean", "coverage_fraction_standard_deviation",
+        "occurrences_per_sec_mean", "occurrences_per_sec_standard_deviation",
+    )
+    per_second_rows = []
+    for window in per_second["windows"]:
+        for state in states:
+            state_summary = per_state[state]
+            per_second_rows.append(
+                {
+                    "block_index": window["block_index"],
+                    "start_sec": window["start_sec"],
+                    "end_sec": window["end_sec"],
+                    "sample_count": window["sample_count"],
+                    "window_duration_sec": window["window_duration_sec"],
+                    "state": state,
+                    "coverage_fraction": window["state_coverage_fraction"][state],
+                    "occurrence_count": window["state_occurrence_count"][state],
+                    "occurrences_per_sec": window["state_occurrences_per_sec"][state],
+                    "dominant_state": window["dominant_state"],
+                    "eligible_window_count": state_summary["eligible_window_count"],
+                    "coverage_fraction_mean": state_summary["coverage_fraction_mean"],
+                    "coverage_fraction_standard_deviation": state_summary["coverage_fraction_standard_deviation"],
+                    "occurrences_per_sec_mean": state_summary["occurrences_per_sec_mean"],
+                    "occurrences_per_sec_standard_deviation": state_summary["occurrences_per_sec_standard_deviation"],
+                }
+            )
+
+    return (
+        ("markov_transition_entropy.csv", markov_headers, markov_rows),
+        ("transition_syntax_residuals.csv", syntax_headers, syntax_rows),
+        ("block_entropy.csv", entropy_headers, entropy_rows),
+        ("lempel_ziv.csv", lz_headers, lz_rows),
+        ("dwell_survival.csv", dwell_headers, dwell_rows),
+        ("duration_summary.csv", duration_headers, duration_rows),
+        ("per_second_distribution.csv", per_second_headers, per_second_rows),
+    )
+
+
+def _write_deterministic_csv(path, headers, rows):
+    with Path(path).open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=headers, lineterminator="\n")
+        writer.writeheader()
+        for row in rows:
+            values = {header: _finite_csv_value(row.get(header)) for header in headers}
+            writer.writerow(values)
+
+
+def _finite_csv_value(value):
+    if isinstance(value, np.generic):
+        value = value.item()
+    if isinstance(value, float) and not np.isfinite(value):
+        raise ValueError("microstate sequence exports cannot contain NaN or infinity")
+    return value
+
+
+def _save_fixed_sequence_figure(fig, path):
+    fig.set_size_inches(15, 9, forward=True)
+    fig.savefig(
+        path,
+        dpi=120,
+        facecolor="white",
+        metadata={"Software": "qlanalyser_eeg64"},
+    )
+    plt.close(fig)
+    return Path(path).name
+
+
+def _plot_microstate_sequence_dynamics(dynamics, path):
+    states = dynamics["state_names"]
+    markov = dynamics["sample_markov"]
+    entropy_rows = markov["per_state_transition_entropy_bits_per_sample"]
+    stationary = markov.get("stationary_distribution")
+    fig, axes = plt.subplots(2, 2, constrained_layout=True)
+
+    if stationary is None:
+        axes[0, 0].text(.5, .5, "Unique stationary distribution\nnot estimable", ha="center", va="center")
+        axes[0, 0].set_xticks([])
+    else:
+        axes[0, 0].bar(states, [stationary[state] for state in states], color="#167d8d")
+    axes[0, 0].set(title="Sample-Markov stationary distribution", ylabel="Probability")
+
+    entropy_values = [row["entropy_bits_per_sample"] for row in entropy_rows]
+    axes[0, 1].bar(
+        states,
+        [0.0 if value is None else value for value in entropy_values],
+        color="#4868a8",
+    )
+    for index, value in enumerate(entropy_values):
+        if value is None:
+            axes[0, 1].text(index, 0, "NE", ha="center", va="bottom", fontsize=8)
+    axes[0, 1].set(title="Per-state transition entropy", ylabel="bits/sample")
+
+    block_rows = dynamics["block_entropy"]["orders"]
+    orders = [row["L"] for row in block_rows]
+    axes[1, 0].plot(orders, [row["H_L_bits"] for row in block_rows], marker="o", label="H(L)")
+    axes[1, 0].plot(orders, [row["H_L_per_symbol_bits"] for row in block_rows], marker="s", label="H(L)/L")
+    axes[1, 0].plot(orders, [row["conditional_increment_bits"] for row in block_rows], marker="^", label="H(L)-H(L-1)")
+    axes[1, 0].set(title="Overlapping non-circular block entropy", xlabel="Word length L", ylabel="bits")
+    axes[1, 0].set_xticks(orders)
+    axes[1, 0].legend(frameon=False)
+
+    lz = dynamics["lempel_ziv"]
+    value = lz.get("normalized_value")
+    axes[1, 1].bar(["LZ76"], [0.0 if value is None else value], color="#bd6b32", width=.48)
+    axes[1, 1].set(title="Block-reset multisymbol LZ76", ylabel="c(n) log_K(n) / n")
+    axes[1, 1].text(
+        .5,
+        .92,
+        f"raw phrases={lz['raw_phrase_count']}  K={lz['K_active']}  blocks={lz['block_count']}",
+        transform=axes[1, 1].transAxes,
+        ha="center",
+        va="top",
+    )
+    empirical = markov.get("empirical_first_order_entropy_rate_bits_per_sample")
+    stationary_rate = markov.get("stationary_weighted_entropy_rate_bits_per_sample")
+    fig.suptitle(
+        "Gap-aware microstate sequence dynamics\n"
+        f"empirical entropy rate={_format_optional(empirical)} bits/sample; "
+        f"stationary-weighted={_format_optional(stationary_rate)} bits/sample"
+    )
+    for axis in axes.flat:
+        axis.grid(axis="y", alpha=.22)
+    return _save_fixed_sequence_figure(fig, path)
+
+
+def _plot_microstate_sample_markov(dynamics, path):
+    """Show the sample-label Markov chain separately from the jump chain."""
+    markov = dynamics["sample_markov"]
+    states = dynamics["state_names"]
+    matrices = (
+        (markov["counts"], "Observed adjacent-sample counts", "viridis"),
+        (markov["transition_matrix"], "Row-normalized transition probability", "Blues"),
+    )
+    fig, axes = plt.subplots(1, 2, constrained_layout=True)
+    for axis, (matrix, title, cmap_name) in zip(axes, matrices):
+        values = np.asarray(
+            [[np.nan if value is None else value for value in row] for row in matrix],
+            dtype=float,
+        )
+        cmap = matplotlib.colormaps[cmap_name].copy()
+        cmap.set_bad("#e5e7eb")
+        image = axis.imshow(values, cmap=cmap, vmin=0)
+        axis.set(title=title, xlabel="To state", ylabel="From state")
+        axis.set_xticks(range(len(states)), states)
+        axis.set_yticks(range(len(states)), states)
+        fig.colorbar(image, ax=axis, shrink=.72)
+    fig.suptitle(
+        "First-order sample-label Markov dynamics; self-transitions retained"
+    )
+    return _save_fixed_sequence_figure(fig, path)
+
+
+def _format_optional(value):
+    return "not estimable" if value is None else f"{float(value):.4f}"
+
+
+def _plot_microstate_transition_syntax(dynamics, path):
+    syntax = dynamics["jump_chain_syntax"]
+    states = syntax["states"]
+    matrices = (
+        (syntax["observed_counts"], "Observed jump-chain counts", "viridis"),
+        (syntax["expected_counts"], "Independence expected counts", "viridis"),
+        (syntax["pearson_residuals"], "Pearson residuals", "RdBu_r"),
+    )
+    fig, axes = plt.subplots(1, 3, constrained_layout=True)
+    for axis, (matrix, title, cmap_name) in zip(axes, matrices):
+        values = np.asarray(
+            [[np.nan if value is None else value for value in row] for row in matrix],
+            dtype=float,
+        )
+        cmap = matplotlib.colormaps[cmap_name].copy()
+        cmap.set_bad("#e5e7eb")
+        if cmap_name == "RdBu_r":
+            finite = np.abs(values[np.isfinite(values)])
+            limit = max(float(finite.max()) if finite.size else 0.0, 1e-12)
+            image = axis.imshow(values, cmap=cmap, vmin=-limit, vmax=limit)
+        else:
+            image = axis.imshow(values, cmap=cmap, vmin=0)
+        axis.set(title=title, xlabel="To state", ylabel="From state")
+        axis.set_xticks(range(len(states)), states)
+        axis.set_yticks(range(len(states)), states)
+        fig.colorbar(image, ax=axis, shrink=.72)
+    fig.suptitle("Run-collapsed transition syntax; diagonal is a structural zero")
+    return _save_fixed_sequence_figure(fig, path)
+
+
+def _plot_microstate_dwell_survival(dynamics, path):
+    curves = dynamics["dwell_time"]["empirical_curves"]
+    fig, axes = plt.subplots(1, 2, constrained_layout=True)
+    plotted = False
+    for curve in curves:
+        points = curve.get("points", [])
+        if not points:
+            continue
+        duration = [point["duration_ms"] for point in points]
+        axes[0].step(duration, [point["survival_probability"] for point in points], where="post", label=curve["state"])
+        axes[1].step(duration, [point["ecdf_probability"] for point in points], where="post", label=curve["state"])
+        plotted = True
+    axes[0].set(title="Empirical survival S(t)=P(D>t)", xlabel="Dwell duration (ms)", ylabel="Probability")
+    axes[1].set(title="Empirical cumulative distribution", xlabel="Dwell duration (ms)", ylabel="Probability")
+    for axis in axes:
+        axis.set_ylim(-.03, 1.03)
+        axis.grid(alpha=.22)
+        if plotted:
+            axis.legend(frameon=False, ncol=2)
+    fig.suptitle("Descriptive dwell distributions; not Kaplan-Meier inference")
+    return _save_fixed_sequence_figure(fig, path)
+
+
 def _plot_multiscale_entropy(summary, path):
     curve = summary["complexity"].get("multiscale_entropy", {})
     fig, axis = plt.subplots(figsize=(10, 4.5), constrained_layout=True)
@@ -907,11 +1843,13 @@ def _write_all_tables(summary, tables, cleaned):
     _write_csv(tables / "regional_bandpower.csv", regional_bandpower)
     _write_csv(tables / "hemispheric_bandpower.csv", hemispheric)
     _write_csv(tables / "complexity_by_channel.csv", summary["complexity"]["channel_metrics"])
+    write_spatial_complexity_csv(summary, tables)
     mse = summary["complexity"].get("multiscale_entropy", {})
     _write_csv(tables / "multiscale_entropy.csv", [{"scale": scale, "mean_sample_entropy": value} for scale, value in zip(mse.get("scales", []), mse.get("mean_sample_entropy", []))])
     _write_csv(tables / "microstate_parameters.csv", summary["microstates"]["parameters"])
     _write_csv(tables / "microstate_segments.csv", summary["microstates"].get("segments", []))
     _write_csv(tables / "microstate_per_second.csv", summary["microstates"].get("per_second_coverage", []))
+    _write_microstate_method_summary_csv(summary["microstates"], tables)
     _write_microstate_information_table(summary["microstates"], tables)
     _write_microstate_legacy_tables(summary["microstates"], tables)
     _write_csv(tables / "gfp_full_recording.csv", _series_rows(summary["gfp_gmd"].get("gfp_display_series"), "gfp_uv"))
@@ -939,6 +1877,29 @@ def _write_all_tables(summary, tables, cleaned):
     _write_csv(tables / "connectivity_regional.csv", regional_rows)
 
 
+def write_spatial_complexity_csv(summary, tables):
+    """Write the scalar Omega-complexity result without requiring raw EEG."""
+    path = Path(tables) / "spatial_complexity.csv"
+    spatial = summary.get("spatial_complexity", {})
+    if not spatial:
+        path.unlink(missing_ok=True)
+        return None
+    fields = (
+        "method",
+        "channel_count",
+        "reference_rank_loss",
+        "maximum_effective_dimension",
+        "omega_effective_dimension",
+        "omega_normalized",
+        "eigenvalue_entropy_nats",
+        "unit",
+    )
+    row = {field: spatial.get(field) for field in fields}
+    row["unit"] = "dimensionless"
+    _write_csv(path, [row])
+    return path
+
+
 def _write_microstate_information_table(microstates, tables):
     """Export the optional full-recording microstate information time series."""
     information = microstates.get("information_dynamics")
@@ -948,6 +1909,157 @@ def _write_microstate_information_table(microstates, tables):
         information,
         Path(tables) / "microstate_information_dynamics.csv",
     )
+
+
+def _microstate_method_summary_rows(microstates):
+    """Flatten persisted microstate method outputs into an audit-friendly table."""
+    rows = []
+
+    def add(scope, method, metric, value, unit="", state="", definition=""):
+        if value is None:
+            return
+        rows.append({
+            "scope": scope,
+            "method": method,
+            "metric": metric,
+            "state": state,
+            "value": value,
+            "unit": unit,
+            "definition": definition,
+        })
+
+    parameters = microstates.get("parameters", [])
+    parameter_fields = (
+        ("mean_correlation", "topographic correlation", "r"),
+        ("gev_percent", "global explained variance", "%"),
+        ("mean_duration_ms", "mean segment duration", "ms"),
+        ("occurrences_per_sec", "occurrence rate", "Hz"),
+        ("time_coverage_percent", "time coverage", "%"),
+    )
+    for row in parameters:
+        for field, metric, unit in parameter_fields:
+            add("state", "GFP-peak microstate clustering", metric, row.get(field), unit,
+                row.get("state"), f"Persisted microstate parameter: {field}.")
+
+    sequence = microstates.get("sequence", {})
+    for field, metric, unit in (
+        ("segment_count", "segment count", "count"),
+        ("state_switch_count", "state switch count", "count"),
+        ("mean_segment_duration_ms", "mean segment duration", "ms"),
+        ("sample_label_shannon_entropy_bits", "sample-label Shannon entropy", "bits"),
+        ("segment_label_shannon_entropy_bits", "segment-label Shannon entropy", "bits"),
+    ):
+        add("recording", "Microstate sequence summary", metric, sequence.get(field), unit,
+            definition=f"Persisted sequence summary: {field}.")
+
+    for row in microstates.get("duration_summary", []):
+        for field, metric, unit in (
+            ("segment_count", "duration segment count", "count"),
+            ("mean_duration_ms", "duration mean", "ms"),
+            ("median_duration_ms", "duration median", "ms"),
+            ("standard_deviation_ms", "duration standard deviation", "ms"),
+            ("p95_duration_ms", "duration P95", "ms"),
+            ("maximum_duration_ms", "duration maximum", "ms"),
+        ):
+            add("state", "Dwell duration statistics", metric, row.get(field), unit,
+                row.get("state"), f"Persisted duration summary: {field}.")
+
+    for row in microstates.get("sequence_dynamics", {}).get(
+        "per_second_distribution_summary", {}
+    ).get("per_state", []):
+        for field, metric, unit in (
+            ("eligible_window_count", "eligible one-second windows", "count"),
+            ("coverage_fraction_mean", "per-second coverage mean", "fraction"),
+            ("coverage_fraction_standard_deviation", "per-second coverage standard deviation", "fraction"),
+            ("occurrences_per_sec_mean", "per-second occurrence mean", "Hz"),
+            ("occurrences_per_sec_standard_deviation", "per-second occurrence standard deviation", "Hz"),
+        ):
+            add("state", "Per-second occurrence and coverage", metric, row.get(field), unit,
+                row.get("state"), f"Gap-aware one-second distribution summary: {field}.")
+
+    dynamics = microstates.get("sequence_dynamics", {})
+    for field, metric, unit in (
+        ("samples", "eligible samples", "count"),
+        ("sample_adjacent_pairs", "eligible sample-adjacent pairs", "count"),
+        ("jump_chain_segments", "eligible jump-chain segments", "count"),
+        ("jump_chain_transitions", "eligible jump-chain transitions", "count"),
+        ("dwell_segments", "eligible dwell segments", "count"),
+        ("per_second_windows", "eligible one-second windows", "count"),
+    ):
+        add("recording", "Gap-aware sequence eligibility", metric,
+            dynamics.get("eligible_counts", {}).get(field), unit,
+            definition="Counts computed after resetting operations at source-time gaps.")
+
+    blocks = dynamics.get("continuous_blocks", {})
+    for field, metric, unit in (
+        ("block_count", "source-contiguous block count", "count"),
+        ("eligible_sample_count", "source-contiguous eligible samples", "count"),
+        ("source_time_available", "source-time mapping available", "bool"),
+    ):
+        add("recording", "Source-time mapping and gap handling", metric, blocks.get(field), unit,
+            definition="Persisted source-contiguous block contract.")
+
+    markov = dynamics.get("sample_markov", {})
+    for field, metric, unit in (
+        ("empirical_first_order_entropy_rate_bits_per_sample", "empirical Markov entropy rate", "bits/sample"),
+        ("stationary_weighted_entropy_rate_bits_per_sample", "stationary-weighted Markov entropy rate", "bits/sample"),
+        ("stationary_status", "stationary distribution status", "status"),
+    ):
+        add("recording", "Sample Markov and entropy rate", metric, markov.get(field), unit,
+            definition=f"Persisted sample Markov result: {field}.")
+
+    for row in dynamics.get("block_entropy", {}).get("orders", []):
+        for field, metric, unit in (
+            ("eligible_word_count", "eligible words", "count"),
+            ("observed_vocabulary_size", "observed vocabulary size", "count"),
+            ("H_L_bits", "block entropy H(L)", "bits"),
+            ("H_L_per_symbol_bits", "block entropy per symbol", "bits/symbol"),
+            ("conditional_increment_bits", "conditional entropy increment", "bits"),
+        ):
+            add("order", "Block entropy", metric, row.get(field), unit, str(row.get("L")),
+                f"Non-overlapping block entropy at order L={row.get('L')}: {field}.")
+
+    lempel_ziv = dynamics.get("lempel_ziv", {})
+    for field, metric, unit in (
+        ("eligible_sample_count", "eligible samples", "count"),
+        ("raw_phrase_count", "raw phrase count", "count"),
+        ("normalized_value", "normalized LZ76 complexity", "dimensionless"),
+        ("status", "LZ76 status", "status"),
+    ):
+        add("recording", "Lempel-Ziv LZ76", metric, lempel_ziv.get(field), unit,
+            definition=f"Persisted multi-symbol LZ76 result: {field}.")
+
+    dwell = dynamics.get("dwell_time", {})
+    for curve in dwell.get("empirical_curves", []):
+        add("state", "Dwell ECDF and survival", "eligible duration count",
+            curve.get("eligible_duration_count"), "count", curve.get("state"),
+            "Number of uncensored dwell durations contributing to the empirical curve.")
+    add("recording", "Dwell ECDF and survival", "dwell curve status",
+        dwell.get("status"), "status", definition="Persisted gap-aware dwell curve status.")
+
+    timeline = microstates.get("timeline_mapping", {})
+    for metric, value, unit, definition in (
+        ("analysis duration", timeline.get("analysis_duration_sec"), "s", "Retained analysis duration."),
+        ("source duration", timeline.get("source_duration_sec"), "s", "Original source duration when timing is available."),
+        ("retained interval count", len(timeline.get("retained_intervals", [])), "count", "Verified retained-to-source intervals."),
+        ("unretained interval count", len(timeline.get("unretained_source_intervals", [])), "count", "Source gaps retained as gaps; no labels are imputed."),
+        ("source-time mapping scope", timeline.get("scope"), "status", "Persisted source-time mapping scope."),
+    ):
+        add("recording", "Source-time mapping", metric, value, unit, definition=definition)
+    add("recording", "Source-time mapping", "boundary rule", timeline.get("boundary"), "text",
+        definition="Boundary and gap rule carried by the saved analysis contract.")
+    return rows
+
+
+def _write_microstate_method_summary_csv(microstates, tables):
+    rows = _microstate_method_summary_rows(microstates)
+    path = Path(tables) / "microstate_sequence_summary.csv"
+    if rows:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        _write_csv(path, rows)
+    else:
+        path.unlink(missing_ok=True)
+    return path if rows else None
 
 
 def _write_microstate_legacy_tables(microstates, tables):
@@ -994,6 +2106,316 @@ def _atlas(files, prefix, caption):
     return '<details><summary>' + html.escape(caption) + '</summary>' + ''.join(_figure(item, caption) for item in matches) + '</details>'
 
 
+def _microstate_sequence_dynamics_html(summary, files):
+    if not summary.get("microstates", {}).get("sequence_dynamics"):
+        return ""
+    if not MICROSTATE_SEQUENCE_DYNAMICS_ASSET_KEYS.issubset(files):
+        return ""
+    return (
+        '<h3 id="microstate-sequence-dynamics">微状态序列动力学与驻留分布</h3>'
+        '<p>下列结果只在源时间连续的保留区间内建立相邻关系。逐采样 Markov 链保留自转换；'
+        'jump chain 在合并同状态连续段后排除自转换。块熵使用非循环重叠词，Lempel-Ziv '
+        '使用多符号 LZ76 并在缺口处重置。驻留曲线是描述性经验 ECDF/生存函数，不是临床阈值或生存推断。</p>'
+        + _figure(
+            files["micro_sample_markov"],
+            "逐采样一阶 Markov 转换计数和行归一化概率；保留自转换，并与去自转换 jump chain 明确区分。",
+        )
+        + _figure(
+            files["micro_sequence_dynamics"],
+            "逐采样 Markov 稳态分布、每状态转移熵、全局一阶熵率、1-4 阶块熵与多符号 LZ76 复杂度。",
+        )
+        + _figure(
+            files["micro_transition_syntax"],
+            "去自转换 jump chain 的观察转移、独立性期望及 Pearson 标准化残差；结构零和不可估计单元明确留空。",
+        )
+        + _figure(
+            files["micro_dwell_survival"],
+            "各微状态驻留时长的经验累积分布与经验生存函数；缺口两侧不合并，并记录区间边界删失标记。",
+        )
+    )
+
+
+def _microstate_extended_information_html(summary, files):
+    if not summary.get("microstates", {}).get("lagged_information"):
+        return ""
+    parts = ['<h3 id="microstate-information-lags">微状态多滞后信息与状态稀有度</h3>',
+             '<p>该组结果把完整保留记录按每个指定滞后分别汇总；它与上方连续 1 秒窗的时间分辨率互信息不同。状态自信息按全程占比计算，用于显示状态出现的稀有度，不是临床评分。</p>']
+    if "micro_lagged_information" in files:
+        parts.append(_figure(files["micro_lagged_information"], "4–40 ms 多滞后互信息、归一化互信息、条件自信息与边际自信息。"))
+    if "micro_state_self_information" in files:
+        parts.append(_figure(files["micro_state_self_information"], "六类微状态的全程占比与对应状态自信息。"))
+    return "".join(parts)
+
+
+def _microstate_method_inventory_text(summary):
+    methods = [
+        "GFP、相邻 GFP 峰 GMD 与峰值地形贡献",
+        "GFP 峰地形聚类、全样本回填与最短分段平滑",
+        "持续时间、出现率、覆盖率、GEV 与全程 GEV",
+        "连续序列、源时间栅格、逐秒覆盖与直接转换计数",
+        "去自转换 jump-chain 转换矩阵、出向转换与定向转换",
+        "持续时间、逐秒出现率与逐秒覆盖率分布",
+        "全程状态自信息、连续 1 秒窗状态熵与固定滞后互信息",
+        "源时间映射、连续保留区间与边界标记",
+    ]
+    microstates = summary.get("microstates", {})
+    if microstates.get("lagged_information"):
+        methods.extend([
+            "全记录多滞后互信息与归一化互信息",
+            "边际/条件自信息与状态稀有度",
+        ])
+    if microstates.get("sequence_dynamics"):
+        methods.extend([
+            "保留自转换的逐采样一阶 Markov 矩阵与稳态分布",
+            "每状态转换熵、经验熵率与稳态加权熵率",
+            "去自转换 jump-chain 独立性期望与 Pearson 残差",
+            "1-4 阶非循环重叠块熵、每符号熵与条件增量",
+            "缺口重置的多符号 LZ76 原始/归一化复杂度",
+            "驻留时长分位数、经验 ECDF/生存函数与边界删失标记",
+            "连续块内逐秒覆盖率和出现率分布",
+        ])
+    return "；".join(methods)
+
+
+def _microstate_method_links(items, destination=None):
+    if destination is not None:
+        root = Path(destination)
+        items = [
+            (path, label)
+            for path, label in items
+            if (root / Path(path)).is_file() and (root / Path(path)).stat().st_size > 0
+        ]
+    return '<div class="method-links">' + "".join(
+        f'<a href="{html.escape(path)}" target="_blank" rel="noopener">'
+        f'{html.escape(label)}</a>'
+        for path, label in items
+    ) + "</div>"
+
+
+def _microstate_metric_catalog_html(summary, files, destination=None):
+    """Render each restored microstate method and its explicit metrics."""
+    microstates = summary.get("microstates", {})
+
+    def asset(key, label):
+        filename = files.get(key)
+        return [(f"assets/{filename}", label)] if filename else []
+
+    def table(path, label):
+        return [(path, label)]
+
+    entries = [
+        (
+            "GFP / GMD",
+            "Global field power, successive-peak GMD, GFP peak topography",
+            asset("gfp", "GFP/GMD") + table("tables/gmd_successive_peaks.csv", "GMD CSV")
+            + table("tables/gfp_peak_topography_gmd.csv", "peak topography CSV"),
+        ),
+        (
+            "GFP-peak clustering and template reconstruction",
+            "GFP-peak topographic clustering, six templates, all-sample backfill, minimum-segment smoothing",
+            asset("micro_templates", "templates") + table("tables/microstate_parameters.csv", "parameters CSV"),
+        ),
+        (
+            "Topographic fit and explained variance",
+            "Mean correlation, state GEV, continuous GEV and GFP-peak explained contribution",
+            asset("micro_parameters", "fit parameters") + asset("micro_total_contribution", "contribution")
+            + table("tables/microstate_parameters.csv", "parameters CSV"),
+        ),
+        (
+            "Temporal occurrence and coverage",
+            "Mean duration, occurrence rate, time coverage, segment count, switch count",
+            asset("micro_duration_distribution", "duration distributions")
+            + table("tables/microstate_sequence_summary.csv", "explicit metric CSV"),
+        ),
+        (
+            "Dwell duration statistics",
+            "Count, mean, median, standard deviation, P95 and maximum duration by state",
+            asset("micro_duration_distribution", "duration distributions")
+            + table("tables/sequence_dynamics/duration_summary.csv", "duration summary CSV"),
+        ),
+        (
+            "Direct transition counts",
+            "Observed state-change counts, outgoing percentages and all-transition percentages",
+            asset("micro_transition", "transition matrix") + asset("micro_outgoing", "outgoing")
+            + table("tables/microstate_transition_counts.csv", "transition CSV"),
+        ),
+        (
+            "Jump-chain transition syntax",
+            "Self-transitions removed, expected transition frequencies, structural zeros and Pearson residuals",
+            asset("micro_transition_polar", "directed transitions")
+            + asset("micro_transition_syntax", "syntax residuals")
+            + table("tables/sequence_dynamics/transition_syntax_residuals.csv", "syntax CSV"),
+        ),
+        (
+            "Per-second occurrence and coverage distributions",
+            "One-second window occurrence mean/SD and coverage mean/SD, with partial windows retained",
+            asset("micro_coverage", "per-second coverage")
+            + table("tables/sequence_dynamics/per_second_distribution.csv", "per-second CSV"),
+        ),
+        (
+            "Windowed information dynamics",
+            "Global state self-information, one-second state entropy and fixed-lag mutual information",
+            asset("micro_information_dynamics", "windowed information")
+            + table("tables/microstate_information_dynamics.csv", "information CSV"),
+        ),
+        (
+            "Multi-lag information and state self-information",
+            "Full-recording lagged mutual information, normalized information, conditional information and state rarity",
+            asset("micro_lagged_information", "multi-lag information")
+            + asset("micro_state_self_information", "state self-information")
+            + table("tables/microstate_auto_information.csv", "multi-lag CSV"),
+        ),
+        (
+            "Sample-level Markov chain",
+            "Self-transition-inclusive sample transition matrix, stationary distribution and state transition entropy",
+            asset("micro_sample_markov", "sample Markov")
+            + table("tables/sequence_dynamics/markov_transition_entropy.csv", "Markov CSV"),
+        ),
+        (
+            "Markov entropy rate",
+            "Empirical first-order entropy rate and stationary-weighted entropy rate",
+            asset("micro_sequence_dynamics", "entropy dynamics")
+            + table("tables/sequence_dynamics/markov_transition_entropy.csv", "entropy CSV"),
+        ),
+        (
+            "Block entropy",
+            "Non-overlapping word entropy for L=1..4 and conditional entropy increments",
+            asset("micro_sequence_dynamics", "block entropy")
+            + table("tables/sequence_dynamics/block_entropy.csv", "block entropy CSV"),
+        ),
+        (
+            "Lempel-Ziv LZ76",
+            "Multi-symbol LZ76 phrase count and normalized complexity, pooled and per continuous block",
+            asset("micro_sequence_dynamics", "LZ76")
+            + table("tables/sequence_dynamics/lempel_ziv.csv", "LZ76 CSV"),
+        ),
+        (
+            "Dwell ECDF and survival",
+            "Empirical dwell-time distribution, survival curve and left/right boundary censoring",
+            asset("micro_dwell_survival", "dwell survival")
+            + table("tables/sequence_dynamics/dwell_survival.csv", "survival CSV"),
+        ),
+        (
+            "Source-time mapping and gap-aware eligibility",
+            "Retained-to-source intervals, source segments, continuous blocks, boundary rules and eligible counts",
+            asset("micro_sequence_raster", "source-time raster")
+            + table("tables/microstate_source_time_mapping.csv", "time mapping CSV")
+            + table("tables/microstate_source_time_segments.csv", "source segments CSV")
+            + table("tables/microstate_sequence_summary.csv", "eligibility summary CSV"),
+        ),
+    ]
+    if not microstates.get("lagged_information"):
+        entries = [entry for entry in entries if entry[0] != "Multi-lag information and state self-information"]
+    if not microstates.get("sequence_dynamics"):
+        entries = [
+            entry for entry in entries
+            if entry[0] not in {
+                "Jump-chain transition syntax", "Per-second occurrence and coverage distributions",
+                "Sample-level Markov chain", "Markov entropy rate", "Block entropy",
+                "Lempel-Ziv LZ76", "Dwell ECDF and survival",
+            }
+        ]
+    table_rows = "".join(
+        "<tr>"
+        f"<th scope=\"row\">{html.escape(name)}</th>"
+        f"<td>{html.escape(metrics)}</td>"
+        f"<td>{_microstate_method_links(links, destination)}</td>"
+        "</tr>"
+        for name, metrics, links in entries
+    )
+    return (
+        '<h4>Explicit microstate metric catalog</h4>'
+        '<p>This catalog exposes each restored method and the individual metrics that are persisted in the report contract.</p>'
+        '<table class="microstate-metric-catalog"><thead><tr><th>Method</th><th>Explicit metrics</th><th>Evidence</th></tr></thead>'
+        f"<tbody>{table_rows}</tbody></table>"
+    )
+
+
+def _microstate_method_atlas_html(summary, files, destination=None):
+    """Render every restored microstate method as a visible evidence map."""
+    if not summary.get("microstates"):
+        return ""
+
+    rows = [
+        (
+            "空间模板与回填",
+            "GFP/GMD、GFP 峰地形聚类、六类模板、全样本回填与最短分段平滑。",
+            [(f"assets/{files['gfp']}", "GFP/GMD"), (f"assets/{files['micro_templates']}", "模板")],
+        ),
+        (
+            "经典微状态参数",
+            "平均持续时间、出现率、覆盖率、GEV、全程 GEV 与 GFP 峰解释贡献。",
+            [(f"assets/{files['micro_parameters']}", "参数"), (f"assets/{files['micro_total_contribution']}", "贡献")],
+        ),
+        (
+            "序列与时间轴",
+            "连续标签序列、源时间栅格、逐秒覆盖、源时间映射和缺口边界。",
+            [(f"assets/{files['micro_sequence']}", "连续序列"), (f"assets/{files['micro_sequence_raster']}", "源时间栅格"), ("tables/microstate_source_time_mapping.csv", "时间映射 CSV")],
+        ),
+        (
+            "持续与分布",
+            "分段持续时间、逐秒出现率和逐秒覆盖率的分布与汇总。",
+            [(f"assets/{files['micro_duration_distribution']}", "持续时间"), (f"assets/{files['micro_distribution_histograms']}", "分布图")],
+        ),
+        (
+            "去自转换语法",
+            "直接转换计数、jump-chain 转换概率、出向转换和最强定向转换。",
+            [(f"assets/{files['micro_transition']}", "转换矩阵"), (f"assets/{files['micro_transition_polar']}", "定向转换"), ("tables/microstate_transition_counts.csv", "转换 CSV")],
+        ),
+        (
+            "短时信息动力学",
+            "全程状态占比自信息、连续 1 秒窗状态熵、固定滞后互信息与归一化值。",
+            [(f"assets/{files['micro_information_dynamics']}", "短时信息"), ("tables/microstate_information_dynamics.csv", "信息 CSV")],
+        ),
+    ]
+    microstates = summary["microstates"]
+    if microstates.get("lagged_information") and MICROSTATE_EXTENDED_INFORMATION_ASSET_KEYS.issubset(files):
+        rows.append((
+            "多滞后与状态稀有度",
+            "全记录多滞后互信息、归一化互信息、边际/条件自信息和各状态自信息。",
+            [(f"assets/{files['micro_lagged_information']}", "多滞后信息"), (f"assets/{files['micro_state_self_information']}", "状态自信息"), ("tables/microstate_auto_information.csv", "多滞后 CSV")],
+        ))
+    if microstates.get("sequence_dynamics") and MICROSTATE_SEQUENCE_DYNAMICS_ASSET_KEYS.issubset(files):
+        rows.extend([
+            (
+                "逐采样 Markov",
+                "保留自转换的一阶样本转移矩阵、稳态分布、每状态转换熵、经验熵率与稳态加权熵率。",
+                [(f"assets/{files['micro_sample_markov']}", "Markov 矩阵"), (f"assets/{files['micro_sequence_dynamics']}", "熵率与稳态"), ("tables/sequence_dynamics/markov_transition_entropy.csv", "Markov CSV")],
+            ),
+            (
+                "Jump-chain 独立性",
+                "合并同状态驻留段后，比较观察转换、结构零约束下独立性期望与 Pearson 残差。",
+                [(f"assets/{files['micro_transition_syntax']}", "转换语法"), ("tables/sequence_dynamics/transition_syntax_residuals.csv", "残差 CSV")],
+            ),
+            (
+                "块熵与 LZ76",
+                "1-4 阶非循环重叠块熵、每符号熵、条件增量、有效词数及缺口重置多符号 LZ76。",
+                [(f"assets/{files['micro_sequence_dynamics']}", "熵与复杂度"), ("tables/sequence_dynamics/block_entropy.csv", "块熵 CSV"), ("tables/sequence_dynamics/lempel_ziv.csv", "LZ76 CSV")],
+            ),
+            (
+                "驻留与逐秒分布",
+                "驻留时长分位数、经验 ECDF/生存函数、边界删失标记，以及连续块内逐秒覆盖率和出现率。",
+                [(f"assets/{files['micro_dwell_survival']}", "驻留曲线"), ("tables/sequence_dynamics/duration_summary.csv", "时长汇总 CSV"), ("tables/sequence_dynamics/per_second_distribution.csv", "逐秒分布 CSV")],
+            ),
+        ])
+
+    table_rows = "".join(
+        "<tr>"
+        f"<th scope=\"row\">{html.escape(name)}</th>"
+        f"<td>{html.escape(description)}</td>"
+        f"<td>{_microstate_method_links(links, destination)}</td>"
+        "</tr>"
+        for name, description, links in rows
+    )
+    return (
+        '<div class="method-atlas" id="microstate-method-atlas">'
+        '<h3>微状态完整方法图谱</h3>'
+        '<p>旧报告方法已逐项保留；新增方法按“计算定义、可视图和结构化表”绑定，便于核验而不混淆不同序列域。</p>'
+        '<table><thead><tr><th>方法族</th><th>恢复/补充内容</th><th>证据入口</th></tr></thead>'
+        f'<tbody>{table_rows}</tbody></table>{_microstate_metric_catalog_html(summary, files, destination)}</div>'
+    )
+
+
 def _clinical_html(summary, files):
     qc, spectral = summary["quality_control"], summary["spectral"]
     gate = summary["safety_gate"]
@@ -1005,12 +2427,58 @@ def _clinical_html(summary, files):
 <section id="qc"><h2>预处理与质控结果</h2><p>全程记录依次接受 50 Hz 陷波、0.5–45 Hz 带通、坏导联筛查与插值、全头皮平均参考、250 Hz 重采样、逐秒筛查、ICA 伪迹识别及残余伪迹复检。{qc['epoch_summary']['rejected']} 秒未进入后续定量分析。自动 ICA 状态：<b>{html.escape(qc['ica']['status'])}</b>。</p><p class="warning">{html.escape('；'.join(gate['reasons']) or '自动处理完成，仍应结合原始波形进行专业复核。')}</p>{_figure(files['qc'], '同一完整记录的处理前后对照：波形、全通道平均功率谱和时频图。上下图分别按各自色标及纵轴读取。')}</section>
 <section id="rhythm"><h2>节律与频谱</h2><p>功率谱展示每个频率成分在完整记录中的强度；绝对功率表示实际能量（uV²），相对功率表示它在总体频谱中所占比例。</p>{_figure(files['spectral'], '全头皮功率谱及五个常用频带的平均绝对功率和相对功率。')}{_figure(files['bandpower_bars'], '五个频带的全头皮平均绝对功率与相对功率柱状图。')}{_figure(files['alpha'], '后部 Alpha 指标。左图为各后部电极峰频率，中图为积分功率，右图为峰频率的头皮位置。')}{_figure(files['spectral_statistics'], '频谱熵、边缘频率、质心和带宽等指标的全头皮通道分布。箱体表示通道间分布，散点表示单个通道。')}{_figure(files['band_peaks'], '各频带主峰的频率、宽度及相对突出度；未检出稳定峰时以 0 表示。')}{_figure(files['aperiodic'], '周期/非周期频谱参数。非周期斜率描述频谱背景随频率升高的衰减；散点是拟合出的周期性峰。')}{_atlas(files, 'psd_atlas_', '展开查看全部头皮通道功率谱图册')}</section>
 <section id="spatial"><h2>头皮空间分布</h2><p>头皮图的上方为额部、下方为枕部；颜色与各图自身色标共同表示该频带或指标在电极位置的数值。各图色标独立时，应读取色标而不是直接比较颜色深浅。</p>{_figure(files['bandpower'], '五个频带的绝对功率头皮图。')}{_figure(files['bandpower_relative'], '五个频带的相对功率头皮图。')}{_figure(files['narrowband_abs'], '2–34 Hz 的连续窄频带绝对功率头皮图。')}{_figure(files['narrowband_rel'], '2–34 Hz 的连续窄频带相对功率头皮图。')}{_figure(files['ratios'], '12 种频带功率比。颜色高表示标题中分子频带相对分母频带更强。')}</section>
-<section id="dynamic"><h2>全局场功率与微状态</h2><p>GFP 概括每一时刻全头皮电位分布的总体强度；GMD 描述相邻稳定头皮分布之间的差异。微状态将连续头皮分布归纳为本次记录内反复出现的 A–F 六类模式，用于描述其持续、出现与转换。</p>{_figure(files['gfp'], '全程 GFP 与相邻 GFP 峰之间的 GMD。')}{_figure(files['micro_templates'], '本次记录的六个微状态头皮模板。')}{_figure(files['micro_parameters'], '六类微状态的平均持续时间、出现率、时间覆盖和 GEV。')}{_figure(files['micro_transition'], '微状态转换概率及各状态的出向转换次数。')}{_figure(files['micro_sequence'], '完整记录的连续微状态标签序列。')}{_figure(files['micro_coverage'], '逐秒的六类微状态时间覆盖。')}{_figure(files['micro_information_dynamics'], '全程连续 1 秒窗的微状态自信息、状态熵和 40 ms 滞后互信息。自信息越高表示该状态在本次记录中越少见；状态熵越高表示该时间窗内状态构成越均衡；滞后互信息描述短时状态序列的可预测性。')}</section>
+<section id="dynamic"><h2>全局场功率与微状态</h2><p>GFP 概括每一时刻全头皮电位分布的总体强度；GMD 描述相邻稳定头皮分布之间的差异。微状态将连续头皮分布归纳为本次记录内反复出现的 A–F 六类模式，用于描述其持续、出现与转换。</p>{_microstate_method_atlas_html(summary, files)}{_figure(files['gfp'], '全程 GFP 与相邻 GFP 峰之间的 GMD。')}{_figure(files['micro_templates'], '本次记录的六个微状态头皮模板。')}{_figure(files['micro_parameters'], '六类微状态的平均持续时间、出现率、时间覆盖和 GEV。')}{_figure(files['micro_transition'], '微状态转换概率及各状态的出向转换次数。')}{_figure(files['micro_sequence'], '完整记录的连续微状态标签序列。')}{_figure(files['micro_coverage'], '逐秒的六类微状态时间覆盖。')}{_figure(files['micro_information_dynamics'], '全程连续 1 秒窗的微状态自信息、状态熵和 40 ms 滞后互信息。自信息越高表示该状态在本次记录中越少见；状态熵越高表示该时间窗内状态构成越均衡；滞后互信息描述短时状态序列的可预测性。')}{_microstate_extended_information_html(summary, files)}{_microstate_sequence_dynamics_html(summary, files)}</section>
 <section id="complexity"><h2>信号复杂度</h2><p>复杂度指标从信号波动幅度、变化速度、规则性、分形结构和长期相关性等角度概括完整记录的时间组织。不同指标的量纲不同，应在同一指标的不同记录之间进行比较。</p>{_figure(files['complexity'], '13 项复杂度指标的 61 个头皮通道分布；每个小图使用自身纵轴。')}{_figure(files['omega'], '空间复杂度（Omega）概括多通道活动可区分的有效维数。')}</section>
 <section id="connectivity"><h2>功能连接</h2><p>功能连接描述不同头皮通道在同一频带中相位或振幅的协同变化。不同连接指标的数学定义不同，因此应在同一指标内比较频带和空间分布。</p>{_figure(files['connectivity'], '各连接方法在 Theta、Alpha 和 Beta 频带中的全局平均值，以及 Alpha 频带的示例矩阵。')}{_atlas(files, 'connectivity_', '展开查看 8 种连接方法的 Theta、Alpha、Beta 矩阵图册')}</section>
 <section id="coupling"><h2>跨频耦合</h2><p>PAC 观察慢频相位与快频振幅是否存在稳定关系；CPC 观察两个频带相位间的 n:m 同步。结果用于描述传感器层的节律协同，不单独作为疾病诊断依据。</p>{_figure(files['coupling'], '逐通道 Theta–Beta PAC 与 Theta–Alpha CPC 概览。')}{_figure(files['pac_maps'], 'PAC 与 CPC 的头皮空间分布。')}{_figure(files['pac_curve'], 'PAC 数值较高的六个通道的相位–振幅曲线；横轴为慢波相位，纵轴为归一化快波振幅。')}</section></main>'''
     body += f'''<section id="extended"><h2>补充分析图册</h2><p>以下图表补充展示区域频带功率、左右半球差异、Beta 包络、微状态时间分布、连接性节点与区域结果，以及跨频耦合的脑区汇总。各项均基于同一份质控后完整记录。</p>{_figure(files['clinical_scalp_waveform'], '全程 61 通道脑电波形。每条波形均覆盖完整保留记录。')}{_figure(files['cleaned_psd_detail'], '全头皮通道平均功率谱及标准误，范围为 0.5 至 45 Hz。')}{_figure(files['alpha_dispersion'], '后部 Alpha 主峰在频谱中的相对高度与主峰附近能量集中度。')}{_figure(files['alpha_dispersion_topomaps'], '全头皮 Alpha 峰频率及峰周能量集中度地形图。')}{_figure(files['alpha_hemisphere_views'], '左右后部 Alpha 频谱曲线与频率-电极分布。')}{_figure(files['beta_envelopes'], 'Beta1 与 Beta2 包络幅度的左右半球 P95 汇总。')}{_figure(files['regional_bandpower'], '额、中央、颞、顶、枕区的频带功率汇总。')}{_figure(files['hemispheric_asymmetry'], '各频带左右半球绝对功率的相对差异。')}{_figure(files['micro_duration_distribution'], '六类微状态的持续时间分布。')}{_figure(files['micro_total_contribution'], '微状态时间贡献率及 GFP 峰解释方差。')}{_figure(files['micro_transition_polar'], '最强的定向微状态转换。箭头宽度表示转换比例。')}{_figure(files['micro_distribution_histograms'], '微状态分段时长、每秒出现次数和每秒覆盖率分布。')}{_figure(files['micro_sequence_raster'], '完整记录的彩色微状态栅格图。')}{_figure(files['micro_outgoing'], '六类微状态的出向转换次数。')}{_figure(files['multiscale_entropy'], '全头皮平均多尺度样本熵随粗粒化尺度的变化。')}{_figure(files['connectivity_nodes'], '虚部相干与相位锁定值在三个频带的节点平均连接强度头皮分布。')}{_figure(files['connectivity_regional'], 'Theta、Alpha、Beta 频带的区域间 PLV 汇总。')}{_figure(files['coupling_regional'], 'PAC 与 CPC 的脑区平均值。')}</section>'''
     return _page('64导脑电定量分析报告', body)
+
+
+def _report_limitations_html(report_limitations):
+    return "".join(
+        '<p class="warning report-limitation" data-warning-code="{}">{}</p>'.format(
+            html.escape(str(item.get("code", "")), quote=True),
+            html.escape(str(item.get("message", ""))),
+        )
+        for item in report_limitations
+    )
+
+
+def _clinical_html_full(
+    summary, files, destination=None, build_id=None, report_limitations=()
+):
+    """Render every recovered historical method in an explicit reading order.
+
+    The previous compact page generated all figures but hid a large portion in
+    a generic appendix.  This presentation layer restores the historical
+    method structure without recalculating or reinterpreting any result.
+    """
+    qc = summary["quality_control"]
+    markers = summary["spectral"]["markers"]
+    gate = summary["safety_gate"]
+    overview = (
+        ("分析范围", f"完整记录；保留 {qc['epoch_summary']['retained']} / {qc['epoch_summary']['total']} 个 1 秒时段"),
+        ("头皮通道", f"{len(summary['analysis_data']['eeg_channels'])} 个"),
+        ("后部 Alpha 峰频率", _value(markers["paf_hz"]["mean"], "Hz")),
+        ("Theta / Beta 功率比", _value(markers["tbr"]["mean"])),
+        ("额叶 Alpha 不对称", _value(markers["faa_ln_f4_minus_ln_f3"])),
+    )
+    warning = "；".join(gate.get("reasons", [])) or "自动处理完成，仍应结合原始脑电波形进行专业复核。"
+    body = f'''<header><div><h1>64 导脑电定量分析报告</h1><p>完整记录的节律、空间组织、动态特征、复杂度、功能连接与跨频耦合分析</p></div><div class="status {'blocked' if gate['conclusion'] != 'AUTO_PASS' else 'pass'}">{html.escape(gate['conclusion'])}</div></header>
+<nav><a href="#qc">预处理</a><a href="#waveform">波形与 Alpha</a><a href="#bandpower">频带功率</a><a href="#rhythm">重点节律</a><a href="#spectral">全局频谱</a><a href="#complexity">复杂度</a><a href="#dynamic">GFP 与微状态</a><a href="#connectivity">功能连接</a><a href="#coupling">跨频耦合</a><a href="technical-details.html">技术细节</a></nav><main>
+<section class="overview"><h2>分析概览</h2><div class="metric-grid">{''.join(f'<div><span>{html.escape(label)}</span><strong>{html.escape(value)}</strong></div>' for label, value in overview)}</div></section>
+<section id="qc"><h2>质控与预处理</h2><p>完整记录依次进行 50 Hz 陷波、0.5–45 Hz 带通、坏导联筛查和插值、全头皮平均参考、250 Hz 重采样、逐秒筛查及 ICA/ICLabel 尝试。未保留时段不进入后续定量分析。</p><p class="warning">安全闸门：{html.escape(warning)}</p>{_figure(files['qc'], '同一完整记录处理前后的波形、全通道平均功率谱和时频图。请分别读取上下两排的纵轴与色标，不以颜色深浅直接比较处理前后绝对功率。')}</section>
+<section id="waveform"><h2>全头皮脑电波形与后部 Alpha 节律</h2><p>全程波形用于查看整体节律和异常波动的出现时段；后部 Alpha 图显示后枕电极的主导节律频率及其空间位置。</p>{_figure(files['clinical_scalp_waveform'], '61 个头皮通道的完整保留记录波形。每一条曲线覆盖同一份完整保留数据。')}{_figure(files['alpha'], '后部 Alpha：左图为各后部电极峰频率，中图为积分功率，右图为峰频率头皮分布。')}</section>
+<section id="bandpower"><h2>频带功率及头皮分布</h2><h3>全头皮绝对与相对频带功率</h3><p>绝对功率表示该频带的信号能量；相对功率表示该频带在总频谱中的组成比例。头皮图上方为额部、下方为枕部，颜色对应各图自己的色标。</p>{_figure(files['spectral'], '全头皮功率谱，以及 Delta、Theta、Alpha、Beta、Gamma 的平均绝对和相对功率。')}{_figure(files['bandpower_bars'], '全头皮平均绝对频带功率与相对频带功率柱状图。')}{_figure(files['bandpower'], '五个常用频带的绝对功率头皮分布。')}{_figure(files['bandpower_relative'], '五个常用频带的相对功率头皮分布。')}<h3>Beta1 与 Beta2 左右侧包络幅度</h3>{_figure(files['beta_envelopes'], 'Beta1 与 Beta2 振幅包络的左右半球 P95 汇总。')}</section>
+<section id="rhythm"><h2>重点节律与半球差异</h2><h3>核心节律指标</h3><p>PAF 概括后部 Alpha 的主峰位置；Alpha 重心概括该频带的平均频率重心；TBR 描述慢频 Theta 与快频 Beta 的相对构成；FAA 描述左右额区 Alpha 功率的方向性差异。</p>{_figure(files['alpha_dispersion'], 'Alpha 主峰在频谱中的相对突出程度，以及主峰邻近能量集中程度。')}{_figure(files['alpha_dispersion_topomaps'], '全头皮 Alpha 峰频率、CD-alpha1 和 CD-alpha2 的空间分布。')}{_figure(files['alpha_hemisphere_views'], '左右后部 Alpha 频谱与电极频率分布。')}<h3>2–34 Hz 窄频带功率分布</h3><p>每张图对应一个连续的小频率范围，用于观察节律强度随频率改变时在头皮上的位置变化。</p>{_figure(files['narrowband_abs'], '连续窄频带绝对功率头皮图。')}{_figure(files['narrowband_rel'], '连续窄频带相对功率头皮图。')}<h3>12 种逐通道频带功率比</h3>{_figure(files['ratios'], '各图标题写为“分子频带 / 分母频带”；数值越高表示分子频带相对更强。')}</section>
+<section id="spectral"><h2>全局频谱特征</h2><p>频谱熵、边缘频率、频谱质心和带宽分别从频率成分的分散度、累积能量位置和频谱重心描述全程频谱特征。周期/非周期分解用于区分振荡峰与连续背景成分。</p>{_figure(files['cleaned_psd_detail'], '质控后完整记录的全通道平均功率谱及标准误。')}{_figure(files['spectral_statistics'], '频谱统计指标的逐通道分布。')}{_figure(files['band_peaks'], '各频带的峰频率、峰宽与突出度。')}{_figure(files['aperiodic'], 'Specparam 周期/非周期频谱参数及可辨识的周期峰。')}{_figure(files['regional_bandpower'], '额、中央、颞、顶、枕区的频带功率汇总。')}{_figure(files['hemispheric_asymmetry'], '各频带左右半球相对功率差异。')}{_atlas(files, 'psd_atlas_', '展开查看全部头皮通道功率谱及频带参数')}</section>
+<section id="complexity"><h2>脑电动态复杂度</h2><p>复杂度指标分别描述波动幅度、变化速度、规则性、分形结构和长程相关性。不同指标量纲不同，应在同一指标内比较不同记录或不同通道。</p>{_figure(files['complexity'], '13 项时序复杂度指标的逐通道分布。')}{_figure(files['multiscale_entropy'], '多尺度样本熵随时间尺度变化的全头皮平均曲线。')}{_figure(files['omega'], 'Omega 空间复杂度，概括多通道活动可区分的有效维度。')}</section>
+<section id="dynamic"><h2>全局电场空间特征与脑电微状态</h2><p>GFP 描述每一时刻全头皮电位分布的总体强度；GMD 描述相邻 GFP 峰之间的头皮地形变化。微状态将连续头皮地形归纳为本次记录内反复出现的 A–F 类模式，并量化其持续、出现、贡献和转换。</p>{_report_limitations_html(report_limitations)}{_microstate_method_atlas_html(summary, files, destination)}{_figure(files['gfp'], '完整保留记录的 GFP 和相邻 GFP 峰地形差异 GMD。')}{_figure(files['micro_templates'], '本次记录的六个微状态头皮模板。')}{_figure(files['micro_parameters'], '微状态平均持续时间、出现率、时间贡献率和 GEV。')}{_figure(files['micro_transition'], '微状态转换概率和出向转换计数。')}{_figure(files['micro_sequence'], '完整保留记录的连续微状态标签序列。')}{_figure(files['micro_coverage'], '逐秒微状态时间覆盖。')}{_figure(files['micro_duration_distribution'], '微状态持续时间、逐秒出现次数和逐秒覆盖率的分布。')}{_figure(files['micro_total_contribution'], '微状态时间贡献率与 GFP 峰解释方差。')}{_figure(files['micro_transition_polar'], '最强的定向微状态转换。')}{_figure(files['micro_distribution_histograms'], '微状态参数的分布图。')}{_figure(files['micro_sequence_raster'], '按原始记录时间显示的微状态栅格图；未保留时段留空。')}{_figure(files['micro_outgoing'], '各微状态的出向转换次数。')}{_figure(files['micro_information_dynamics'], '全程微状态自信息、状态熵和短时滞后互信息。')}{_microstate_extended_information_html(summary, files)}{_microstate_sequence_dynamics_html(summary, files)}</section>
+<section id="connectivity"><h2>脑电功能连接</h2><p>功能连接描述不同头皮通道在同一频带中相位或振幅的协同变化。不同连接指标的数学定义不同，因此应在同一指标内比较频带和空间分布。</p>{_figure(files['connectivity'], '八种连接指标在 Theta、Alpha、Beta 频带中的全局均值，以及示例 Alpha 矩阵。')}{_figure(files['connectivity_nodes'], 'ImCoh 和 AEC 的节点平均连接强度头皮分布。')}{_figure(files['connectivity_regional'], '区域间连接汇总。')}{_atlas(files, 'connectivity_', '展开查看八种连接方法在三个频带的矩阵图册')}</section>
+<section id="coupling"><h2>跨频耦合</h2><p>PAC 观察慢频相位与快频振幅的关系；CPC 观察两个频带相位之间的 n:m 同步。两者用于描述节律协同特征，不单独用于疾病诊断。</p>{_figure(files['coupling'], '逐通道 Theta–Beta PAC 与 Theta–Alpha CPC。')}{_figure(files['pac_maps'], 'PAC 与 CPC 的头皮空间分布。')}{_figure(files['pac_curve'], 'PAC 较高通道的相位—振幅曲线。')}{_figure(files['coupling_regional'], 'PAC 与 CPC 的脑区平均值。')}</section>
+</main>'''
+    return _page("64 导脑电定量分析报告", body, build_id=build_id)
 
 
 _TRACEABILITY_GROUPS = (
@@ -1045,17 +2513,27 @@ _TRACEABILITY_GROUPS = (
             "microstate_transition_counts.csv", "microstate_auto_information.csv",
             "microstate_state_self_information.csv", "microstate_source_time_mapping.csv",
             "microstate_source_time_segments.csv",
+            "microstate_sequence_summary.csv",
+            "sequence_dynamics/markov_transition_entropy.csv",
+            "sequence_dynamics/transition_syntax_residuals.csv",
+            "sequence_dynamics/block_entropy.csv",
+            "sequence_dynamics/lempel_ziv.csv",
+            "sequence_dynamics/dwell_survival.csv",
+            "sequence_dynamics/duration_summary.csv",
+            "sequence_dynamics/per_second_distribution.csv",
+            "sequence_dynamics/manifest.json",
         ),
         (
             "gfp", "micro_templates", "micro_parameters", "micro_transition", "micro_sequence",
             "micro_coverage", "micro_duration_distribution", "micro_outgoing",
             "micro_total_contribution", "micro_transition_polar",
             "micro_distribution_histograms", "micro_sequence_raster", "micro_information_dynamics",
+            "micro_sequence_dynamics", "micro_transition_syntax", "micro_dwell_survival",
         ),
     ),
     (
         "复杂度",
-        ("complexity_by_channel.csv", "multiscale_entropy.csv"),
+        ("complexity_by_channel.csv", "multiscale_entropy.csv", "spatial_complexity.csv"),
         ("complexity", "multiscale_entropy", "omega"),
     ),
     (
@@ -1082,8 +2560,6 @@ def _traceability_link(relative_path, label):
 def _existing_traceability_groups(destination, files):
     """Return only non-empty artifacts that were produced for this report run."""
     destination = Path(destination)
-    tables = destination / "tables"
-    assets = destination / "assets"
     seen = set()
     groups = []
 
@@ -1112,14 +2588,36 @@ def _existing_traceability_groups(destination, files):
         groups.insert(0, ("结构化分析摘要", summary_entries))
 
     remaining = []
-    for directory, prefix, suffix in ((tables, "tables", ".csv"), (assets, "assets", ".png")):
-        if directory.is_dir():
-            for path in sorted(directory.glob(f"*{suffix}")):
-                relative = Path(prefix) / path.name
-                if relative.as_posix() not in seen and path.stat().st_size > 0:
-                    remaining.append((relative, f"{'CSV' if suffix == '.csv' else '图像'}：{path.name}"))
+    for key, filename in sorted(files.items()):
+        relative = Path("assets") / filename
+        if relative.as_posix() not in seen:
+            add_if_present(remaining, relative, f"图像：{filename}")
+
+    compatibility_manifest = destination / "tables" / "historical_compatibility" / "export_manifest.json"
+    if compatibility_manifest.is_file() and compatibility_manifest.stat().st_size > 0:
+        try:
+            payload = json.loads(compatibility_manifest.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            payload = {}
+        declared_tables = payload.get("required_tables", payload.get("tables", []))
+        if isinstance(declared_tables, list):
+            for filename in sorted(set(declared_tables)):
+                relative_name = Path(str(filename))
+                if (
+                    relative_name.parent == Path(".")
+                    and relative_name.suffix.lower() == ".csv"
+                    and relative_name.name not in {"", ".", ".."}
+                ):
+                    relative = Path("tables") / "historical_compatibility" / relative_name.name
+                    if relative.as_posix() not in seen:
+                        add_if_present(remaining, relative, f"CSV：historical_compatibility/{relative_name.name}")
+        add_if_present(
+            remaining,
+            Path("tables") / "historical_compatibility" / "export_manifest.json",
+            "JSON：historical_compatibility/export_manifest.json",
+        )
     if remaining:
-        groups.append(("其他已生成文件", remaining))
+        groups.append(("Manifest 声明的补充文件", remaining))
     return groups
 
 
@@ -1134,27 +2632,35 @@ def _traceability_html(destination, files):
     return '<section id="traceability"><h2>结果文件与图像追溯</h2><p>下列入口仅列出本次实际生成且非空的文件；可在离线报告目录中直接打开。</p>' + "".join(sections) + "</section>"
 
 
-def _technical_html(summary, files, destination=None):
+def _technical_html(
+    summary, files, destination=None, build_id=None, report_limitations=()
+):
     qc = summary['quality_control']
-    methods = [('频谱与节律', 'Welch PSD、绝对/相对频带功率、后部 Alpha、PAF、TBR、FAA、窄频带、功率比、频谱熵、SEF、频谱质心/带宽、频带峰参数、Specparam'), ('空间与动态', '全头皮地形图、GFP、GMD、六类微状态、持续时间、覆盖率、GEV、转换矩阵与连续序列'), ('复杂度', 'Hjorth、样本熵、Higuchi/Petrosian/Katz 分形维数、Hurst、排列熵、DFA、Lempel-Ziv、SVD 熵、多尺度熵及 Omega'), ('功能连接', 'ImCoh、wPLI²、ciPLV、PPC、Coherence、PLV、PLI、AEC；Theta、Alpha、Beta 频带'), ('跨频耦合', 'Theta 相位–Beta 振幅 PAC（Tort MI）与 Theta–Alpha n:m 跨频相位耦合')]
+    microstate_methods = _microstate_method_inventory_text(summary)
+    methods = [('频谱与节律', 'Welch PSD、绝对/相对频带功率、后部 Alpha、PAF、TBR、FAA、窄频带、功率比、频谱熵、SEF、频谱质心/带宽、频带峰参数、Specparam'), ('空间与动态', microstate_methods), ('复杂度', 'Hjorth、样本熵、Higuchi/Petrosian/Katz 分形维数、Hurst、排列熵、DFA、Lempel-Ziv、SVD 熵、多尺度熵及 Omega'), ('功能连接', 'ImCoh、wPLI²、ciPLV、PPC、Coherence、PLV、PLI、AEC；Theta、Alpha、Beta 频带'), ('跨频耦合', 'Theta 相位–Beta 振幅 PAC（Tort MI）与 Theta–Alpha n:m 跨频相位耦合')]
+    sequence_details = _microstate_sequence_dynamics_html(summary, files)
     body = f'''<header><div><h1>64导脑电定量分析技术细节</h1><p>输入范围、预处理、方法定义与结构化结果</p></div><a class="back" href="report.html">返回报告正文</a></header><main>
-<section><h2>数据与分析范围</h2><table><tr><th>输入文件</th><td>{html.escape(summary['source']['filename'])}</td></tr><tr><th>原始记录</th><td>{summary['source']['duration_sec']:.1f} 秒，{summary['source']['sampling_rate_hz']:.0f} Hz</td></tr><tr><th>分析范围</th><td>质控后保留的完整记录，{summary['analysis_data']['duration_sec']:.1f} 秒，{len(summary['analysis_data']['eeg_channels'])} 个头皮通道</td></tr><tr><th>安全门禁</th><td>{html.escape(summary['safety_gate']['conclusion'])}：{html.escape('；'.join(summary['safety_gate']['reasons']))}</td></tr></table></section>
+<section><h2>数据与分析范围</h2><table><tr><th>输入文件</th><td>{html.escape(summary['source']['filename'])}</td></tr><tr><th>原始记录</th><td>{summary['source']['duration_sec']:.1f} 秒，{summary['source']['sampling_rate_hz']:.0f} Hz</td></tr><tr><th>分析范围</th><td>质控后保留的完整记录，{summary['analysis_data']['duration_sec']:.1f} 秒，{len(summary['analysis_data']['eeg_channels'])} 个头皮通道</td></tr><tr><th>安全门禁</th><td>{html.escape(summary['safety_gate']['conclusion'])}：{html.escape('；'.join(summary['safety_gate']['reasons']))}</td></tr></table>{_report_limitations_html(report_limitations)}</section>
 <section><h2>预处理顺序</h2><ol>{''.join(f'<li>{html.escape(str(step))}</li>' for step in qc['preprocessing']['steps'])}</ol><table><tr><th>总 epoch</th><td>{qc['epoch_summary']['total']}</td></tr><tr><th>保留 epoch</th><td>{qc['epoch_summary']['retained']}</td></tr><tr><th>剔除 epoch</th><td>{qc['epoch_summary']['rejected']}</td></tr><tr><th>保留率</th><td>{qc['epoch_summary']['retention_percent']:.1f}%</td></tr><tr><th>ICA</th><td>{html.escape(qc['ica']['status'])}</td></tr></table></section>
-<section><h2>完整方法集合</h2><table><tr><th>模块</th><th>方法</th></tr>{''.join(f'<tr><td>{html.escape(a)}</td><td>{html.escape(b)}</td></tr>' for a,b in methods)}</table></section>
-<section><h2>微状态短时信息动力学</h2><p>以全程状态占比计算每个状态的自信息，并在连续 1 秒窗内汇总；同一窗口内以 40 ms 固定滞后计算离散互信息及其归一化值。该图用于描述本次记录内微状态序列的时间变化，不作为功能连接指标。</p>{_figure(files['micro_information_dynamics'], '全程连续 1 秒窗的微状态自信息、状态熵以及 40 ms 滞后互信息。横轴覆盖全部质控保留记录。')}</section>
+<section><h2>完整方法集合</h2><table><tr><th>模块</th><th>方法</th></tr>{''.join(f'<tr><td>{html.escape(a)}</td><td>{html.escape(b)}</td></tr>' for a,b in methods)}</table>{_microstate_method_atlas_html(summary, files, destination)}</section>
+<section><h2>微状态短时信息动力学</h2><p>以全程状态占比计算每个状态的自信息，并在连续 1 秒窗内汇总；同一窗口内以 40 ms 固定滞后计算离散互信息及其归一化值。该图用于描述本次记录内微状态序列的时间变化，不作为功能连接指标。</p>{_figure(files['micro_information_dynamics'], '全程连续 1 秒窗的微状态自信息、状态熵以及 40 ms 滞后互信息。横轴覆盖全部质控保留记录。')}{_microstate_extended_information_html(summary, files)}</section>
+<section><h2>微状态序列扩展方法</h2>{sequence_details or '<p>当前保存摘要不包含可复算的微状态序列动力学结果。</p>'}<p class="warning">这些指标是本次记录内的描述性研究结果。状态字母是数据驱动聚类标签，不对应固定功能网络，也不单独支持疾病诊断。</p></section>
 <section><h2>结构化结果</h2><p>同目录 <code>tables</code> 包含逐通道和逐频带 CSV；<code>analysis_summary.json</code> 保存完整机器可读结果；每张报告图均来自这些结构化结果或同一份质控后全程数据。</p></section></main>'''
     if destination is not None:
         body = body.replace("</main>", _traceability_html(destination, files) + "</main>")
-    return _page('64导脑电定量分析技术细节', body)
+    return _page('64导脑电定量分析技术细节', body, build_id=build_id)
 
 
 def _value(value, unit=''):
     return '未计算' if value is None else f'{value:.3f}{(" " + unit) if unit else ""}'
 
 
-def _page(title, body):
-    return f'''<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{html.escape(title)}</title><style>
-*{{box-sizing:border-box}} body{{margin:0;background:#f5f7f8;color:#17212b;font:16px/1.7 Arial,'Microsoft YaHei',sans-serif}} header{{background:#0c3448;color:#fff;padding:30px max(5vw,24px);display:flex;justify-content:space-between;gap:20px;align-items:flex-start}}h1{{margin:0;font-size:29px;font-weight:700}}h2{{margin:0 0 11px;font-size:23px;color:#0c3448}}h3{{margin:0 0 10px;font-size:17px;color:#164a60}}header p{{margin:5px 0 0;color:#dbe9ed}}nav{{position:sticky;top:0;z-index:4;padding:11px 5vw;background:#fff;border-bottom:1px solid #dbe4e9;display:flex;gap:18px;overflow:auto;white-space:nowrap}}nav a,.back{{color:#0f5f82;text-decoration:none;font-weight:700}}main{{max-width:1380px;margin:auto;padding:24px}}section{{background:#fff;border:1px solid #dce5e9;border-radius:6px;padding:24px;margin:0 0 20px}}.overview{{background:#edf6f7}}.metric-grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:1px;background:#cbdde4;border:1px solid #cbdde4}}.metric-grid div{{background:#fff;padding:14px}}.metric-grid span{{display:block;color:#527080;font-size:13px}}.metric-grid strong{{display:block;color:#153e52;margin-top:3px;font-size:17px}}.status{{padding:7px 11px;border:1px solid #7bc3da;border-radius:4px;font-weight:700;font-size:13px;white-space:nowrap}}.blocked{{background:#fff3e5;color:#8a3d00;border-color:#e7ad68}}.pass{{background:#e8f7ef;color:#17663b}}.warning{{color:#873c04;background:#fff7ed;border-left:3px solid #d97706;padding:11px 13px}}.artifact-group{{border-top:1px solid #dce5e9;padding-top:16px;margin-top:16px}}.artifact-list{{display:flex;flex-wrap:wrap;gap:8px}}.artifact-link{{display:inline-block;border:1px solid #bad2dc;background:#f7fbfc;color:#0f5f82;text-decoration:none;padding:5px 8px;border-radius:4px;font-size:13px;line-height:1.35;overflow-wrap:anywhere}}.artifact-link:hover{{background:#e6f2f5}}figure{{margin:20px 0 0;border-top:1px solid #e4ecef;padding-top:16px}}figure img{{width:100%;display:block;background:white;cursor:zoom-in}}figcaption{{color:#526772;font-size:14px;margin-top:9px}}details{{border-top:1px solid #dce5e9;margin-top:18px;padding-top:14px}}summary{{cursor:pointer;color:#0f5f82;font-weight:700}}table{{border-collapse:collapse;width:100%}}th,td{{border:1px solid #d9e4e8;padding:9px 11px;text-align:left;vertical-align:top}}th{{background:#edf5f7;color:#164a60}}ol{{padding-left:24px}}code{{background:#edf3f5;padding:2px 5px}}@media(max-width:700px){{header{{padding:22px 18px;display:block}}h1{{font-size:24px}}main{{padding:14px}}section{{padding:17px}}.metric-grid{{grid-template-columns:1fr 1fr}}figure{{overflow:auto}}figure img{{min-width:700px}}}}</style></head><body>{body}</body></html>'''
+def _page(title, body, build_id=None):
+    escaped_build_id = html.escape(str(build_id or ""), quote=True)
+    build_meta = f'<meta name="report-build-id" content="{escaped_build_id}">' if build_id else ""
+    build_attribute = f' data-report-build="{escaped_build_id}"' if build_id else ""
+    return f'''<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">{build_meta}<title>{html.escape(title)}</title><style>
+*{{box-sizing:border-box}} body{{margin:0;background:#f5f7f8;color:#17212b;font:16px/1.7 Arial,'Microsoft YaHei',sans-serif}} header{{background:#0c3448;color:#fff;padding:30px max(5vw,24px);display:flex;justify-content:space-between;gap:20px;align-items:flex-start}}h1{{margin:0;font-size:29px;font-weight:700}}h2{{margin:0 0 11px;font-size:23px;color:#0c3448}}h3{{margin:0 0 10px;font-size:17px;color:#164a60}}header p{{margin:5px 0 0;color:#dbe9ed}}nav{{position:sticky;top:0;z-index:4;padding:11px 5vw;background:#fff;border-bottom:1px solid #dbe4e9;display:flex;gap:18px;overflow:auto;white-space:nowrap}}nav a,.back{{color:#0f5f82;text-decoration:none;font-weight:700}}header .back{{color:#dbe9ed;text-decoration:underline;text-underline-offset:3px}}main{{max-width:1380px;margin:auto;padding:24px}}section{{background:#fff;border:1px solid #dce5e9;border-radius:6px;padding:24px;margin:0 0 20px;scroll-margin-top:72px}}.overview{{background:#edf6f7}}.metric-grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:1px;background:#cbdde4;border:1px solid #cbdde4}}.metric-grid div{{background:#fff;padding:14px}}.metric-grid span{{display:block;color:#527080;font-size:13px}}.metric-grid strong{{display:block;color:#153e52;margin-top:3px;font-size:17px}}.status{{padding:7px 11px;border:1px solid #7bc3da;border-radius:4px;font-weight:700;font-size:13px;white-space:nowrap}}.blocked{{background:#fff3e5;color:#8a3d00;border-color:#e7ad68}}.pass{{background:#e8f7ef;color:#17663b}}.warning{{color:#873c04;background:#fff7ed;border-left:3px solid #d97706;padding:11px 13px}}.artifact-group{{border-top:1px solid #dce5e9;padding-top:16px;margin-top:16px}}.artifact-list{{display:flex;flex-wrap:wrap;gap:8px}}.artifact-link{{display:inline-block;border:1px solid #bad2dc;background:#f7fbfc;color:#0f5f82;text-decoration:none;padding:5px 8px;border-radius:4px;font-size:13px;line-height:1.35;overflow-wrap:anywhere}}.artifact-link:hover{{background:#e6f2f5}}figure{{margin:20px 0 0;border-top:1px solid #e4ecef;padding-top:16px}}figure img{{width:100%;height:auto;display:block;background:white;cursor:zoom-in}}figcaption{{color:#526772;font-size:14px;margin-top:9px}}details{{border-top:1px solid #dce5e9;margin-top:18px;padding-top:14px}}summary{{cursor:pointer;color:#0f5f82;font-weight:700}}table{{border-collapse:collapse;width:100%}}th,td{{border:1px solid #d9e4e8;padding:9px 11px;text-align:left;vertical-align:top}}th{{background:#edf5f7;color:#164a60}}ol{{padding-left:24px}}code{{background:#edf3f5;padding:2px 5px}}@media(max-width:700px){{header{{padding:22px 18px;display:block}}h1{{font-size:24px}}main{{padding:14px}}section{{padding:17px;scroll-margin-top:96px;overflow-x:auto}}.metric-grid{{grid-template-columns:1fr 1fr}}figure img{{min-width:0}}table{{min-width:560px}}th{{min-width:96px}}}}</style></head><body{build_attribute}>{body}</body></html>'''
 
 
 def _write_manifest(destination, files, design_spec):
@@ -1185,6 +2691,22 @@ class _HrefCollector(HTMLParser):
             self.hrefs.append(href)
 
 
+class _BuildIdentityCollector(HTMLParser):
+    """Collect the two browser-visible report build identity markers."""
+
+    def __init__(self):
+        super().__init__()
+        self.meta_build_ids = []
+        self.body_build_ids = []
+
+    def handle_starttag(self, tag, attrs):
+        values = dict(attrs)
+        if tag == "meta" and values.get("name") == "report-build-id":
+            self.meta_build_ids.append(values.get("content"))
+        elif tag == "body":
+            self.body_build_ids.append(values.get("data-report-build"))
+
+
 def _local_link_errors(page, destination):
     parser = _HrefCollector()
     parser.feed(page.read_text(encoding="utf-8"))
@@ -1210,9 +2732,94 @@ def validate_full_report(destination, files):
     required = [destination / 'report.html', destination / 'technical-details.html', destination / 'analysis_summary.json', destination / 'visual_manifest.json']
     required.extend(destination / 'assets' / file for file in files.values())
     errors = [f'Missing or empty: {path}' for path in required if not path.is_file() or path.stat().st_size == 0]
+    manifest = None
+    summary = None
+    manifest_path = destination / "visual_manifest.json"
+    summary_path = destination / "analysis_summary.json"
+    if manifest_path.is_file() and manifest_path.stat().st_size > 0:
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+            errors.append(f"Invalid visual manifest JSON: {exc}")
+    if summary_path.is_file() and summary_path.stat().st_size > 0:
+        try:
+            summary = json.loads(summary_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+            errors.append(f"Invalid analysis summary JSON: {exc}")
+
+    build_id = None
+    page_hashes = {}
+    if isinstance(manifest, dict) and isinstance(summary, dict):
+        try:
+            manifest_files = _validate_visual_manifest(summary, destination, manifest)
+            if manifest_files != {str(key): str(value) for key, value in files.items()}:
+                errors.append("visual_manifest.json artifact mapping differs from the report asset mapping")
+        except (OSError, ValueError) as exc:
+            errors.append(str(exc))
+
+        build = manifest.get("report_build")
+        if not isinstance(build, dict):
+            errors.append("visual_manifest.json report_build must be an object")
+        else:
+            build_id = build.get("id")
+            if not isinstance(build_id, str) or not build_id:
+                errors.append("visual_manifest.json report_build.id must be a non-empty string")
+                build_id = None
+            contract_version = build.get("contract_version")
+            if contract_version not in {
+                LEGACY_REPORT_BUILD_CONTRACT_VERSION,
+                REPORT_BUILD_CONTRACT_VERSION,
+            }:
+                errors.append("visual_manifest.json report_build.contract_version is unsupported")
+            summary_sha256 = _json_sha256(summary)
+            if build.get("summary_sha256") != summary_sha256:
+                errors.append("visual_manifest.json report_build.summary_sha256 mismatch")
+            artifacts = manifest.get("artifacts")
+            asset_set_sha256 = _json_sha256(artifacts) if isinstance(artifacts, list) else None
+            if build.get("asset_set_sha256") != asset_set_sha256:
+                errors.append("visual_manifest.json report_build.asset_set_sha256 mismatch")
+            if build.get("asset_count") != len(artifacts or []):
+                errors.append("visual_manifest.json report_build.asset_count mismatch")
+            identity_payload = {
+                "contract_version": contract_version,
+                "summary_sha256": summary_sha256,
+                "asset_set_sha256": asset_set_sha256,
+                "design_spec": manifest.get("design_spec"),
+            }
+            if contract_version == REPORT_BUILD_CONTRACT_VERSION:
+                limitations = saved_gfp_report_limitations(summary)
+                if manifest.get("report_limitations") != limitations:
+                    errors.append("visual_manifest.json report_limitations mismatch")
+                warnings = manifest.get("warnings")
+                if not isinstance(warnings, list) or any(
+                    item not in warnings for item in limitations
+                ):
+                    errors.append("visual_manifest.json warnings are missing report limitations")
+                limitations_sha256 = _json_sha256(limitations)
+                if build.get("limitations_sha256") != limitations_sha256:
+                    errors.append("visual_manifest.json report_build limitations_sha256 mismatch")
+                identity_payload["limitations_sha256"] = limitations_sha256
+            expected_build_id = _json_sha256(identity_payload)
+            if build_id is not None and build_id != expected_build_id:
+                errors.append("visual_manifest.json report_build.id mismatch")
+            page_hashes = build.get("pages", {})
+            if not isinstance(page_hashes, dict) or set(page_hashes) != set(REPORT_PAGE_NAMES):
+                errors.append("visual_manifest.json report_build.pages must declare both report pages")
+                page_hashes = {}
+
     for page in (destination / 'report.html', destination / 'technical-details.html'):
         if page.exists():
-            if '\ufffd' in page.read_text(encoding='utf-8'):
+            page_text = page.read_text(encoding='utf-8')
+            if '\ufffd' in page_text:
                 errors.append(f'Encoding corruption marker found: {page}')
             errors.extend(_local_link_errors(page, destination))
+            if build_id is not None:
+                identity = _BuildIdentityCollector()
+                identity.feed(page_text)
+                if identity.meta_build_ids != [build_id]:
+                    errors.append(f"Report build meta marker mismatch: {page}")
+                if identity.body_build_ids != [build_id]:
+                    errors.append(f"Report body build marker mismatch: {page}")
+                if page_hashes.get(page.name) != _file_sha256(page):
+                    errors.append(f"Report page SHA-256 mismatch: {page}")
     return {'status': 'passed' if not errors else 'failed', 'checked_files': [str(item) for item in required], 'errors': errors}

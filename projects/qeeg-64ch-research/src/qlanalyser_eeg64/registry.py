@@ -13,5 +13,5 @@ METHOD_REGISTRY = {
     "pac_cfc": {"status": "implemented_algorithm_recovered", "scope": "Tort PAC, mean-vector length and n:m phase-locking"},
     "aperiodic_specparam": {"status": "implemented_optional_dependency", "scope": "Specparam full-record spectrum peak and aperiodic fitting"},
     "erp": {"status": "pending_event_contract", "scope": "requires verified event markers and experimental timing"},
-    "clinical_report_renderer": {"status": "not_recovered", "scope": "HTML/PDF layer intentionally separate from analysis modules"},
+    "clinical_report_renderer": {"status": "implemented", "scope": "bound two-page HTML report, visual manifest and structured CSV exports"},
 }

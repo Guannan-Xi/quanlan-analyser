@@ -10,6 +10,8 @@ import csv
 import html
 import json
 from pathlib import Path
+import shutil
+from uuid import uuid4
 
 import matplotlib
 matplotlib.use("Agg")
@@ -103,6 +105,286 @@ def render_report(summary, raw_before, cleaned, output_dir):
     from .expanded_report import render_full_historical_report
 
     return render_full_historical_report(summary, raw_before, cleaned, destination, assets, tables, base=__import__(__name__, fromlist=["*"]))
+
+
+def refresh_report_from_saved_artifacts(summary_path, output_dir=None):
+    """Refresh report pages and compatibility CSVs without reading raw EEG."""
+    summary_path = Path(summary_path).resolve()
+    destination = Path(output_dir).resolve() if output_dir is not None else summary_path.parent
+    if summary_path.parent != destination or summary_path.name != "analysis_summary.json":
+        raise ValueError("summary_path must be the analysis_summary.json inside output_dir")
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+
+    from .historical_exports import write_historical_compatibility_tables
+    from .expanded_report import (
+        _validate_visual_manifest,
+        rerender_saved_report_pages,
+        write_spatial_complexity_csv,
+    )
+
+    manifest_path = destination / "visual_manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    _validate_visual_manifest(summary, destination, manifest)
+
+    compatibility_dir = destination / "tables" / "historical_compatibility"
+    compatibility_dir.parent.mkdir(parents=True, exist_ok=True)
+    transaction_id = uuid4().hex
+    rollback_dir = compatibility_dir.with_name(
+        f".{compatibility_dir.name}.{transaction_id}.rollback"
+    )
+    had_compatibility_dir = compatibility_dir.exists()
+    if had_compatibility_dir:
+        shutil.copytree(compatibility_dir, rollback_dir)
+    spatial_table = compatibility_dir.parent / "spatial_complexity.csv"
+    spatial_rollback = spatial_table.with_name(
+        f".{spatial_table.name}.{transaction_id}.rollback"
+    )
+    had_spatial_table = spatial_table.exists()
+    if had_spatial_table:
+        shutil.copy2(spatial_table, spatial_rollback)
+
+    publish_succeeded = False
+    try:
+        write_spatial_complexity_csv(summary, compatibility_dir.parent)
+        bundle = write_historical_compatibility_tables(summary, compatibility_dir)
+        export_manifest = compatibility_dir / "export_manifest.json"
+        rendered = rerender_saved_report_pages(summary, destination, DESIGN_SPEC)
+        publish_succeeded = True
+    except Exception as publish_error:
+        rollback_errors = []
+        try:
+            if compatibility_dir.exists():
+                shutil.rmtree(compatibility_dir)
+            if had_compatibility_dir:
+                rollback_dir.replace(compatibility_dir)
+        except Exception as rollback_error:
+            rollback_errors.append(rollback_error)
+        try:
+            spatial_table.unlink(missing_ok=True)
+            if had_spatial_table:
+                spatial_rollback.replace(spatial_table)
+        except Exception as rollback_error:
+            rollback_errors.append(rollback_error)
+        if rollback_errors:
+            raise RuntimeError(
+                "Saved report refresh failed and compatibility rollback was incomplete: "
+                f"{rollback_errors}; backups retained at {rollback_dir} and {spatial_rollback}"
+            ) from publish_error
+        raise
+    finally:
+        if publish_succeeded and rollback_dir.exists():
+            shutil.rmtree(rollback_dir, ignore_errors=True)
+        if publish_succeeded:
+            spatial_rollback.unlink(missing_ok=True)
+
+    rendered.update({
+        "historical_compatibility_dir": compatibility_dir,
+        "historical_export_manifest_path": export_manifest,
+        "historical_table_count": len(bundle.tables),
+    })
+    return rendered
+
+
+def upgrade_saved_microstate_report(summary_path, output_dir):
+    """Publish sequence dynamics into a new report directory without raw EEG."""
+    summary_path = Path(summary_path).resolve()
+    if summary_path.name != "analysis_summary.json":
+        raise ValueError("summary_path must point to analysis_summary.json")
+    source = summary_path.parent
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+
+    from . import expanded_report, microstates
+    from .historical_exports import write_historical_compatibility_tables
+
+    source_manifest_path = source / "visual_manifest.json"
+    source_manifest = json.loads(source_manifest_path.read_text(encoding="utf-8"))
+    source_files = expanded_report._validate_visual_manifest(
+        summary, source, source_manifest
+    )
+    sample_labels, state_names, sfreq, timeline_mapping = (
+        _saved_microstate_sequence_inputs(summary)
+    )
+
+    destination = Path(output_dir).resolve()
+    if destination == source:
+        raise ValueError("output_dir must differ from the frozen source directory")
+    if destination.exists():
+        raise FileExistsError(f"output_dir already exists: {destination}")
+    if destination.is_relative_to(source):
+        raise ValueError("output_dir cannot be inside the frozen source directory")
+    if not destination.parent.is_dir():
+        raise FileNotFoundError(
+            f"output_dir parent does not exist: {destination.parent}"
+        )
+
+    staging = destination.parent / f".{destination.name}.{uuid4().hex}.staging"
+    try:
+        shutil.copytree(source, staging)
+
+        saved_microstates = summary["microstates"]
+        sequence_dynamics = microstates.compute_microstate_sequence_dynamics(
+            sample_labels,
+            state_names,
+            sfreq,
+            timeline_mapping=timeline_mapping,
+        )
+        saved_microstates["sequence_dynamics"] = sequence_dynamics
+        staged_summary_path = staging / "analysis_summary.json"
+        staged_summary_path.write_text(
+            json.dumps(
+                summary,
+                ensure_ascii=False,
+                indent=2,
+                allow_nan=False,
+            ),
+            encoding="utf-8",
+        )
+
+        new_assets = expanded_report.write_microstate_sequence_dynamics_outputs(
+            summary, staging
+        )
+        if not isinstance(new_assets, dict) or not all(
+            isinstance(key, str)
+            and key
+            and isinstance(filename, str)
+            and filename
+            and Path(filename).name == filename
+            for key, filename in new_assets.items()
+        ):
+            raise ValueError(
+                "write_microstate_sequence_dynamics_outputs must return "
+                "a logical-key to asset-filename mapping"
+            )
+        duplicate_keys = sorted(set(source_files).intersection(new_assets))
+        if duplicate_keys:
+            raise ValueError(
+                f"sequence dynamics assets replace frozen logical keys: {duplicate_keys}"
+            )
+        files = {**source_files, **new_assets}
+
+        tables = staging / "tables"
+        tables.mkdir(parents=True, exist_ok=True)
+        expanded_report._write_microstate_method_summary_csv(
+            summary.get("microstates", {}), tables
+        )
+        expanded_report.write_spatial_complexity_csv(summary, tables)
+        compatibility_dir = tables / "historical_compatibility"
+        compatibility_bundle = write_historical_compatibility_tables(
+            summary, compatibility_dir
+        )
+        published = expanded_report._publish_report_bundle(
+            summary,
+            staging,
+            files,
+            DESIGN_SPEC,
+            source_manifest,
+        )
+        validation = expanded_report.validate_full_report(staging, files)
+        if validation["status"] != "passed":
+            raise RuntimeError(
+                "Upgraded report validation failed: "
+                + "; ".join(validation["errors"])
+            )
+
+        if destination.exists():
+            raise FileExistsError(f"output_dir already exists: {destination}")
+        staging.rename(destination)
+    except Exception:
+        if staging.exists():
+            try:
+                shutil.rmtree(staging)
+            except Exception as cleanup_error:
+                raise RuntimeError(
+                    f"Saved report upgrade failed and staging cleanup failed: {staging}"
+                ) from cleanup_error
+        raise
+
+    return {
+        "source_summary_path": summary_path,
+        "output_dir": destination,
+        "summary_path": destination / "analysis_summary.json",
+        "report_path": destination / "report.html",
+        "technical_path": destination / "technical-details.html",
+        "visual_manifest_path": destination / "visual_manifest.json",
+        "historical_compatibility_dir": (
+            destination / "tables" / "historical_compatibility"
+        ),
+        "historical_export_manifest_path": (
+            destination
+            / "tables"
+            / "historical_compatibility"
+            / "export_manifest.json"
+        ),
+        "historical_table_count": len(compatibility_bundle.tables),
+        "assets": files,
+        "new_assets": dict(new_assets),
+        "report_build": published["report_build"],
+        "validation": validation,
+    }
+
+
+def _saved_microstate_sequence_inputs(summary):
+    """Extract the persisted inputs required for a raw-free sequence upgrade."""
+    if not isinstance(summary, dict):
+        raise ValueError("analysis_summary.json must contain a JSON object")
+
+    saved_microstates = summary.get("microstates")
+    if not isinstance(saved_microstates, dict):
+        raise ValueError("analysis_summary.json microstates must be an object")
+
+    sample_labels = saved_microstates.get("sample_labels")
+    if (
+        not isinstance(sample_labels, list)
+        or not sample_labels
+        or any(not isinstance(label, str) or not label for label in sample_labels)
+    ):
+        raise ValueError(
+            "Raw-free upgrade requires a non-empty string list at "
+            "analysis_summary.json microstates.sample_labels"
+        )
+
+    state_names = saved_microstates.get("state_names")
+    if (
+        not isinstance(state_names, list)
+        or not state_names
+        or any(not isinstance(name, str) or not name for name in state_names)
+        or len(set(state_names)) != len(state_names)
+    ):
+        raise ValueError(
+            "Raw-free upgrade requires a non-empty unique string list at "
+            "analysis_summary.json microstates.state_names"
+        )
+    unknown_labels = sorted(set(sample_labels).difference(state_names))
+    if unknown_labels:
+        raise ValueError(
+            "analysis_summary.json microstates.sample_labels contains states "
+            f"absent from microstates.state_names: {unknown_labels}"
+        )
+
+    analysis_data = summary.get("analysis_data")
+    sfreq = (
+        analysis_data.get("sampling_rate_hz")
+        if isinstance(analysis_data, dict)
+        else None
+    )
+    if (
+        isinstance(sfreq, bool)
+        or not isinstance(sfreq, (int, float))
+        or not np.isfinite(sfreq)
+        or sfreq <= 0
+    ):
+        raise ValueError(
+            "Raw-free upgrade requires a finite positive number at "
+            "analysis_summary.json analysis_data.sampling_rate_hz"
+        )
+
+    timeline_mapping = saved_microstates.get("timeline_mapping")
+    if timeline_mapping is not None and not isinstance(timeline_mapping, dict):
+        raise ValueError(
+            "analysis_summary.json microstates.timeline_mapping must be an "
+            "object when present"
+        )
+    return sample_labels, state_names, float(sfreq), timeline_mapping
 
 
 def _plot_qc_comparison(before, after, summary, path):
