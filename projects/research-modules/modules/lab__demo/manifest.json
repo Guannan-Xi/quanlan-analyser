@@ -1,0 +1,135 @@
+{
+  "schema_version": "qlanalyser-module-manifest-v0.1",
+  "module_id": "lab.demo",
+  "display_name": "lab.demo",
+  "namespace": "lab",
+  "version": "0.1.0",
+  "lifecycle_status": "draft",
+  "implementation_status": "implemented",
+  "source_provenance": {
+    "origin_project": "web-main",
+    "origin_paths": [
+      "projects/web-main/backend/api",
+      "projects/web-main/backend/services",
+      "projects/web-main/frontend/assets",
+      "projects/web-main/frontend/expert-entry-demo.html",
+      "projects/web-main/frontend/open-design-entry-demo.css",
+      "projects/web-main/frontend/open-design-entry-demo.html",
+      "projects/web-main/frontend/staging-subview-ui-prototype.html",
+      "projects/web-main/frontend/standalone-lab.html",
+      "projects/web-main/scripts/acceptance_data_preparation_auto_preview.mjs",
+      "projects/web-main/scripts/acceptance_lab_demo_backend.py",
+      "projects/web-main/scripts/acceptance_lab_preview_delivery_boundary.py",
+      "projects/web-main/scripts/acceptance_module_lab_preview_selectors.py",
+      "projects/web-main/scripts/acceptance_qc_preview_service.py",
+      "projects/web-main/scripts/e2e_teaching_waveform_preview.mjs"
+    ],
+    "migration_state": "registered_only"
+  },
+  "layers": {
+    "domain": {
+      "state": "not_applicable"
+    },
+    "backend": {
+      "state": "present",
+      "paths": [
+        "projects/web-main/backend/api/lab_demo.py",
+        "projects/web-main/backend/services/lab_demo_service.py"
+      ]
+    },
+    "frontend": {
+      "state": "present",
+      "paths": [
+        "projects/web-main/frontend/assets/research-modules/figures/connectivity-network-preview-publication.png",
+        "projects/web-main/frontend/assets/research-modules/figures/pac-comodulogram-preview-publication.png",
+        "projects/web-main/frontend/assets/research-modules/figures/tfr-ersp-itc-preview-publication.png",
+        "projects/web-main/frontend/assets/research-modules/reproducibility/caption_connectivity_preview.txt",
+        "projects/web-main/frontend/assets/research-modules/reproducibility/caption_pac_preview.txt",
+        "projects/web-main/frontend/assets/research-modules/reproducibility/caption_tfr_preview.txt",
+        "projects/web-main/frontend/assets/research-modules/reproducibility/methods_connectivity_preview.txt",
+        "projects/web-main/frontend/assets/research-modules/reproducibility/methods_pac_preview.txt",
+        "projects/web-main/frontend/assets/research-modules/reproducibility/methods_tfr_preview.txt",
+        "projects/web-main/frontend/assets/research-modules/reproducibility/summary_connectivity_preview.json",
+        "projects/web-main/frontend/assets/research-modules/reproducibility/summary_pac_preview.json",
+        "projects/web-main/frontend/assets/research-modules/reproducibility/summary_tfr_preview.json",
+        "projects/web-main/frontend/assets/research-modules/tables/connectivity_edges_preview.csv",
+        "projects/web-main/frontend/assets/research-modules/tables/pac_cfc_summary_preview.csv",
+        "projects/web-main/frontend/assets/research-modules/tables/tfr_roi_summary_preview.csv",
+        "projects/web-main/frontend/expert-entry-demo.html",
+        "projects/web-main/frontend/open-design-entry-demo.css",
+        "projects/web-main/frontend/open-design-entry-demo.html",
+        "projects/web-main/frontend/staging-subview-ui-prototype.html",
+        "projects/web-main/frontend/standalone-lab.html"
+      ]
+    },
+    "report": {
+      "state": "not_applicable"
+    },
+    "tests": {
+      "state": "present",
+      "paths": [
+        "projects/web-main/scripts/acceptance_data_preparation_auto_preview.mjs",
+        "projects/web-main/scripts/acceptance_lab_demo_backend.py",
+        "projects/web-main/scripts/acceptance_lab_preview_delivery_boundary.py",
+        "projects/web-main/scripts/acceptance_module_lab_preview_selectors.py",
+        "projects/web-main/scripts/acceptance_qc_preview_service.py",
+        "projects/web-main/scripts/e2e_teaching_waveform_preview.mjs"
+      ]
+    },
+    "evidence": {
+      "state": "planned"
+    }
+  },
+  "entry_points": {
+    "frontend_pages": [
+      "projects/web-main/frontend/assets/research-modules/figures/connectivity-network-preview-publication.png",
+      "projects/web-main/frontend/assets/research-modules/figures/pac-comodulogram-preview-publication.png",
+      "projects/web-main/frontend/assets/research-modules/figures/tfr-ersp-itc-preview-publication.png",
+      "projects/web-main/frontend/assets/research-modules/reproducibility/caption_connectivity_preview.txt",
+      "projects/web-main/frontend/assets/research-modules/reproducibility/caption_pac_preview.txt",
+      "projects/web-main/frontend/assets/research-modules/reproducibility/caption_tfr_preview.txt",
+      "projects/web-main/frontend/assets/research-modules/reproducibility/methods_connectivity_preview.txt",
+      "projects/web-main/frontend/assets/research-modules/reproducibility/methods_pac_preview.txt",
+      "projects/web-main/frontend/assets/research-modules/reproducibility/methods_tfr_preview.txt",
+      "projects/web-main/frontend/assets/research-modules/reproducibility/summary_connectivity_preview.json",
+      "projects/web-main/frontend/assets/research-modules/reproducibility/summary_pac_preview.json",
+      "projects/web-main/frontend/assets/research-modules/reproducibility/summary_tfr_preview.json",
+      "projects/web-main/frontend/assets/research-modules/tables/connectivity_edges_preview.csv",
+      "projects/web-main/frontend/assets/research-modules/tables/pac_cfc_summary_preview.csv",
+      "projects/web-main/frontend/assets/research-modules/tables/tfr_roi_summary_preview.csv",
+      "projects/web-main/frontend/expert-entry-demo.html",
+      "projects/web-main/frontend/open-design-entry-demo.css",
+      "projects/web-main/frontend/open-design-entry-demo.html",
+      "projects/web-main/frontend/staging-subview-ui-prototype.html",
+      "projects/web-main/frontend/standalone-lab.html"
+    ],
+    "api_routes": [
+      "projects/web-main/backend/api/lab_demo.py"
+    ],
+    "services": [
+      "projects/web-main/backend/services/lab_demo_service.py"
+    ],
+    "worker_runners": [],
+    "domain_runners": []
+  },
+  "scientific_scope": {
+    "scope": "Lab / demo / preview / teaching surface. Not a validated production estimator.",
+    "forbidden_claims": [
+      "Do not present demo/preview output as validated or clinical.",
+      "Do not treat synthetic sample data as real subject evidence."
+    ],
+    "customer_whitelist_allowed": false
+  },
+  "verification": {
+    "test_paths": [
+      "projects/web-main/scripts/acceptance_data_preparation_auto_preview.mjs",
+      "projects/web-main/scripts/acceptance_lab_demo_backend.py",
+      "projects/web-main/scripts/acceptance_lab_preview_delivery_boundary.py",
+      "projects/web-main/scripts/acceptance_module_lab_preview_selectors.py",
+      "projects/web-main/scripts/acceptance_qc_preview_service.py",
+      "projects/web-main/scripts/e2e_teaching_waveform_preview.mjs"
+    ],
+    "evidence_paths": [],
+    "last_verified_commit": "8c5a673"
+  }
+}

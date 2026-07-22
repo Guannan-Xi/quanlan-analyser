@@ -1,0 +1,78 @@
+{
+  "schema_version": "qlanalyser-module-manifest-v0.1",
+  "module_id": "governance.web-docs",
+  "display_name": "governance.web-docs",
+  "namespace": "governance",
+  "version": "0.1.0",
+  "lifecycle_status": "stable",
+  "implementation_status": "implemented",
+  "source_provenance": {
+    "origin_project": "web-main",
+    "origin_paths": [
+      "projects/web-main/docs/AI_CONVERSATION_SYNC.md",
+      "projects/web-main/docs/AI_HANDOFF_CURRENT.md",
+      "projects/web-main/docs/ANALYSIS_MODULES_INVENTORY.md",
+      "projects/web-main/docs/DECISIONS.md",
+      "projects/web-main/docs/FOUR_CONVERSATION_WORKFLOW.md",
+      "projects/web-main/docs/PROJECT_HUB.md",
+      "projects/web-main/docs/PROJECT_STATUS.md",
+      "projects/web-main/docs/PROJECT_STATUS_CURRENT.md",
+      "projects/web-main/docs/SECURITY_AUDIT_REPORT.md",
+      "projects/web-main/docs/TASK_LOG.md",
+      "projects/web-main/docs/TEAM_OPERATING_MODEL.md",
+      "projects/web-main/docs/TWO_WEEK_ALIYUN_V1_WAR_PLAN.md",
+      "projects/web-main/docs/architecture",
+      "projects/web-main/docs/compliance",
+      "projects/web-main/docs/eeg_v01_product_principles.md",
+      "projects/web-main/docs/legacy_static_mvp.md",
+      "projects/web-main/docs/modules",
+      "projects/web-main/docs/online_paid_platform_architecture.md",
+      "projects/web-main/docs/product",
+      "projects/web-main/docs/product_architecture.md",
+      "projects/web-main/docs/quality",
+      "projects/web-main/docs/release",
+      "projects/web-main/docs/research_mvp.md",
+      "projects/web-main/docs/security_audit_summary.txt"
+    ],
+    "migration_state": "registered_only"
+  },
+  "layers": {
+    "domain": {
+      "state": "not_applicable"
+    },
+    "backend": {
+      "state": "not_applicable"
+    },
+    "frontend": {
+      "state": "not_applicable"
+    },
+    "report": {
+      "state": "not_applicable"
+    },
+    "tests": {
+      "state": "not_applicable"
+    },
+    "evidence": {
+      "state": "planned"
+    }
+  },
+  "entry_points": {
+    "frontend_pages": [],
+    "api_routes": [],
+    "services": [],
+    "worker_runners": [],
+    "domain_runners": []
+  },
+  "scientific_scope": {
+    "scope": "Documentation and governance material for the platform.",
+    "forbidden_claims": [
+      "Do not treat documentation as executable or verified behavior."
+    ],
+    "customer_whitelist_allowed": false
+  },
+  "verification": {
+    "test_paths": [],
+    "evidence_paths": [],
+    "last_verified_commit": "8c5a673"
+  }
+}

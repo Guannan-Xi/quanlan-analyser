@@ -2,6 +2,383 @@
   "schema_version": "qlanalyser-research-registry-v0.1",
   "generated_at_utc": "2026-07-22T00:00:00+00:00",
   "stable_baseline_commit": "8c5a673",
-  "modules": [],
+  "modules": [
+    {
+      "module_id": "assets.static-evidence",
+      "namespace": "assets",
+      "manifest_path": "projects/research-modules/modules/assets__static-evidence/manifest.json",
+      "lifecycle_status": "stable",
+      "implementation_status": "implemented",
+      "classification": "historical_backup_evidence"
+    },
+    {
+      "module_id": "feature.analysis-other",
+      "namespace": "feature",
+      "manifest_path": "projects/research-modules/modules/feature__analysis-other/manifest.json",
+      "lifecycle_status": "beta",
+      "implementation_status": "implemented",
+      "classification": "pluggable_feature_package"
+    },
+    {
+      "module_id": "feature.band-power",
+      "namespace": "feature",
+      "manifest_path": "projects/research-modules/modules/feature__band-power/manifest.json",
+      "lifecycle_status": "beta",
+      "implementation_status": "implemented",
+      "classification": "pluggable_feature_package"
+    },
+    {
+      "module_id": "feature.connectivity",
+      "namespace": "feature",
+      "manifest_path": "projects/research-modules/modules/feature__connectivity/manifest.json",
+      "lifecycle_status": "internal_validation",
+      "implementation_status": "implemented",
+      "classification": "pluggable_feature_package"
+    },
+    {
+      "module_id": "feature.data-preparation",
+      "namespace": "feature",
+      "manifest_path": "projects/research-modules/modules/feature__data-preparation/manifest.json",
+      "lifecycle_status": "beta",
+      "implementation_status": "implemented",
+      "classification": "pluggable_feature_package"
+    },
+    {
+      "module_id": "feature.epilepsy",
+      "namespace": "feature",
+      "manifest_path": "projects/research-modules/modules/feature__epilepsy/manifest.json",
+      "lifecycle_status": "internal_validation",
+      "implementation_status": "implemented",
+      "classification": "pluggable_feature_package"
+    },
+    {
+      "module_id": "feature.epilepsy-ml",
+      "namespace": "feature",
+      "manifest_path": "projects/research-modules/modules/feature__epilepsy-ml/manifest.json",
+      "lifecycle_status": "internal_validation",
+      "implementation_status": "implemented",
+      "classification": "pluggable_feature_package"
+    },
+    {
+      "module_id": "feature.erp",
+      "namespace": "feature",
+      "manifest_path": "projects/research-modules/modules/feature__erp/manifest.json",
+      "lifecycle_status": "beta",
+      "implementation_status": "implemented",
+      "classification": "pluggable_feature_package"
+    },
+    {
+      "module_id": "feature.multitaper",
+      "namespace": "feature",
+      "manifest_path": "projects/research-modules/modules/feature__multitaper/manifest.json",
+      "lifecycle_status": "internal_validation",
+      "implementation_status": "implemented",
+      "classification": "pluggable_feature_package"
+    },
+    {
+      "module_id": "feature.pac-v1",
+      "namespace": "feature",
+      "manifest_path": "projects/research-modules/modules/feature__pac-v1/manifest.json",
+      "lifecycle_status": "internal_validation",
+      "implementation_status": "implemented",
+      "classification": "pluggable_feature_package"
+    },
+    {
+      "module_id": "feature.pac-v2",
+      "namespace": "feature",
+      "manifest_path": "projects/research-modules/modules/feature__pac-v2/manifest.json",
+      "lifecycle_status": "internal_validation",
+      "implementation_status": "implemented",
+      "classification": "pluggable_feature_package"
+    },
+    {
+      "module_id": "feature.psd",
+      "namespace": "feature",
+      "manifest_path": "projects/research-modules/modules/feature__psd/manifest.json",
+      "lifecycle_status": "beta",
+      "implementation_status": "implemented",
+      "classification": "pluggable_feature_package"
+    },
+    {
+      "module_id": "feature.qc",
+      "namespace": "feature",
+      "manifest_path": "projects/research-modules/modules/feature__qc/manifest.json",
+      "lifecycle_status": "beta",
+      "implementation_status": "implemented",
+      "classification": "pluggable_feature_package"
+    },
+    {
+      "module_id": "feature.reference-csd",
+      "namespace": "feature",
+      "manifest_path": "projects/research-modules/modules/feature__reference-csd/manifest.json",
+      "lifecycle_status": "internal_validation",
+      "implementation_status": "implemented",
+      "classification": "pluggable_feature_package"
+    },
+    {
+      "module_id": "feature.statistics",
+      "namespace": "feature",
+      "manifest_path": "projects/research-modules/modules/feature__statistics/manifest.json",
+      "lifecycle_status": "beta",
+      "implementation_status": "implemented",
+      "classification": "pluggable_feature_package"
+    },
+    {
+      "module_id": "feature.tfr",
+      "namespace": "feature",
+      "manifest_path": "projects/research-modules/modules/feature__tfr/manifest.json",
+      "lifecycle_status": "internal_validation",
+      "implementation_status": "implemented",
+      "classification": "pluggable_feature_package"
+    },
+    {
+      "module_id": "feature.waveform-workbench",
+      "namespace": "feature",
+      "manifest_path": "projects/research-modules/modules/feature__waveform-workbench/manifest.json",
+      "lifecycle_status": "beta",
+      "implementation_status": "implemented",
+      "classification": "pluggable_feature_package"
+    },
+    {
+      "module_id": "governance.web-docs",
+      "namespace": "governance",
+      "manifest_path": "projects/research-modules/modules/governance__web-docs/manifest.json",
+      "lifecycle_status": "stable",
+      "implementation_status": "implemented",
+      "classification": "platform_capability"
+    },
+    {
+      "module_id": "lab.demo",
+      "namespace": "lab",
+      "manifest_path": "projects/research-modules/modules/lab__demo/manifest.json",
+      "lifecycle_status": "draft",
+      "implementation_status": "implemented",
+      "classification": "lab_demo_preview_teaching"
+    },
+    {
+      "module_id": "lab.module-lab",
+      "namespace": "lab",
+      "manifest_path": "projects/research-modules/modules/lab__module-lab/manifest.json",
+      "lifecycle_status": "draft",
+      "implementation_status": "implemented",
+      "classification": "lab_demo_preview_teaching"
+    },
+    {
+      "module_id": "platform.accounts",
+      "namespace": "platform",
+      "manifest_path": "projects/research-modules/modules/platform__accounts/manifest.json",
+      "lifecycle_status": "stable",
+      "implementation_status": "implemented",
+      "classification": "platform_capability"
+    },
+    {
+      "module_id": "platform.admin",
+      "namespace": "platform",
+      "manifest_path": "projects/research-modules/modules/platform__admin/manifest.json",
+      "lifecycle_status": "stable",
+      "implementation_status": "implemented",
+      "classification": "platform_capability"
+    },
+    {
+      "module_id": "platform.api-other",
+      "namespace": "platform",
+      "manifest_path": "projects/research-modules/modules/platform__api-other/manifest.json",
+      "lifecycle_status": "stable",
+      "implementation_status": "implemented",
+      "classification": "platform_capability"
+    },
+    {
+      "module_id": "platform.artifacts",
+      "namespace": "platform",
+      "manifest_path": "projects/research-modules/modules/platform__artifacts/manifest.json",
+      "lifecycle_status": "stable",
+      "implementation_status": "implemented",
+      "classification": "platform_capability"
+    },
+    {
+      "module_id": "platform.billing",
+      "namespace": "platform",
+      "manifest_path": "projects/research-modules/modules/platform__billing/manifest.json",
+      "lifecycle_status": "stable",
+      "implementation_status": "implemented",
+      "classification": "platform_capability"
+    },
+    {
+      "module_id": "platform.delivery",
+      "namespace": "platform",
+      "manifest_path": "projects/research-modules/modules/platform__delivery/manifest.json",
+      "lifecycle_status": "stable",
+      "implementation_status": "implemented",
+      "classification": "platform_capability"
+    },
+    {
+      "module_id": "platform.deployment",
+      "namespace": "platform",
+      "manifest_path": "projects/research-modules/modules/platform__deployment/manifest.json",
+      "lifecycle_status": "stable",
+      "implementation_status": "implemented",
+      "classification": "platform_capability"
+    },
+    {
+      "module_id": "platform.eeg-files",
+      "namespace": "platform",
+      "manifest_path": "projects/research-modules/modules/platform__eeg-files/manifest.json",
+      "lifecycle_status": "stable",
+      "implementation_status": "implemented",
+      "classification": "platform_capability"
+    },
+    {
+      "module_id": "platform.frontend-shell",
+      "namespace": "platform",
+      "manifest_path": "projects/research-modules/modules/platform__frontend-shell/manifest.json",
+      "lifecycle_status": "stable",
+      "implementation_status": "implemented",
+      "classification": "platform_capability"
+    },
+    {
+      "module_id": "platform.frontend-support",
+      "namespace": "platform",
+      "manifest_path": "projects/research-modules/modules/platform__frontend-support/manifest.json",
+      "lifecycle_status": "stable",
+      "implementation_status": "implemented",
+      "classification": "platform_capability"
+    },
+    {
+      "module_id": "platform.governance",
+      "namespace": "platform",
+      "manifest_path": "projects/research-modules/modules/platform__governance/manifest.json",
+      "lifecycle_status": "stable",
+      "implementation_status": "implemented",
+      "classification": "platform_capability"
+    },
+    {
+      "module_id": "platform.models",
+      "namespace": "platform",
+      "manifest_path": "projects/research-modules/modules/platform__models/manifest.json",
+      "lifecycle_status": "stable",
+      "implementation_status": "implemented",
+      "classification": "platform_capability"
+    },
+    {
+      "module_id": "platform.projects",
+      "namespace": "platform",
+      "manifest_path": "projects/research-modules/modules/platform__projects/manifest.json",
+      "lifecycle_status": "stable",
+      "implementation_status": "implemented",
+      "classification": "platform_capability"
+    },
+    {
+      "module_id": "platform.reports",
+      "namespace": "platform",
+      "manifest_path": "projects/research-modules/modules/platform__reports/manifest.json",
+      "lifecycle_status": "stable",
+      "implementation_status": "implemented",
+      "classification": "platform_capability"
+    },
+    {
+      "module_id": "platform.scripts-acceptance",
+      "namespace": "platform",
+      "manifest_path": "projects/research-modules/modules/platform__scripts-acceptance/manifest.json",
+      "lifecycle_status": "stable",
+      "implementation_status": "implemented",
+      "classification": "platform_capability"
+    },
+    {
+      "module_id": "platform.services-other",
+      "namespace": "platform",
+      "manifest_path": "projects/research-modules/modules/platform__services-other/manifest.json",
+      "lifecycle_status": "stable",
+      "implementation_status": "implemented",
+      "classification": "platform_capability"
+    },
+    {
+      "module_id": "platform.storage",
+      "namespace": "platform",
+      "manifest_path": "projects/research-modules/modules/platform__storage/manifest.json",
+      "lifecycle_status": "stable",
+      "implementation_status": "implemented",
+      "classification": "platform_capability"
+    },
+    {
+      "module_id": "platform.subjects",
+      "namespace": "platform",
+      "manifest_path": "projects/research-modules/modules/platform__subjects/manifest.json",
+      "lifecycle_status": "stable",
+      "implementation_status": "implemented",
+      "classification": "platform_capability"
+    },
+    {
+      "module_id": "platform.tasks",
+      "namespace": "platform",
+      "manifest_path": "projects/research-modules/modules/platform__tasks/manifest.json",
+      "lifecycle_status": "stable",
+      "implementation_status": "implemented",
+      "classification": "platform_capability"
+    },
+    {
+      "module_id": "platform.templates",
+      "namespace": "platform",
+      "manifest_path": "projects/research-modules/modules/platform__templates/manifest.json",
+      "lifecycle_status": "stable",
+      "implementation_status": "implemented",
+      "classification": "platform_capability"
+    },
+    {
+      "module_id": "platform.web-support",
+      "namespace": "platform",
+      "manifest_path": "projects/research-modules/modules/platform__web-support/manifest.json",
+      "lifecycle_status": "stable",
+      "implementation_status": "implemented",
+      "classification": "platform_capability"
+    },
+    {
+      "module_id": "platform.worker-other",
+      "namespace": "platform",
+      "manifest_path": "projects/research-modules/modules/platform__worker-other/manifest.json",
+      "lifecycle_status": "stable",
+      "implementation_status": "implemented",
+      "classification": "platform_capability"
+    },
+    {
+      "module_id": "platform.workflow",
+      "namespace": "platform",
+      "manifest_path": "projects/research-modules/modules/platform__workflow/manifest.json",
+      "lifecycle_status": "stable",
+      "implementation_status": "implemented",
+      "classification": "platform_capability"
+    },
+    {
+      "module_id": "research.qeeg-64ch",
+      "namespace": "research",
+      "manifest_path": "projects/research-modules/modules/research__qeeg-64ch/manifest.json",
+      "lifecycle_status": "internal_validation",
+      "implementation_status": "implemented",
+      "classification": "pure_research_algorithm"
+    },
+    {
+      "module_id": "research.spike-analysis",
+      "namespace": "research",
+      "manifest_path": "projects/research-modules/modules/research__spike-analysis/manifest.json",
+      "lifecycle_status": "draft",
+      "implementation_status": "placeholder",
+      "classification": "placeholder_planned"
+    },
+    {
+      "module_id": "shared.eeg-io",
+      "namespace": "shared",
+      "manifest_path": "projects/research-modules/modules/shared__eeg-io/manifest.json",
+      "lifecycle_status": "stable",
+      "implementation_status": "implemented",
+      "classification": "platform_capability"
+    },
+    {
+      "module_id": "shared.preprocessing",
+      "namespace": "shared",
+      "manifest_path": "projects/research-modules/modules/shared__preprocessing/manifest.json",
+      "lifecycle_status": "stable",
+      "implementation_status": "implemented",
+      "classification": "platform_capability"
+    }
+  ],
   "unclassified_count": 0
 }

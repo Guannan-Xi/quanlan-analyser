@@ -1,0 +1,88 @@
+{
+  "schema_version": "qlanalyser-module-manifest-v0.1",
+  "module_id": "feature.qc",
+  "display_name": "feature.qc",
+  "namespace": "feature",
+  "version": "0.1.0",
+  "lifecycle_status": "beta",
+  "implementation_status": "implemented",
+  "source_provenance": {
+    "origin_project": "web-main",
+    "origin_paths": [
+      "projects/web-main/backend/api",
+      "projects/web-main/backend/services",
+      "projects/web-main/eeg_core/preprocess",
+      "projects/web-main/frontend/qc-lab.css",
+      "projects/web-main/frontend/qc-lab.html",
+      "projects/web-main/frontend/qc-lab.js",
+      "projects/web-main/frontend/qc-lab.js.bak-e2e-fix-20260625021843"
+    ],
+    "migration_state": "registered_only"
+  },
+  "layers": {
+    "domain": {
+      "state": "present",
+      "paths": [
+        "projects/web-main/eeg_core/preprocess/qc_preview.py",
+        "projects/web-main/eeg_core/preprocess/quality.py"
+      ]
+    },
+    "backend": {
+      "state": "present",
+      "paths": [
+        "projects/web-main/backend/api/lab_edf_reviewer.py",
+        "projects/web-main/backend/services/lab_edf_reviewer_service.py"
+      ]
+    },
+    "frontend": {
+      "state": "present",
+      "paths": [
+        "projects/web-main/frontend/qc-lab.css",
+        "projects/web-main/frontend/qc-lab.html",
+        "projects/web-main/frontend/qc-lab.js",
+        "projects/web-main/frontend/qc-lab.js.bak-e2e-fix-20260625021843"
+      ]
+    },
+    "report": {
+      "state": "not_applicable"
+    },
+    "tests": {
+      "state": "not_applicable"
+    },
+    "evidence": {
+      "state": "planned"
+    }
+  },
+  "entry_points": {
+    "frontend_pages": [
+      "projects/web-main/frontend/qc-lab.css",
+      "projects/web-main/frontend/qc-lab.html",
+      "projects/web-main/frontend/qc-lab.js",
+      "projects/web-main/frontend/qc-lab.js.bak-e2e-fix-20260625021843"
+    ],
+    "api_routes": [
+      "projects/web-main/backend/api/lab_edf_reviewer.py"
+    ],
+    "services": [
+      "projects/web-main/backend/services/lab_edf_reviewer_service.py"
+    ],
+    "worker_runners": [],
+    "domain_runners": [
+      "projects/web-main/eeg_core/preprocess/qc_preview.py",
+      "projects/web-main/eeg_core/preprocess/quality.py"
+    ]
+  },
+  "scientific_scope": {
+    "scope": "Pluggable analysis feature package intended to mount into the Web shell.",
+    "forbidden_claims": [
+      "Do not present Lab/Beta output as a stable or clinical conclusion.",
+      "Do not merge distinct estimator/profile semantics under one stable id."
+    ],
+    "customer_whitelist_allowed": false
+  },
+  "verification": {
+    "test_paths": [],
+    "evidence_paths": [],
+    "last_verified_commit": "8c5a673"
+  }
+}

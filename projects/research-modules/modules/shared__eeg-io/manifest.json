@@ -1,0 +1,66 @@
+{
+  "schema_version": "qlanalyser-module-manifest-v0.1",
+  "module_id": "shared.eeg-io",
+  "display_name": "shared.eeg-io",
+  "namespace": "shared",
+  "version": "0.1.0",
+  "lifecycle_status": "stable",
+  "implementation_status": "implemented",
+  "source_provenance": {
+    "origin_project": "web-main",
+    "origin_paths": [
+      "projects/web-main/eeg_core/io"
+    ],
+    "migration_state": "registered_only"
+  },
+  "layers": {
+    "domain": {
+      "state": "present",
+      "paths": [
+        "projects/web-main/eeg_core/io/__init__.py",
+        "projects/web-main/eeg_core/io/metadata.py",
+        "projects/web-main/eeg_core/io/readers.py",
+        "projects/web-main/eeg_core/io/streaming_reader.py"
+      ]
+    },
+    "backend": {
+      "state": "not_applicable"
+    },
+    "frontend": {
+      "state": "not_applicable"
+    },
+    "report": {
+      "state": "not_applicable"
+    },
+    "tests": {
+      "state": "not_applicable"
+    },
+    "evidence": {
+      "state": "planned"
+    }
+  },
+  "entry_points": {
+    "frontend_pages": [],
+    "api_routes": [],
+    "services": [],
+    "worker_runners": [],
+    "domain_runners": [
+      "projects/web-main/eeg_core/io/__init__.py",
+      "projects/web-main/eeg_core/io/metadata.py",
+      "projects/web-main/eeg_core/io/readers.py",
+      "projects/web-main/eeg_core/io/streaming_reader.py"
+    ]
+  },
+  "scientific_scope": {
+    "scope": "Shared computational or IO foundation reused by feature packages after cross-checked verification.",
+    "forbidden_claims": [
+      "Do not claim standalone scientific validity; verify per consuming estimator."
+    ],
+    "customer_whitelist_allowed": false
+  },
+  "verification": {
+    "test_paths": [],
+    "evidence_paths": [],
+    "last_verified_commit": "8c5a673"
+  }
+}

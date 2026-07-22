@@ -1,0 +1,83 @@
+{
+  "schema_version": "qlanalyser-module-manifest-v0.1",
+  "module_id": "platform.reports",
+  "display_name": "platform.reports",
+  "namespace": "platform",
+  "version": "0.1.0",
+  "lifecycle_status": "stable",
+  "implementation_status": "implemented",
+  "source_provenance": {
+    "origin_project": "web-main",
+    "origin_paths": [
+      "projects/web-main/backend/api",
+      "projects/web-main/backend/models",
+      "projects/web-main/backend/services",
+      "projects/web-main/eeg_core/report",
+      "projects/web-main/worker/tasks"
+    ],
+    "migration_state": "registered_only"
+  },
+  "layers": {
+    "domain": {
+      "state": "present",
+      "paths": [
+        "projects/web-main/eeg_core/report/__init__.py",
+        "projects/web-main/eeg_core/report/html_report.py",
+        "projects/web-main/eeg_core/report/method_text.py",
+        "projects/web-main/eeg_core/report/pdf_report.py",
+        "projects/web-main/eeg_core/report/reproducibility.py"
+      ]
+    },
+    "backend": {
+      "state": "present",
+      "paths": [
+        "projects/web-main/backend/api/reports.py",
+        "projects/web-main/backend/services/report_service.py",
+        "projects/web-main/worker/tasks/report.py"
+      ]
+    },
+    "frontend": {
+      "state": "not_applicable"
+    },
+    "report": {
+      "state": "not_applicable"
+    },
+    "tests": {
+      "state": "not_applicable"
+    },
+    "evidence": {
+      "state": "planned"
+    }
+  },
+  "entry_points": {
+    "frontend_pages": [],
+    "api_routes": [
+      "projects/web-main/backend/api/reports.py"
+    ],
+    "services": [
+      "projects/web-main/backend/services/report_service.py"
+    ],
+    "worker_runners": [
+      "projects/web-main/worker/tasks/report.py"
+    ],
+    "domain_runners": [
+      "projects/web-main/eeg_core/report/__init__.py",
+      "projects/web-main/eeg_core/report/html_report.py",
+      "projects/web-main/eeg_core/report/method_text.py",
+      "projects/web-main/eeg_core/report/pdf_report.py",
+      "projects/web-main/eeg_core/report/reproducibility.py"
+    ]
+  },
+  "scientific_scope": {
+    "scope": "Platform capability of the Web product shell. Not a scientific estimator.",
+    "forbidden_claims": [
+      "Do not claim analysis validity; platform layer does no scientific estimation."
+    ],
+    "customer_whitelist_allowed": false
+  },
+  "verification": {
+    "test_paths": [],
+    "evidence_paths": [],
+    "last_verified_commit": "8c5a673"
+  }
+}

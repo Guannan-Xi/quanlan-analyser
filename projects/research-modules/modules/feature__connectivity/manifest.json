@@ -1,0 +1,67 @@
+{
+  "schema_version": "qlanalyser-module-manifest-v0.1",
+  "module_id": "feature.connectivity",
+  "display_name": "feature.connectivity",
+  "namespace": "feature",
+  "version": "0.1.0",
+  "lifecycle_status": "internal_validation",
+  "implementation_status": "implemented",
+  "source_provenance": {
+    "origin_project": "web-main",
+    "origin_paths": [
+      "projects/web-main/eeg_core/analysis",
+      "projects/web-main/frontend/research-module"
+    ],
+    "migration_state": "registered_only"
+  },
+  "layers": {
+    "domain": {
+      "state": "present",
+      "paths": [
+        "projects/web-main/eeg_core/analysis/connectivity.py"
+      ]
+    },
+    "backend": {
+      "state": "not_applicable"
+    },
+    "frontend": {
+      "state": "present",
+      "paths": [
+        "projects/web-main/frontend/research-module/connectivity.html"
+      ]
+    },
+    "report": {
+      "state": "not_applicable"
+    },
+    "tests": {
+      "state": "not_applicable"
+    },
+    "evidence": {
+      "state": "planned"
+    }
+  },
+  "entry_points": {
+    "frontend_pages": [
+      "projects/web-main/frontend/research-module/connectivity.html"
+    ],
+    "api_routes": [],
+    "services": [],
+    "worker_runners": [],
+    "domain_runners": [
+      "projects/web-main/eeg_core/analysis/connectivity.py"
+    ]
+  },
+  "scientific_scope": {
+    "scope": "Pluggable analysis feature package intended to mount into the Web shell.",
+    "forbidden_claims": [
+      "Do not present Lab/Beta output as a stable or clinical conclusion.",
+      "Do not merge distinct estimator/profile semantics under one stable id."
+    ],
+    "customer_whitelist_allowed": false
+  },
+  "verification": {
+    "test_paths": [],
+    "evidence_paths": [],
+    "last_verified_commit": "8c5a673"
+  }
+}

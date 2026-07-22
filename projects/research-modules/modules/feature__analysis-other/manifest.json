@@ -1,0 +1,61 @@
+{
+  "schema_version": "qlanalyser-module-manifest-v0.1",
+  "module_id": "feature.analysis-other",
+  "display_name": "feature.analysis-other",
+  "namespace": "feature",
+  "version": "0.1.0",
+  "lifecycle_status": "beta",
+  "implementation_status": "implemented",
+  "source_provenance": {
+    "origin_project": "web-main",
+    "origin_paths": [
+      "projects/web-main/eeg_core/analysis"
+    ],
+    "migration_state": "registered_only"
+  },
+  "layers": {
+    "domain": {
+      "state": "present",
+      "paths": [
+        "projects/web-main/eeg_core/analysis/__init__.py"
+      ]
+    },
+    "backend": {
+      "state": "not_applicable"
+    },
+    "frontend": {
+      "state": "not_applicable"
+    },
+    "report": {
+      "state": "not_applicable"
+    },
+    "tests": {
+      "state": "not_applicable"
+    },
+    "evidence": {
+      "state": "planned"
+    }
+  },
+  "entry_points": {
+    "frontend_pages": [],
+    "api_routes": [],
+    "services": [],
+    "worker_runners": [],
+    "domain_runners": [
+      "projects/web-main/eeg_core/analysis/__init__.py"
+    ]
+  },
+  "scientific_scope": {
+    "scope": "Pluggable analysis feature package intended to mount into the Web shell.",
+    "forbidden_claims": [
+      "Do not present Lab/Beta output as a stable or clinical conclusion.",
+      "Do not merge distinct estimator/profile semantics under one stable id."
+    ],
+    "customer_whitelist_allowed": false
+  },
+  "verification": {
+    "test_paths": [],
+    "evidence_paths": [],
+    "last_verified_commit": "8c5a673"
+  }
+}

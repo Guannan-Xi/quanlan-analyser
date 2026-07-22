@@ -1,0 +1,58 @@
+{
+  "schema_version": "qlanalyser-module-manifest-v0.1",
+  "module_id": "research.spike-analysis",
+  "display_name": "research.spike-analysis",
+  "namespace": "research",
+  "version": "0.1.0",
+  "lifecycle_status": "draft",
+  "implementation_status": "placeholder",
+  "source_provenance": {
+    "origin_project": "spike-analysis",
+    "origin_paths": [
+      "projects/spike-analysis/README.md",
+      "projects/spike-analysis/__init__.py"
+    ],
+    "migration_state": "registered_only"
+  },
+  "layers": {
+    "domain": {
+      "state": "not_applicable"
+    },
+    "backend": {
+      "state": "not_applicable"
+    },
+    "frontend": {
+      "state": "not_applicable"
+    },
+    "report": {
+      "state": "not_applicable"
+    },
+    "tests": {
+      "state": "not_applicable"
+    },
+    "evidence": {
+      "state": "planned"
+    }
+  },
+  "entry_points": {
+    "frontend_pages": [],
+    "api_routes": [],
+    "services": [],
+    "worker_runners": [],
+    "domain_runners": []
+  },
+  "scientific_scope": {
+    "scope": "Higher-maturity research method library; Lab-grade, not a clinical conclusion.",
+    "forbidden_claims": [
+      "Do not extrapolate 19-channel norms to 64-channel norms.",
+      "Do not present Lab/recovered methods as stable clinical conclusions.",
+      "Do not report AUTO_PASS_BLOCKED / blocked_ica_fit as an automatic pass."
+    ],
+    "customer_whitelist_allowed": false
+  },
+  "verification": {
+    "test_paths": [],
+    "evidence_paths": [],
+    "last_verified_commit": "8c5a673"
+  }
+}

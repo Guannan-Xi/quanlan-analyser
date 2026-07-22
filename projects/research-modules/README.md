@@ -61,4 +61,11 @@ research-modules/
 
 - 阶段 0 基线 `6b18faf`、阶段 1 功能总账（`unclassified==0`）已完成。
 - QEEG 解冻并入见 `docs/workspace-inventory/qeeg-dynamic-freeze.md`。
-- **当前：阶段 2 — 定义 `contracts/` 下的统一契约。**
+- 阶段 2 契约（9 个 schema，`validate_contracts.py` 全绿）已提交 `97d5584`。
+- **当前：阶段 3 — 登记全部 47 个模块。** `registry.json` 与
+  `modules/<slug>/manifest.json` 由 `scripts/build_module_registry.py` 从阶段 1
+  总账（`traceability-matrix.csv` / `feature-ledger.csv`）生成，与总账逐条对账
+  （47=47，`unclassified_count==0`），全部 `migration_state: registered_only`
+  ——先登记、后迁移，**未移动任何算法**。分类桶：platform_capability 26、
+  pluggable_feature_package 16、pure_research_algorithm 1、
+  lab_demo_preview_teaching 2、historical_backup_evidence 1、placeholder_planned 1。

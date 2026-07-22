@@ -1,0 +1,73 @@
+{
+  "schema_version": "qlanalyser-module-manifest-v0.1",
+  "module_id": "feature.reference-csd",
+  "display_name": "feature.reference-csd",
+  "namespace": "feature",
+  "version": "0.1.0",
+  "lifecycle_status": "internal_validation",
+  "implementation_status": "implemented",
+  "source_provenance": {
+    "origin_project": "web-main",
+    "origin_paths": [
+      "projects/web-main/eeg_core/analysis",
+      "projects/web-main/frontend/research-module",
+      "projects/web-main/scripts/acceptance_source_localization_preview.py"
+    ],
+    "migration_state": "registered_only"
+  },
+  "layers": {
+    "domain": {
+      "state": "present",
+      "paths": [
+        "projects/web-main/eeg_core/analysis/reference_csd.py"
+      ]
+    },
+    "backend": {
+      "state": "not_applicable"
+    },
+    "frontend": {
+      "state": "present",
+      "paths": [
+        "projects/web-main/frontend/research-module/source_localization.html"
+      ]
+    },
+    "report": {
+      "state": "not_applicable"
+    },
+    "tests": {
+      "state": "present",
+      "paths": [
+        "projects/web-main/scripts/acceptance_source_localization_preview.py"
+      ]
+    },
+    "evidence": {
+      "state": "planned"
+    }
+  },
+  "entry_points": {
+    "frontend_pages": [
+      "projects/web-main/frontend/research-module/source_localization.html"
+    ],
+    "api_routes": [],
+    "services": [],
+    "worker_runners": [],
+    "domain_runners": [
+      "projects/web-main/eeg_core/analysis/reference_csd.py"
+    ]
+  },
+  "scientific_scope": {
+    "scope": "Pluggable analysis feature package intended to mount into the Web shell.",
+    "forbidden_claims": [
+      "Do not present Lab/Beta output as a stable or clinical conclusion.",
+      "Do not merge distinct estimator/profile semantics under one stable id."
+    ],
+    "customer_whitelist_allowed": false
+  },
+  "verification": {
+    "test_paths": [
+      "projects/web-main/scripts/acceptance_source_localization_preview.py"
+    ],
+    "evidence_paths": [],
+    "last_verified_commit": "8c5a673"
+  }
+}

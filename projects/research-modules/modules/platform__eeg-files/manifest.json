@@ -1,0 +1,61 @@
+{
+  "schema_version": "qlanalyser-module-manifest-v0.1",
+  "module_id": "platform.eeg-files",
+  "display_name": "platform.eeg-files",
+  "namespace": "platform",
+  "version": "0.1.0",
+  "lifecycle_status": "stable",
+  "implementation_status": "implemented",
+  "source_provenance": {
+    "origin_project": "web-main",
+    "origin_paths": [
+      "projects/web-main/backend/api",
+      "projects/web-main/backend/models"
+    ],
+    "migration_state": "registered_only"
+  },
+  "layers": {
+    "domain": {
+      "state": "not_applicable"
+    },
+    "backend": {
+      "state": "present",
+      "paths": [
+        "projects/web-main/backend/api/eeg_files.py"
+      ]
+    },
+    "frontend": {
+      "state": "not_applicable"
+    },
+    "report": {
+      "state": "not_applicable"
+    },
+    "tests": {
+      "state": "not_applicable"
+    },
+    "evidence": {
+      "state": "planned"
+    }
+  },
+  "entry_points": {
+    "frontend_pages": [],
+    "api_routes": [
+      "projects/web-main/backend/api/eeg_files.py"
+    ],
+    "services": [],
+    "worker_runners": [],
+    "domain_runners": []
+  },
+  "scientific_scope": {
+    "scope": "Platform capability of the Web product shell. Not a scientific estimator.",
+    "forbidden_claims": [
+      "Do not claim analysis validity; platform layer does no scientific estimation."
+    ],
+    "customer_whitelist_allowed": false
+  },
+  "verification": {
+    "test_paths": [],
+    "evidence_paths": [],
+    "last_verified_commit": "8c5a673"
+  }
+}

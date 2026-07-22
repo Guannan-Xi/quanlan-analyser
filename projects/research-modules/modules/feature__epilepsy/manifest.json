@@ -1,0 +1,188 @@
+{
+  "schema_version": "qlanalyser-module-manifest-v0.1",
+  "module_id": "feature.epilepsy",
+  "display_name": "feature.epilepsy",
+  "namespace": "feature",
+  "version": "0.1.0",
+  "lifecycle_status": "internal_validation",
+  "implementation_status": "implemented",
+  "source_provenance": {
+    "origin_project": "web-main",
+    "origin_paths": [
+      "projects/web-main/backend/api",
+      "projects/web-main/docs/modules",
+      "projects/web-main/docs/product",
+      "projects/web-main/docs/release",
+      "projects/web-main/eeg_core/analysis",
+      "projects/web-main/frontend/epilepsy-full-flow-preview.css",
+      "projects/web-main/frontend/epilepsy-full-flow-preview.html",
+      "projects/web-main/frontend/epilepsy-full-flow-preview.js",
+      "projects/web-main/frontend/epilepsy-report-preview.css",
+      "projects/web-main/frontend/epilepsy-report-preview.html",
+      "projects/web-main/frontend/epilepsy-report-preview.js",
+      "projects/web-main/frontend/epilepsy-review-preview.css",
+      "projects/web-main/frontend/epilepsy-review-preview.html",
+      "projects/web-main/frontend/epilepsy-review-preview.js",
+      "projects/web-main/frontend/epilepsy-workbench.css",
+      "projects/web-main/frontend/epilepsy-workbench.html",
+      "projects/web-main/frontend/epilepsy-workbench.js",
+      "projects/web-main/scripts/acceptance_epilepsy_cloud_trial_upload_contract.py",
+      "projects/web-main/scripts/acceptance_epilepsy_cloud_trial_upload_to_export.py",
+      "projects/web-main/scripts/acceptance_epilepsy_full_page_visual_review_screenshots.mjs",
+      "projects/web-main/scripts/acceptance_epilepsy_review_waveform_performance.mjs",
+      "projects/web-main/scripts/acceptance_epilepsy_workbench_api_contract.py",
+      "projects/web-main/scripts/acceptance_lab_epilepsy_full_flow_api.py",
+      "projects/web-main/scripts/build_epilepsy_cloud_trial_owner_input_packet.mjs"
+    ],
+    "migration_state": "registered_only"
+  },
+  "layers": {
+    "domain": {
+      "state": "present",
+      "paths": [
+        "projects/web-main/eeg_core/analysis/epilepsy.py"
+      ]
+    },
+    "backend": {
+      "state": "present",
+      "paths": [
+        "projects/web-main/backend/api/epilepsy_phase_validator.py",
+        "projects/web-main/backend/api/epilepsy_workbench.py",
+        "projects/web-main/backend/api/lab_epilepsy_full_flow.py",
+        "projects/web-main/backend/api/test_epilepsy_phase_validator.py",
+        "projects/web-main/worker/tasks/epilepsy.py"
+      ]
+    },
+    "frontend": {
+      "state": "present",
+      "paths": [
+        "projects/web-main/frontend/epilepsy-full-flow-preview.css",
+        "projects/web-main/frontend/epilepsy-full-flow-preview.html",
+        "projects/web-main/frontend/epilepsy-full-flow-preview.js",
+        "projects/web-main/frontend/epilepsy-report-preview.css",
+        "projects/web-main/frontend/epilepsy-report-preview.html",
+        "projects/web-main/frontend/epilepsy-report-preview.js",
+        "projects/web-main/frontend/epilepsy-review-preview.css",
+        "projects/web-main/frontend/epilepsy-review-preview.html",
+        "projects/web-main/frontend/epilepsy-review-preview.js",
+        "projects/web-main/frontend/epilepsy-workbench.css",
+        "projects/web-main/frontend/epilepsy-workbench.html",
+        "projects/web-main/frontend/epilepsy-workbench.js"
+      ]
+    },
+    "report": {
+      "state": "not_applicable"
+    },
+    "tests": {
+      "state": "present",
+      "paths": [
+        "projects/web-main/scripts/acceptance_epilepsy_cloud_trial_upload_contract.py",
+        "projects/web-main/scripts/acceptance_epilepsy_cloud_trial_upload_to_export.py",
+        "projects/web-main/scripts/acceptance_epilepsy_full_page_visual_review_screenshots.mjs",
+        "projects/web-main/scripts/acceptance_epilepsy_review_waveform_performance.mjs",
+        "projects/web-main/scripts/acceptance_epilepsy_workbench_api_contract.py",
+        "projects/web-main/scripts/acceptance_lab_epilepsy_full_flow_api.py",
+        "projects/web-main/scripts/build_epilepsy_cloud_trial_owner_input_packet.mjs",
+        "projects/web-main/scripts/build_epilepsy_cloud_trial_readiness_packet.mjs",
+        "projects/web-main/scripts/e2e_epilepsy_child_page_p0.mjs",
+        "projects/web-main/scripts/e2e_epilepsy_cloud_trial_upload_to_export_browser.mjs",
+        "projects/web-main/scripts/e2e_epilepsy_deeplink_bootstrap_browser.mjs",
+        "projects/web-main/scripts/e2e_epilepsy_failure_states_browser.mjs",
+        "projects/web-main/scripts/e2e_epilepsy_lab_sync_std.mjs",
+        "projects/web-main/scripts/e2e_epilepsy_result_review_v3_gate.mjs",
+        "projects/web-main/scripts/e2e_epilepsy_timechart_lab.mjs",
+        "projects/web-main/scripts/e2e_epilepsy_workbench.mjs",
+        "projects/web-main/scripts/e2e_lab_epilepsy_full_flow_browser.mjs",
+        "projects/web-main/scripts/e2e_main_epilepsy_entry_contract.mjs",
+        "projects/web-main/scripts/e2e_main_epilepsy_entry_real_path.mjs",
+        "projects/web-main/scripts/generate_epilepsy_demo_10min_64ch.py",
+        "projects/web-main/scripts/generate_regular_epilepsy_labeled_fixture.py",
+        "projects/web-main/scripts/preflight_epilepsy_cloud_trial_target.mjs",
+        "projects/web-main/scripts/run_epilepsy_cloud_trial_acceptance.mjs",
+        "projects/web-main/scripts/start_lab_epilepsy_full_flow_local.ps1",
+        "projects/web-main/scripts/validate_epilepsy_child_page_p0_contract.mjs",
+        "projects/web-main/scripts/validate_epilepsy_cloud_trial_v0_1_copy_governance.mjs",
+        "projects/web-main/scripts/validate_epilepsy_cloud_trial_v0_1_release_gate.mjs",
+        "projects/web-main/scripts/validate_epilepsy_cloud_trial_v0_1_spec_pack.mjs",
+        "projects/web-main/scripts/validate_epilepsy_owner_data_manifest_v0_1.mjs",
+        "projects/web-main/scripts/validate_teaching_epilepsy_protection.py"
+      ]
+    },
+    "evidence": {
+      "state": "planned"
+    }
+  },
+  "entry_points": {
+    "frontend_pages": [
+      "projects/web-main/frontend/epilepsy-full-flow-preview.css",
+      "projects/web-main/frontend/epilepsy-full-flow-preview.html",
+      "projects/web-main/frontend/epilepsy-full-flow-preview.js",
+      "projects/web-main/frontend/epilepsy-report-preview.css",
+      "projects/web-main/frontend/epilepsy-report-preview.html",
+      "projects/web-main/frontend/epilepsy-report-preview.js",
+      "projects/web-main/frontend/epilepsy-review-preview.css",
+      "projects/web-main/frontend/epilepsy-review-preview.html",
+      "projects/web-main/frontend/epilepsy-review-preview.js",
+      "projects/web-main/frontend/epilepsy-workbench.css",
+      "projects/web-main/frontend/epilepsy-workbench.html",
+      "projects/web-main/frontend/epilepsy-workbench.js"
+    ],
+    "api_routes": [
+      "projects/web-main/backend/api/epilepsy_phase_validator.py",
+      "projects/web-main/backend/api/epilepsy_workbench.py",
+      "projects/web-main/backend/api/lab_epilepsy_full_flow.py",
+      "projects/web-main/backend/api/test_epilepsy_phase_validator.py"
+    ],
+    "services": [],
+    "worker_runners": [
+      "projects/web-main/worker/tasks/epilepsy.py"
+    ],
+    "domain_runners": [
+      "projects/web-main/eeg_core/analysis/epilepsy.py"
+    ]
+  },
+  "scientific_scope": {
+    "scope": "Pluggable analysis feature package intended to mount into the Web shell.",
+    "forbidden_claims": [
+      "Do not present Lab/Beta output as a stable or clinical conclusion.",
+      "Do not merge distinct estimator/profile semantics under one stable id."
+    ],
+    "customer_whitelist_allowed": false
+  },
+  "verification": {
+    "test_paths": [
+      "projects/web-main/scripts/acceptance_epilepsy_cloud_trial_upload_contract.py",
+      "projects/web-main/scripts/acceptance_epilepsy_cloud_trial_upload_to_export.py",
+      "projects/web-main/scripts/acceptance_epilepsy_full_page_visual_review_screenshots.mjs",
+      "projects/web-main/scripts/acceptance_epilepsy_review_waveform_performance.mjs",
+      "projects/web-main/scripts/acceptance_epilepsy_workbench_api_contract.py",
+      "projects/web-main/scripts/acceptance_lab_epilepsy_full_flow_api.py",
+      "projects/web-main/scripts/build_epilepsy_cloud_trial_owner_input_packet.mjs",
+      "projects/web-main/scripts/build_epilepsy_cloud_trial_readiness_packet.mjs",
+      "projects/web-main/scripts/e2e_epilepsy_child_page_p0.mjs",
+      "projects/web-main/scripts/e2e_epilepsy_cloud_trial_upload_to_export_browser.mjs",
+      "projects/web-main/scripts/e2e_epilepsy_deeplink_bootstrap_browser.mjs",
+      "projects/web-main/scripts/e2e_epilepsy_failure_states_browser.mjs",
+      "projects/web-main/scripts/e2e_epilepsy_lab_sync_std.mjs",
+      "projects/web-main/scripts/e2e_epilepsy_result_review_v3_gate.mjs",
+      "projects/web-main/scripts/e2e_epilepsy_timechart_lab.mjs",
+      "projects/web-main/scripts/e2e_epilepsy_workbench.mjs",
+      "projects/web-main/scripts/e2e_lab_epilepsy_full_flow_browser.mjs",
+      "projects/web-main/scripts/e2e_main_epilepsy_entry_contract.mjs",
+      "projects/web-main/scripts/e2e_main_epilepsy_entry_real_path.mjs",
+      "projects/web-main/scripts/generate_epilepsy_demo_10min_64ch.py",
+      "projects/web-main/scripts/generate_regular_epilepsy_labeled_fixture.py",
+      "projects/web-main/scripts/preflight_epilepsy_cloud_trial_target.mjs",
+      "projects/web-main/scripts/run_epilepsy_cloud_trial_acceptance.mjs",
+      "projects/web-main/scripts/start_lab_epilepsy_full_flow_local.ps1",
+      "projects/web-main/scripts/validate_epilepsy_child_page_p0_contract.mjs",
+      "projects/web-main/scripts/validate_epilepsy_cloud_trial_v0_1_copy_governance.mjs",
+      "projects/web-main/scripts/validate_epilepsy_cloud_trial_v0_1_release_gate.mjs",
+      "projects/web-main/scripts/validate_epilepsy_cloud_trial_v0_1_spec_pack.mjs",
+      "projects/web-main/scripts/validate_epilepsy_owner_data_manifest_v0_1.mjs",
+      "projects/web-main/scripts/validate_teaching_epilepsy_protection.py"
+    ],
+    "evidence_paths": [],
+    "last_verified_commit": "8c5a673"
+  }
+}
