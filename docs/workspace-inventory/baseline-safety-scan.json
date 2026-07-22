@@ -1,7 +1,7 @@
 {
   "schema_version": "baseline-safety-scan-v1",
-  "trackable_file_count": 1134,
-  "scanned_text_file_count": 1051,
+  "trackable_file_count": 1157,
+  "scanned_text_file_count": 1073,
   "finding_counts": {
     "review": 4
   },

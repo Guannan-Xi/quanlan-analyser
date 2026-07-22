@@ -8,9 +8,9 @@
   "excluded_from_modularization": [
     "pc-qlanalyser"
   ],
-  "file_count": 902,
+  "file_count": 910,
   "file_counts_by_project": {
-    "qeeg-64ch-research": 32,
+    "qeeg-64ch-research": 40,
     "spike-analysis": 2,
     "web-main": 868
   },
@@ -18,13 +18,13 @@
     "configuration-or-contract": 54,
     "documentation": 310,
     "other": 25,
-    "source": 437,
+    "source": 445,
     "static-evidence-or-asset": 76
   },
   "python_symbol_counts": {
     "api-route": 112,
-    "class": 86,
-    "function": 1845,
+    "class": 89,
+    "function": 2037,
     "router-registration": 23
   },
   "frontend_entry_count": 48,
@@ -32,8 +32,8 @@
     {
       "project": "qeeg-64ch-research",
       "path": "projects/qeeg-64ch-research/results",
-      "file_count": 451,
-      "size_bytes": 247640859,
+      "file_count": 1404,
+      "size_bytes": 783489641,
       "sha256": "not-hashed-generated-output"
     }
   ],

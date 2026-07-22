@@ -30,26 +30,29 @@ PLACEHOLDER_RE = re.compile(
 
 
 def trackable_paths() -> list[Path]:
-    result = subprocess.run(
-        ["git", "status", "--short", "--untracked-files=all"],
-        cwd=ROOT,
-        check=True,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-    )
-    paths: list[Path] = []
-    for line in result.stdout.splitlines():
-        if len(line) < 4:
-            continue
-        raw = line[3:]
-        if " -> " in raw:
-            raw = raw.split(" -> ", 1)[1]
-        path = ROOT / raw
-        if path.is_file():
-            paths.append(path)
-    return sorted(set(paths))
+    """All version-controllable files: tracked plus untracked-not-ignored.
+
+    Uses ``git ls-files`` (committed + staged) unioned with untracked files
+    that Git would allow to be added. This stays complete regardless of commit
+    state, unlike ``git status --short`` which only lists changed paths.
+    """
+    def _run(args: list[str]) -> list[str]:
+        result = subprocess.run(
+            ["git", *args, "-z"],
+            cwd=ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+        return [entry for entry in result.stdout.split("\0") if entry]
+
+    entries: set[str] = set()
+    entries.update(_run(["ls-files"]))
+    entries.update(_run(["ls-files", "--others", "--exclude-standard"]))
+    paths = [ROOT / raw for raw in entries]
+    return sorted({path for path in paths if path.is_file()})
 
 
 def is_probably_text(path: Path) -> bool:

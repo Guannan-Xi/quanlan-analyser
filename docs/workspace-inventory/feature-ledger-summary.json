@@ -1,13 +1,13 @@
 {
   "schema_version": "feature-ledger-v1",
-  "stable_baseline_commit": "6b18faf",
-  "file_records": 902,
+  "stable_baseline_commit": "8c5a673",
+  "file_records": 910,
   "route_and_registration_records": 157,
   "frontend_entry_records": 48,
-  "ledger_records": 1085,
+  "ledger_records": 1093,
   "module_count": 47,
   "unclassified_count": 0,
-  "qeeg_status": "frozen-at-6b18faf; live post-baseline drift excluded",
+  "qeeg_status": "reintegrated-at-8c5a673; post-baseline updates audited and committed",
   "module_counts": {
     "assets.static-evidence": 126,
     "feature.analysis-other": 1,
@@ -52,14 +52,14 @@
     "platform.web-support": 48,
     "platform.worker-other": 5,
     "platform.workflow": 6,
-    "research.qeeg-64ch": 32,
+    "research.qeeg-64ch": 40,
     "research.spike-analysis": 2,
     "shared.eeg-io": 4,
     "shared.preprocessing": 4
   },
   "limitations": [
-    "File coverage is exhaustive for the frozen inventory, but behavioral completeness still requires module-by-module review.",
+    "File coverage is exhaustive for the current inventory, but behavioral completeness still requires module-by-module review.",
     "Dynamic frontend API paths are not fully resolved by literal scanning.",
-    "QEEG live changes after 6b18faf are intentionally excluded until the external writer stops."
+    "QEEG pytest suite cannot run in this Py3.14 env (antropy/sklearn absent); changed files verified by byte-compile and safety scan only."
   ]
 }

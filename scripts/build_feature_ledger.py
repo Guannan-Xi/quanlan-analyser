@@ -115,7 +115,7 @@ def state_for(module_id: str, path: str) -> str:
     if module_id == "research.spike-analysis":
         return "placeholder"
     if module_id == "research.qeeg-64ch":
-        return "frozen-at-6b18faf"
+        return "internal_validation"
     if module_id.startswith("lab."):
         return "lab-or-demo"
     if module_id.startswith("assets."):
@@ -231,19 +231,19 @@ def main() -> int:
     module_counts = Counter(str(row["module_id"]) for row in ledger)
     summary = {
         "schema_version": "feature-ledger-v1",
-        "stable_baseline_commit": "6b18faf",
+        "stable_baseline_commit": "8c5a673",
         "file_records": len(files),
         "route_and_registration_records": sum(row["layer"] in {"api", "api-registration"} for row in ledger),
         "frontend_entry_records": len(frontend),
         "ledger_records": len(ledger),
         "module_count": len(module_counts),
         "unclassified_count": module_counts.get("unclassified", 0),
-        "qeeg_status": "frozen-at-6b18faf; live post-baseline drift excluded",
+        "qeeg_status": "reintegrated-at-8c5a673; post-baseline updates audited and committed",
         "module_counts": dict(sorted(module_counts.items())),
         "limitations": [
-            "File coverage is exhaustive for the frozen inventory, but behavioral completeness still requires module-by-module review.",
+            "File coverage is exhaustive for the current inventory, but behavioral completeness still requires module-by-module review.",
             "Dynamic frontend API paths are not fully resolved by literal scanning.",
-            "QEEG live changes after 6b18faf are intentionally excluded until the external writer stops.",
+            "QEEG pytest suite cannot run in this Py3.14 env (antropy/sklearn absent); changed files verified by byte-compile and safety scan only.",
         ],
     }
     (INVENTORY / "feature-ledger-summary.json").write_text(json.dumps(summary, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
