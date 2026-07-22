@@ -1,0 +1,127 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "qlanalyser/research-modules/module-manifest/v0.1",
+  "title": "ModuleManifest",
+  "description": "Identity, lifecycle, layers, entry points and boundaries of one research-modules feature package. Formalizes the frontend research_module_manifest.json descriptor and the backend module_name convention.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "module_id",
+    "display_name",
+    "namespace",
+    "version",
+    "lifecycle_status",
+    "implementation_status",
+    "source_provenance",
+    "layers",
+    "scientific_scope"
+  ],
+  "properties": {
+    "schema_version": {"const": "qlanalyser-module-manifest-v0.1"},
+    "module_id": {
+      "type": "string",
+      "description": "Stable id as <namespace>.<estimator>.<profile>@<schema_version> or a namespace.slug for platform/support modules.",
+      "pattern": "^[a-z0-9]+([.-][a-z0-9]+)*(@v[0-9]+(\\.[0-9]+)?)?$"
+    },
+    "display_name": {"type": "string", "minLength": 1},
+    "namespace": {
+      "type": "string",
+      "enum": ["platform", "feature", "lab", "shared", "research", "assets", "governance"]
+    },
+    "version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+(\\.[0-9]+)?$"},
+    "owner": {"type": "string"},
+    "lifecycle_status": {
+      "type": "string",
+      "enum": ["draft", "internal_validation", "beta", "stable", "deprecated"]
+    },
+    "implementation_status": {
+      "type": "string",
+      "enum": ["implemented", "placeholder", "pending_contract", "optional_dependency"]
+    },
+    "source_provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["origin_project", "origin_paths"],
+      "properties": {
+        "origin_project": {"type": "string", "enum": ["web-main", "qeeg-64ch-research", "spike-analysis"]},
+        "origin_paths": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+        "migration_state": {
+          "type": "string",
+          "enum": ["registered_only", "copied_under_verification", "verified_switched", "superseded_origin"],
+          "default": "registered_only"
+        },
+        "copy_hash": {"type": "string", "description": "Optional sha256 of the copied source tree for drift detection."}
+      }
+    },
+    "layers": {
+      "type": "object",
+      "description": "Which packaged layers exist. Missing layers must be declared not_applicable, never silently absent.",
+      "additionalProperties": false,
+      "required": ["domain", "backend", "frontend", "report", "tests", "evidence"],
+      "properties": {
+        "domain": {"$ref": "#/$defs/layerState"},
+        "backend": {"$ref": "#/$defs/layerState"},
+        "frontend": {"$ref": "#/$defs/layerState"},
+        "report": {"$ref": "#/$defs/layerState"},
+        "tests": {"$ref": "#/$defs/layerState"},
+        "evidence": {"$ref": "#/$defs/layerState"}
+      }
+    },
+    "entry_points": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "frontend_pages": {"type": "array", "items": {"type": "string"}},
+        "api_routes": {"type": "array", "items": {"type": "string"}},
+        "services": {"type": "array", "items": {"type": "string"}},
+        "worker_runners": {"type": "array", "items": {"type": "string"}},
+        "domain_runners": {"type": "array", "items": {"type": "string"}},
+        "report_sections": {"type": "array", "items": {"type": "string"}},
+        "artifacts": {"type": "array", "items": {"type": "string"}},
+        "feature_flags": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "dependencies": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "required": {"type": "array", "items": {"type": "string"}},
+        "optional": {"type": "array", "items": {"type": "string"}},
+        "async_required": {"type": "boolean", "default": false},
+        "failure_semantics": {"type": "string"}
+      }
+    },
+    "scientific_scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scope", "forbidden_claims"],
+      "properties": {
+        "scope": {"type": "string", "minLength": 1},
+        "forbidden_claims": {"type": "array", "items": {"type": "string"}},
+        "customer_whitelist_allowed": {"type": "boolean", "default": false}
+      }
+    },
+    "verification": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "test_paths": {"type": "array", "items": {"type": "string"}},
+        "evidence_paths": {"type": "array", "items": {"type": "string"}},
+        "last_verified_commit": {"type": "string"}
+      }
+    }
+  },
+  "$defs": {
+    "layerState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state"],
+      "properties": {
+        "state": {"type": "string", "enum": ["present", "not_applicable", "planned"]},
+        "paths": {"type": "array", "items": {"type": "string"}},
+        "note": {"type": "string"}
+      }
+    }
+  }
+}

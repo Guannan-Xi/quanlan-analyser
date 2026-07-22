@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "qlanalyser/research-modules/result-envelope/v0.1",
+  "title": "AnalysisResultEnvelope",
+  "description": "Uniform wrapper around any module's analysis output. Unifies web-main qlanalyser-output-v0.1 result contract and qeeg _base_summary, and enforces separation of execution / validation / lifecycle status.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "module_id",
+    "estimator",
+    "profile",
+    "result_schema_version",
+    "status",
+    "source",
+    "generated_at_utc"
+  ],
+  "properties": {
+    "schema_version": {"const": "qlanalyser-result-envelope-v0.1"},
+    "module_id": {"type": "string"},
+    "estimator": {"type": "string", "description": "e.g. welch-psd, tort-pac, wpli-connectivity, morlet-tfr."},
+    "profile": {"type": "string", "description": "Input/parameter profile, e.g. spectral-only, full-qc-recovered, resting-eyes-open, event-locked."},
+    "result_schema_version": {"type": "string", "description": "Per-method result field-structure version, e.g. qlanalyser-pac-beta-result-v0.1."},
+    "status": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["execution_status", "validation_status", "lifecycle_status"],
+      "properties": {
+        "execution_status": {
+          "type": "string",
+          "enum": ["completed", "failed", "blocked_missing_dependency", "blocked_ica_fit", "blocked_classification_unavailable", "blocked_exclusion_limit"]
+        },
+        "validation_status": {
+          "type": "string",
+          "enum": ["not_validated", "numeric_checked", "contract_verified", "golden_matched"]
+        },
+        "lifecycle_status": {
+          "type": "string",
+          "enum": ["draft", "internal_validation", "beta", "stable", "deprecated"]
+        }
+      }
+    },
+    "source": {"$ref": "qlanalyser/research-modules/eeg-source/v0.1"},
+    "channel_montage": {"$ref": "qlanalyser/research-modules/channel-montage/v0.1"},
+    "preprocessing": {"$ref": "qlanalyser/research-modules/preprocessing-provenance/v0.1"},
+    "safety_gate": {"$ref": "qlanalyser/research-modules/lifecycle-safety/v0.1#/$defs/safetyGate"},
+    "parameters": {"type": "object"},
+    "parameters_hash": {"type": "string"},
+    "summary": {"type": "object", "description": "Method-specific result payload; structure governed by result_schema_version."},
+    "summary_hash": {"type": "string"},
+    "metrics": {"type": "object"},
+    "warnings": {"type": "array", "items": {"type": "string"}},
+    "errors": {"type": "array", "items": {"type": "string"}},
+    "artifacts": {"$ref": "qlanalyser/research-modules/artifact-manifest/v0.1"},
+    "generated_at_utc": {"type": "string", "format": "date-time"}
+  }
+}

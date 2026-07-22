@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "qlanalyser/research-modules/registry/v0.1",
+  "title": "ResearchModuleRegistry",
+  "description": "Master table of every registered module. The Web shell reads this read-only to display/identify modules without changing execution behavior.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "generated_at_utc", "stable_baseline_commit", "modules"],
+  "properties": {
+    "schema_version": {"const": "qlanalyser-research-registry-v0.1"},
+    "generated_at_utc": {"type": "string", "format": "date-time"},
+    "stable_baseline_commit": {"type": "string"},
+    "modules": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["module_id", "namespace", "manifest_path", "lifecycle_status", "implementation_status"],
+        "properties": {
+          "module_id": {"type": "string"},
+          "namespace": {"type": "string", "enum": ["platform", "feature", "lab", "shared", "research", "assets", "governance"]},
+          "manifest_path": {"type": "string", "description": "Path to the module.yaml / manifest under research-modules/modules/."},
+          "lifecycle_status": {"type": "string", "enum": ["draft", "internal_validation", "beta", "stable", "deprecated"]},
+          "implementation_status": {"type": "string", "enum": ["implemented", "placeholder", "pending_contract", "optional_dependency"]},
+          "classification": {
+            "type": "string",
+            "description": "Phase-3 bucket for this module.",
+            "enum": [
+              "platform_capability",
+              "pluggable_feature_package",
+              "pure_research_algorithm",
+              "lab_demo_preview_teaching",
+              "historical_backup_evidence",
+              "placeholder_planned"
+            ]
+          }
+        }
+      }
+    },
+    "unclassified_count": {"type": "integer", "minimum": 0, "description": "Must reach 0 before any 'organization complete' claim."}
+  }
+}

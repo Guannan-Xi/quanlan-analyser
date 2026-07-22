@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "qlanalyser/research-modules/channel-montage/v0.1",
+  "title": "ChannelMontageReference",
+  "description": "Channel set, montage, and reference scheme for one analysis. Guards against silent channel-count assumptions and normative extrapolation across densities.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "channel_names", "channel_count", "reference"],
+  "properties": {
+    "schema_version": {"const": "qlanalyser-channel-montage-v0.1"},
+    "channel_names": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+    "channel_count": {"type": "integer", "minimum": 1},
+    "montage_family": {
+      "type": "string",
+      "description": "e.g. standard_1020, standard_1005, biosemi64, custom.",
+      "examples": ["standard_1020", "biosemi64", "custom"]
+    },
+    "electrode_density": {
+      "type": "string",
+      "enum": ["19ch", "32ch", "64ch", "other"],
+      "description": "Used to enforce: 19ch normative data must NOT be extrapolated to 64ch."
+    },
+    "reference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scheme"],
+      "properties": {
+        "scheme": {"type": "string", "enum": ["average", "linked-mastoids", "REST", "CSD", "bipolar", "original", "other"]},
+        "detail": {"type": "string"}
+      }
+    },
+    "unit": {"type": "string", "default": "uV"},
+    "hardcoded_channels": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "Channels an estimator hardcodes (e.g. O1/O2/F3/F4). Recorded so montage mismatches surface instead of silently mis-mapping."
+    },
+    "normative_extrapolation_allowed": {
+      "type": "boolean",
+      "const": false,
+      "description": "Structural guard: normative comparison across differing electrode_density is forbidden."
+    }
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "qlanalyser/research-modules/eeg-source/v0.1",
+  "title": "EEGSourceDescriptor",
+  "description": "Provenance of the raw recording an analysis consumed. Formalizes qeeg _base_summary.source and web-main source_metadata. Never embeds patient identity; filename is stored, raw payload is not committed.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "filename", "format", "sha256", "sampling_rate_hz", "duration_sec", "channel_count"],
+  "properties": {
+    "schema_version": {"const": "qlanalyser-eeg-source-v0.1"},
+    "filename": {"type": "string", "description": "Basename only; no absolute patient paths."},
+    "format": {"type": "string", "enum": ["edf", "bdf", "fif", "brainvision", "set", "cnt", "other"]},
+    "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "sampling_rate_hz": {"type": "number", "exclusiveMinimum": 0},
+    "duration_sec": {"type": "number", "exclusiveMinimum": 0},
+    "channel_count": {"type": "integer", "minimum": 1},
+    "eeg_channels": {"type": "array", "items": {"type": "string"}},
+    "unit": {"type": "string", "default": "V", "description": "Physical unit of stored samples (MNE uses volts internally)."},
+    "time_axis": {
+      "type": "string",
+      "enum": ["seconds_from_original_recording_start"],
+      "default": "seconds_from_original_recording_start"
+    },
+    "deidentified": {"type": "boolean", "default": true}
+  }
+}

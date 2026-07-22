@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "qlanalyser/research-modules/adapter-binding/v0.1",
+  "title": "ModuleAdapterBinding",
+  "description": "Binds a module's frontend entry to its backend route, service, worker runner and report sections, with feature flag, permission and status level. Unifies the frontend statusLevel descriptor with backend router registration so the Web shell can enable/disable/rollback a module through one contract.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "module_id", "status_level", "frontend", "backend"],
+  "properties": {
+    "schema_version": {"const": "qlanalyser-adapter-binding-v0.1"},
+    "module_id": {"type": "string"},
+    "status_level": {
+      "type": "string",
+      "enum": ["enabled", "preview", "lab", "disabled"],
+      "description": "Mirrors frontend research_module_manifest statusLevel; drives module visibility."
+    },
+    "feature_flag": {"type": "string"},
+    "permissions": {"type": "array", "items": {"type": "string"}},
+    "frontend": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["entry"],
+      "properties": {
+        "entry": {"type": "string", "description": "Page/route/menu id, e.g. research-module/psd.html."},
+        "api_client": {"type": "string"},
+        "result_renderer": {"type": "string"},
+        "config_form": {"type": "string"}
+      }
+    },
+    "backend": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["route"],
+      "properties": {
+        "route": {"type": "string", "description": "FastAPI route path."},
+        "service": {"type": "string"},
+        "worker_runner": {"type": "string"},
+        "domain_runner": {"type": "string"}
+      }
+    },
+    "report_sections": {"type": "array", "items": {"type": "string"}},
+    "rollback": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "dual_path": {"type": "boolean", "default": true, "description": "Whether old and new paths run side-by-side behind a flag during migration."},
+        "origin_path": {"type": "string"}
+      }
+    }
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "qlanalyser/research-modules/lifecycle-safety/v0.1",
+  "title": "LifecycleAndSafetyGate",
+  "description": "Lifecycle vocabulary plus the SafetyGate wording contract. Formalizes qeeg safety_gate and the blocked_* status family, and encodes forbidden-claim guardrails so Lab/recovered methods are never presented as stable/clinical.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "lifecycle_status", "safety_gate"],
+  "properties": {
+    "schema_version": {"const": "qlanalyser-lifecycle-safety-v0.1"},
+    "lifecycle_status": {"type": "string", "enum": ["draft", "internal_validation", "beta", "stable", "deprecated"]},
+    "safety_gate": {"$ref": "#/$defs/safetyGate"},
+    "forbidden_claims": {
+      "type": "array",
+      "items": {"type": "string"},
+      "default": [
+        "clinical diagnosis from a non-stable method",
+        "extrapolating 19ch normative data to 64ch",
+        "presenting blocked_* execution as an automatic pass",
+        "claiming heavy analysis is production-ready before a real async worker exists"
+      ]
+    }
+  },
+  "$defs": {
+    "safetyGate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["conclusion", "reasons"],
+      "properties": {
+        "conclusion": {
+          "type": "string",
+          "enum": ["AUTO_PASS", "AUTO_PASS_BLOCKED", "REVIEW_REQUIRED"],
+          "description": "AUTO_PASS_BLOCKED and REVIEW_REQUIRED must never be rendered to users as an unconditional pass."
+        },
+        "reasons": {"type": "array", "items": {"type": "string"}},
+        "review_required": {"type": "boolean", "default": false}
+      }
+    }
+  }
+}

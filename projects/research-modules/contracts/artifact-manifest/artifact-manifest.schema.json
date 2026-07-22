@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "qlanalyser/research-modules/artifact-manifest/v0.1",
+  "title": "ArtifactManifest",
+  "description": "Registers every output file a module run produced. Unifies web-main manifest.json (qlanalyser-artifact-registry-v0.1) and qeeg visual_manifest. Raw payloads stay out of Git; only manifest + curated fixtures are versioned.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "job_id", "created_at_utc", "files"],
+  "properties": {
+    "schema_version": {"const": "qlanalyser-artifact-manifest-v0.1"},
+    "job_id": {"type": "string"},
+    "created_at_utc": {"type": "string", "format": "date-time"},
+    "manifest_excludes": {"type": "array", "items": {"type": "string"}},
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["relative_path", "media_type", "sha256", "size_bytes"],
+        "properties": {
+          "relative_path": {"type": "string"},
+          "label": {"type": "string"},
+          "media_type": {
+            "type": "string",
+            "enum": ["application/json", "text/csv", "image/svg+xml", "image/png", "text/html", "application/pdf", "application/zip", "text/plain", "other"]
+          },
+          "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+          "size_bytes": {"type": "integer", "minimum": 0},
+          "committed_to_git": {"type": "boolean", "default": false, "description": "Whether this artifact is version-controlled or only indexed on disk."}
+        }
+      }
+    }
+  }
+}

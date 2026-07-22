@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "qlanalyser/research-modules/preprocessing-provenance/v0.1",
+  "title": "PreprocessingProvenance",
+  "description": "Every transform applied before analysis: filtering, resampling, re-referencing, bad channels/segments, retained intervals, ICA/ICLabel. Formalizes qeeg qc.py trace and web-main preprocess/. Retained intervals carry both analysis and original-recording coordinates.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "steps"],
+  "properties": {
+    "schema_version": {"const": "qlanalyser-preprocessing-provenance-v0.1"},
+    "steps": {
+      "type": "array",
+      "description": "Ordered transforms as actually applied.",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["name"],
+        "properties": {
+          "name": {"type": "string", "enum": ["filter", "notch", "resample", "rereference", "bad_channel_interpolation", "segment_rejection", "ica", "iclabel", "crop", "other"]},
+          "parameters": {"type": "object"}
+        }
+      }
+    },
+    "bad_channels": {"type": "array", "items": {"type": "string"}},
+    "interpolated_channels": {"type": "array", "items": {"type": "string"}},
+    "retained_intervals": {
+      "type": "array",
+      "description": "Kept data segments, with both analysis-space and source-recording-space sample bounds so results can be mapped back to the original time axis.",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["source_sample_start", "source_sample_stop", "analysis_sample_start", "analysis_sample_stop"],
+        "properties": {
+          "source_sample_start": {"type": "integer", "minimum": 0},
+          "source_sample_stop": {"type": "integer", "minimum": 0},
+          "analysis_sample_start": {"type": ["integer", "null"]},
+          "analysis_sample_stop": {"type": ["integer", "null"]}
+        }
+      }
+    },
+    "source_time_mapping": {
+      "type": "object",
+      "description": "Mirror of qeeg qc.build_source_time_mapping output; enables restoring the original time axis with NaN gaps for rejected intervals.",
+      "additionalProperties": true,
+      "properties": {
+        "schema_version": {"type": "string"},
+        "source_time_axis": {"const": "seconds_from_original_recording_start"},
+        "analysis_sample_count": {"type": "integer", "minimum": 0},
+        "source_duration_sec": {"type": "number"},
+        "rejected_intervals": {"type": "array", "items": {"type": "object"}}
+      }
+    },
+    "ica": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "status": {"type": "string", "enum": ["completed", "blocked_missing_dependency", "blocked_ica_fit", "blocked_classification_unavailable", "blocked_exclusion_limit"]},
+        "component_count": {"type": "integer", "minimum": 0},
+        "excluded_components": {"type": "array"},
+        "reason": {"type": ["string", "null"]}
+      }
+    }
+  }
+}
