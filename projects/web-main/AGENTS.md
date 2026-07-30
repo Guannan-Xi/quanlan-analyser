@@ -21,6 +21,12 @@ Brand/product: QLanalyser Online, QuanLan BrainScience. v0.1 Pilot MVP for free 
 - Keep full adversarial review, but during v0.1 use single-model compliance scan instead of GPT-5.5 + DeepSeek N-Fold; re-enable dual-model N-Fold after commercialization.
 - User-level adversarial acceptance must follow `docs/product/qlanalyser_user_level_e2e_adversarial_review_standard_20260702.md`; static scans do not replace E2E acceptance.
 
+## Opus Review Routing
+- All Opus-family reviews for this project, including Opus 5 and Opus 4.8, must use the OpenAI-compatible LLM route at `https://llm-all.pro/v1`.
+- GreatWall, GreatWall Link, `greatwalllink.top`, `gwlink.cc`, and GreatWall-backed profiles are forbidden as Opus primary routes, fallbacks, retries, or availability probes. This restriction does not alter unrelated image-channel configuration.
+- Resolve credentials and model IDs only from the declared Opus environment group, never from project files. Verify the exact requested model through `/models` before dispatch.
+- If the LLM route or requested model is unavailable, keep the review `ACCEPTANCE_INCOMPLETE`; do not substitute GreatWall or claim that Opus review passed.
+
 ## Git And Handoff
 - Commit after each small task when requested/appropriate. Never push automatically; never force-push. Stop and report conflicts.
 - Finish notes should include: goal, completed work, changed files, run/test steps, results, risks, unfinished items, next step.

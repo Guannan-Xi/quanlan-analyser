@@ -2162,3 +2162,101 @@ Validation:
   `eeg_core.spike` before removal.
 - `projects/spike-analysis` currently has only placeholder content; no
   package/tests to run yet.
+
+## 2026-07-28 - Build SimNIBS solver-validation report v2
+
+Goal:
+
+- Produce one complete local report package from the existing real SimNIBS sphere solve without fabricating subject MRI, TI, ROI, optimization, or clinical conclusions.
+
+Changes:
+
+- Added tetrahedron-volume-weighted descriptive statistics and explicit weighting metadata to `scripts/simnibs_smoke_report.py`.
+- Added a manual tetrahedron-volume calculation because SimNIBS 4.6.0 `elements_volumes_and_areas()` terminated on this result mesh.
+- Added a `--skip-figures` post-processing path because Matplotlib image export in `simnibs_env` terminated at runtime.
+- Updated `scripts/build_simnibs_validation_delivery.py` to generate the v2 package, weighted SVG chart, corrected methods/captions, Excel data dictionary, PDF-ready HTML, and finalizable manifest.
+- Kept the existing verified 300 dpi field slice PNG from the same result mesh; generated the weighted region chart directly as SVG from the new statistics.
+
+Validation:
+
+- Python syntax checks passed for both scripts.
+- Weighted statistics covered 22,752 positive-volume tetrahedra with total volume `3,577,943.986 mm^3`.
+- Manifest hash verification passed for every listed artifact.
+- Excel contains the expected six sheets and weighted region fields.
+- Playwright desktop `1440x1200` and mobile `390x844` rendering passed with no horizontal overflow, missing images, or Unicode replacement characters.
+- PDF was rendered from the frozen local HTML and added to the final manifest.
+
+## 2026-07-29 - Finalize inverse TI scientific demo delivery package
+
+Goal:
+
+- Complete the inverse-mode customer package from real SimNIBS ernie FEM outputs while preserving the frozen forward package and preventing demo field values from being cited as formal research results.
+
+Changes:
+
+- Added a machine-readable electrical-independence validity contract to `report_data.json` and the shared report schema.
+- Rewrote the customer scope, montage caption, numerical-quality section, figure-readiness blockers, and review brief so F5-FC3 point contact explicitly invalidates formal citation of E1, E2, TImax, regional statistics, and threshold coverage.
+- Added negative acceptance gates and a mobile minimum-width rule for dense report tables.
+
+Validation:
+
+- Python compilation and JSON Schema validation passed.
+- Dual forward/inverse acceptance passed 69 checks with no failures.
+- Fresh Playwright desktop and mobile acceptance passed: 10 images, no broken images, missing alt text, page overflow, or detected overlap.
+- PDF text contains the electrical-independence and demo-only citation boundary.
+- Cluster JSON/CSV counts and largest/total volumes match the report for both thresholds.
+- Opus 5 review used the exact `https://llm-all.pro/v1` route and exact advertised `claude-opus-5` model; Round 15 returned PASS with no P0/P1 on the final frozen hashes.
+
+## 2026-07-30 - Complete the Violante 2023 hippocampal TI reproduction report
+
+Goal:
+
+- Finish the local report and delivery package first, while explicitly deferring external model review at the user's request.
+
+Changes:
+
+- Kept the completed HTML, PDF, machine-readable results, figures, tables, methods, raw exports, archives, and manifest unchanged.
+- Recorded the delivery as `REPORT_COMPLETE_REVIEW_DEFERRED`; this does not claim independent scientific-review acceptance.
+- Added the completed delivery and verification state to `docs/PROJECT_STATUS.md` and this task log.
+
+Validation:
+
+- Fresh Playwright acceptance passed on desktop `1440x900` and mobile `390x844` with 10 figures, no overflow, no browser errors, no mojibake, and a scrollable mobile table.
+- The browser-loaded HTML matched both the disk hash and manifest hash.
+- All required content gates passed, including contralateral right-hippocampus metrics and sampling, off-target scope, formulas, uncertainty boundaries, and the 16-item NIfTI delivery statement.
+- HTML, PDF, and `result.json` hashes remained unchanged. The manifest was refreshed only for the existing updated review-brief entry; all 132 listed files now pass hash verification. Current hashes: HTML `A8AB7D424E90113727D68AB8C714CAD7D1AC876D27CED905DE4B6ECC29C32361`; PDF `5C42A231A52801D966B176AE849BA6DEDD8AFF535540ECA9AA7C6F1BD4486C5B`; `result.json` `248A9D4686084E34906578A5396753DEE8C3715CA5D3CFE00D2369093913608D`; manifest `B84A39A510F7F582F93BC1697E76698882579BC1E6E1A364BFBB64BE628794F1`.
+
+Deferred:
+
+- Opus 5 external review and arbitration remain paused. Existing incomplete route-preflight evidence must not be reported as PASS.
+- No FEM rerun, commit, push, deployment, or external report dispatch was performed.
+
+## 2026-07-30 - Optimize Violante 2023 publication figures and reproducibility delivery
+
+Goal:
+
+- Close the remaining publication-material gaps in the local Violante 2023 hippocampal TI report before any deferred external review.
+
+Changes:
+
+- Enlarged the head/electrode montage and four cortical-surface renderings by using their actual 3D geometry bounds and orthographic projection instead of cubic display limits.
+- Rebuilt Figure 8 as three panels covering left/off-target ratios, explicit bilateral hippocampal mean/median/P95 values, and directly labeled P99-tail capture values; added `fig08_bilateral_hippocampus.csv` to figure support and the CSV archive.
+- Corrected Figure 9 draw order so segment shading no longer fades data markers, strengthened marker contrast, added condition row labels, and moved the encoding legend outside the data region.
+- Updated bilingual Figure 8 captions, the HTML delivery section, workbook Figure index, report PDF, README, archives, and manifest through the report generator.
+- Added a generated `reproducibility/` directory containing frozen analysis/delivery scripts, Python and key package versions, an exact requirements list, and `DATA_AND_CODE_AVAILABILITY.md`.
+- Preserved the single-subject, substitute-montage, non-clinical, non-group-inference, and unquantified-uncertainty boundaries. External model review remained deferred and FEM was not rerun.
+
+Validation:
+
+- `C:\Users\Administrator\Miniconda3\envs\simnibs_env\python.exe -m py_compile scripts\build_violante2023_ti_delivery.py scripts\run_violante2023_ti_reproduction.py`: passed.
+- Full presentation rebuild completed with 10 figures and unchanged shared display limits (`0.1635899842 V/m` directional TI; `0.2580168247 V/m` TImax).
+- Original-resolution visual inspection passed for Figures 2, 8, 9, and 10; no clipped critical label, hidden data marker, or legend/data collision remained.
+- Playwright desktop `1440x900` and mobile `390x844` acceptance passed with 10 figures, no overflow, browser error, broken image, or mojibake, and all existing scientific text gates true.
+- PNG/SVG/PDF counts are `10/10/10`; all PNGs report 300 dpi. PDF metadata reports 16 letter-size pages.
+- Excel sheet and row counts remain stable; the figure-support ZIP contains `fig08_bilateral_hippocampus.csv`.
+- Frozen script hashes match the current source scripts. The reproducibility directory contains no detected credential fields.
+- Manifest verification passed for all 159 listed files. Frozen hashes: HTML `8B03860E235F5C53B4D18673C9741F57FE4DBDC20D05DD5A459099CD282ED98B`; PDF `FF20063399F9ABC6AF2B368C8766A77497DD6520FEDC82263D5A69F6A50222B1`; `result.json` `248A9D4686084E34906578A5396753DEE8C3715CA5D3CFE00D2369093913608D`; manifest `AB309FCA052C73D06A11F1DA726EC5345EBE145DCDDF7CA74233F970F0B07A29`.
+
+Deferred:
+
+- External Opus review and arbitration remain paused at the user's request. No commit, push, deployment, or external dispatch was performed.

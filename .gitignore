@@ -71,6 +71,13 @@ packages/*.zip
 packages/*.sha256
 evidence/verification-scan.json
 
+# Local workspace runtimes and generated review artifacts
+.runtime-*/
+projects/web-main/tmp/
+projects/web-main/scripts/browser_audit.json
+projects/web-main/scripts/desktop_*.png
+projects/web-main/scripts/mobile_*.png
+
 # License / machine config leftovers
 **/resource/licence.lic
 **/config/config.dat

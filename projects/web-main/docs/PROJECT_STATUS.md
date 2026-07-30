@@ -1591,3 +1591,85 @@ Acceptance note:
     不代表当前归属；当前归属以本条记录和根目录 `README.md`/`AGENTS.md` 为准。
   - `projects\spike-analysis` 目前只有目录占位（README + `__init__.py`），未搭建
     `pyproject.toml`/`tests`/CLI 工程骨架。
+
+- 2026-07-28 - SimNIBS 求解验证报告 v2 已生成。
+
+  Current status:
+
+  - 基于已有真实三层球体双电极 `+1/-1 mA` SimNIBS 结果生成独立 v2 报告包，未覆盖旧报告。
+  - `|E|` 和 `|J|` 的均值、中位数及 P95 改为四面体体积加权；最大值保留为有限体单元峰值。
+  - 方法文字与实际 SimNIBS 四面体场插值一致；不再描述为切面附近单元重心绘制。
+  - 报告包含 HTML、PDF、300 dpi 主电场图、加权统计 SVG、Excel、CSV、Msh/GEO、结构化 JSON、脚本和 manifest。
+  - 报告状态仍阻断个体解剖、TI、ROI、稳健性和逆向优化结论；球体结果仅支持工程验证。
+
+  Evidence:
+
+  - `outputs\simnibs_publication_report_v2_20260728\report.html`。
+  - `outputs\simnibs_publication_report_v2_20260728\report.pdf`。
+  - `outputs\simnibs_publication_report_v2_20260728\manifest.json`。
+  - `outputs\simnibs_publication_report_v2_20260728_qa\report_mobile_playwright.png`。
+
+- 2026-07-29 - 逆向 TI 科研演示交付包完成最终验收。
+
+  Current status:
+
+  - 基于 SimNIBS ernie 真实 FEM 结果生成逆向 TI 客户演示包，包含 HTML/PDF、JSON、Excel/CSV、NPZ/NIfTI/Msh、PNG/SVG 和复现脚本；正向包未重建。
+  - F5-FC3 两节点点接触被提升为数值有效性阻断项：两个载波回路的电气独立性未建立，E1、E2、TImax、区域统计和覆盖率不得作为正式研究结果引用。
+  - 正式引用前必须验证正的电极间隙，重建电极网格，重新求解两个载波场并替换全部受影响数值和图件。
+  - 双包验收通过 69 项检查；桌面和移动端视觉验收通过；Opus 5 在同一冻结哈希上返回 PASS，P0/P1 为 0。
+
+  Evidence:
+
+  - `outputs\simnibs_inverse_ti_discrete_ernie_20260729\report.html`。
+  - `outputs\simnibs_inverse_ti_discrete_ernie_20260729\report.pdf`。
+  - `outputs\simnibs_inverse_ti_discrete_ernie_20260729\manifest.json`。
+  - `outputs\simnibs_inverse_ti_discrete_ernie_20260729_review_gate\final_opus5_round15_20260729\reviews\opus5.json`。
+
+- 2026-07-30 - Violante 2023 海马 TI 正向复现报告完成本地交付。
+
+  Current status:
+
+  - 报告正文、打印版、结构化结果、图件、Excel/CSV、HDF5/MSH/NIfTI、方法说明和校验清单均已生成；报告阶段状态为 `REPORT_COMPLETE_REVIEW_DEFERRED`。
+  - 报告明确量化左、右海马方向投影 TI。右海马 TI 1:1 的 mean/median/P95 为 `0.051189/0.040593/0.133183 V/m`，TI 1:3 为 `0.033196/0.029970/0.070201 V/m`；左/右海马 mean/median/P95 比值分别为 `1.56/1.72/1.37` 和 `1.28/1.28/1.31`。
+  - 结论边界保持不变：这是 SimNIBS 官方 ernie 单个示例受试者和 10-10 替代蒙太奇下的方法与结构复现，不是 MIDA、原始参与者、客户 MRI、临床疗效或安全性验证。
+  - 按用户要求暂不继续外部 Opus 5 评审；已有不完整路由预检不得解释为科学验收通过，也不影响报告本地交付状态。
+
+  Validation:
+
+  - 新鲜 Playwright 桌面 `1440x900` 与移动端 `390x844` 验收通过：10 张主图完整加载，无横向溢出、控制台错误或乱码，移动端表格可横向滚动。
+  - 浏览器读取的 `report.html` 与磁盘文件及 manifest 哈希一致；右海马统计、同源采样链、靶外灰质边界、DTI 方向限制、方法公式和 16 项 NIfTI 清单均通过文案门禁。
+  - HTML、PDF 和 `result.json` 哈希保持不变；manifest 仅刷新了既有评审简报条目的字节数和 SHA-256，132 个清单项现已全部闭合。当前哈希：HTML `A8AB7D424E90113727D68AB8C714CAD7D1AC876D27CED905DE4B6ECC29C32361`，PDF `5C42A231A52801D966B176AE849BA6DEDD8AFF535540ECA9AA7C6F1BD4486C5B`，`result.json` `248A9D4686084E34906578A5396753DEE8C3715CA5D3CFE00D2369093913608D`，manifest `B84A39A510F7F582F93BC1697E76698882579BC1E6E1A364BFBB64BE628794F1`。
+
+  Evidence:
+
+  - `outputs\simnibs_ti_violante2023_reproduction_20260729\report.html`。
+  - `outputs\simnibs_ti_violante2023_reproduction_20260729\report.pdf`。
+  - `outputs\simnibs_ti_violante2023_reproduction_20260729\manifest.json`。
+  - `outputs\simnibs_ti_violante2023_reproduction_20260729\quality_control\browser\browser_audit.json`。
+
+- 2026-07-30 - Violante 2023 海马 TI 报告完成投稿图与可复现性材料优化。
+
+  Current status:
+
+  - 报告状态仍为 `REPORT_COMPLETE_REVIEW_DEFERRED`；本轮只优化本地交付，不执行外部模型评审，也未重跑 FEM。
+  - 图 2 按头皮真实几何范围放大三视图，保留完整电极标签、回路极性和左海马位置；图 10 同样放大四个共享色标的皮层表面面板。
+  - 图 8 改为三面板：左海马/全部靶外灰质比值、左右海马 mean/median/P95 直接比较，以及带固定大小标记和数值标注的 P99 尾部捕获率；TI 1:3 的 `0.03%` 不再因线性柱轴而不可见。
+  - 图 9 调整为背景分段先绘、数据标记后绘，并将图例移出数据区；两条件的 P99 重心和峰值均以高对比度显示。
+  - 新增 `reproducibility/`，包含两份冻结脚本、Python/关键依赖版本、精确版本清单和正式 Data and Code Availability 声明；冻结脚本与当前源脚本逐字节一致，未写入密钥、环境变量或解释器绝对路径。
+  - 科学边界保持不变：本例是 SimNIBS 官方 `ernie` 单受试者和 FT7-Fp2、TP7-TP8 10-10 替代蒙太奇下的方法与结构复现，不是 MIDA、原始参与者、客户 MRI、组水平统计或临床结论。
+
+  Validation:
+
+  - SimNIBS 环境下 Python 编译通过；完整展示层重建成功，复用现有 FEM 与分析结果。
+  - 10 张主图均提供 PNG/SVG/PDF；所有 PNG 为 300 dpi，原始像素检查未发现裁切、图例遮挡或关键标记不可见。
+  - Playwright 桌面 `1440x900` 与移动端 `390x844` 验收通过：10 张图完整加载，无横向溢出、控制台错误或乱码，移动端表格可滚动，全部科学边界文案门禁通过。
+  - PDF 仍为 16 页；Excel 仍为 10 个工作表，ROI metrics 60 行、Hippocampal segments 6 行、Focality 2 行、Electrodes 4 行、Paper benchmark 6 行、Figure index 10 行、QC 14 行、Conductivities 22 行、Data dictionary 42 行。
+  - manifest 共 159 项，逐文件字节数与 SHA-256 全部通过。当前哈希：HTML `8B03860E235F5C53B4D18673C9741F57FE4DBDC20D05DD5A459099CD282ED98B`，PDF `FF20063399F9ABC6AF2B368C8766A77497DD6520FEDC82263D5A69F6A50222B1`，`result.json` `248A9D4686084E34906578A5396753DEE8C3715CA5D3CFE00D2369093913608D`，manifest `AB309FCA052C73D06A11F1DA726EC5345EBE145DCDDF7CA74233F970F0B07A29`。
+
+  Evidence:
+
+  - `outputs\simnibs_ti_violante2023_reproduction_20260729\report.html`。
+  - `outputs\simnibs_ti_violante2023_reproduction_20260729\report.pdf`。
+  - `outputs\simnibs_ti_violante2023_reproduction_20260729\manifest.json`。
+  - `outputs\simnibs_ti_violante2023_reproduction_20260729\reproducibility\DATA_AND_CODE_AVAILABILITY.md`。
+  - `outputs\simnibs_ti_violante2023_reproduction_20260729\quality_control\browser\browser_audit.json`。

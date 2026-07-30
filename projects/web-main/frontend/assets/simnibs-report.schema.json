@@ -1,0 +1,425 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://quanlan.example/schemas/simnibs-report.v1.json",
+  "title": "SimNIBS report payload",
+  "type": "object",
+  "required": ["schema_version", "analysis_mode", "stimulation_modality", "report", "subject", "model", "protocol", "results", "quality_gates", "figures", "artifacts"],
+  "properties": {
+    "schema_version": { "const": "simnibs.report.v1" },
+    "analysis_mode": { "enum": ["forward_single", "forward_compare", "inverse_optimization"] },
+    "stimulation_modality": { "enum": ["tes", "temporal_interference"] },
+    "report": {
+      "type": "object",
+      "required": ["report_id", "title", "status"],
+      "properties": {
+        "report_id": { "type": "string", "minLength": 1 },
+        "title": { "type": "string", "minLength": 1 },
+        "status": { "enum": ["draft", "ready", "blocked"] },
+        "status_label": { "type": "string" },
+        "organization": { "type": "string" },
+        "scientific_question": { "type": "string" },
+        "generated_at": { "type": "string" },
+        "build_identity": { "type": "string" }
+      }
+    },
+    "subject": { "type": "object", "properties": { "id": { "type": "string" } } },
+    "target": {
+      "type": "object",
+      "required": ["name", "definition", "mni_coordinate_mm", "subject_coordinate_mm", "radius_mm", "tissue", "coordinate_transform"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "definition": { "type": "string", "minLength": 1 },
+        "mni_coordinate_mm": { "anyOf": [{ "$ref": "#/$defs/coordinate3d" }, { "type": "null" }] },
+        "reference_example_mni_coordinate_mm": { "$ref": "#/$defs/coordinate3d" },
+        "reference_coordinate_status": { "type": "string" },
+        "subject_coordinate_mm": { "$ref": "#/$defs/coordinate3d" },
+        "radius_mm": { "type": "number", "exclusiveMinimum": 0 },
+        "tissue": { "type": "string", "minLength": 1 },
+        "coordinate_transform": { "type": "string", "minLength": 1 }
+      }
+    },
+    "model": { "type": "object" },
+    "spatial": {
+      "type": "object",
+      "properties": {
+        "coordinate_system": { "type": "string" },
+        "display_convention": { "type": "string" },
+        "color_scales": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/colorScale" }
+        }
+      }
+    },
+    "software": { "type": "object" },
+    "protocol": {
+      "type": "object",
+      "properties": {
+        "current_amplitude_convention": { "enum": ["peak", "rms", "peak_to_peak"] },
+        "current_amplitude_note": { "type": "string", "minLength": 1 },
+        "electrodes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["electrode", "current_ma", "run_id"],
+            "properties": {
+              "circuit": { "type": "string" }, "electrode": { "type": "string" }, "current_ma": { "type": "number" },
+              "current_amplitude_convention": { "enum": ["peak", "rms", "peak_to_peak"] },
+              "frequency_hz": { "type": ["number", "null"] }, "phase_deg": { "type": ["number", "null"] }, "run_id": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "summary": { "type": "object" },
+    "results": {
+      "type": "object",
+      "properties": {
+        "primary_field": { "type": "string", "minLength": 1 },
+        "value_of_record_status": { "type": "string", "minLength": 1 },
+        "numerical_field_validity": {
+          "type": "object",
+          "required": ["electrical_independence_established", "local_shunting_may_affect_e1_e2_timax", "values_citable_for_formal_research", "affected_outputs", "replacement_requirement"],
+          "properties": {
+            "electrical_independence_established": { "type": "boolean" },
+            "local_shunting_may_affect_e1_e2_timax": { "type": "boolean" },
+            "values_citable_for_formal_research": { "type": "boolean" },
+            "affected_outputs": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": { "enum": ["E1", "E2", "TImax", "regional_statistics", "threshold_coverage"] }
+            },
+            "replacement_requirement": { "type": "string", "minLength": 1 }
+          }
+        },
+        "field_amplitude_convention": { "enum": ["maximum_envelope_amplitude", "rms", "peak_to_peak"] },
+        "field_amplitude_note": { "type": "string", "minLength": 1 },
+        "weighted_quantile": {
+          "type": "object",
+          "required": ["method_id", "definition", "weight", "sort_order", "selection_rule", "search_side", "interpolation", "boundary_rule", "reported_probabilities"],
+          "properties": {
+            "method_id": { "type": "string", "minLength": 1 },
+            "definition": { "type": "string", "minLength": 1 },
+            "weight": { "const": "tetrahedron_volume_mm3" },
+            "sort_order": { "const": "value_ascending" },
+            "selection_rule": { "type": "string", "minLength": 1 },
+            "search_side": { "const": "left" },
+            "interpolation": { "const": "none" },
+            "boundary_rule": { "type": "string", "minLength": 1 },
+            "reported_probabilities": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "type": "number", "minimum": 0, "maximum": 1 }
+            }
+          }
+        },
+        "target_to_offtarget_p95_ratio": { "type": "number", "minimum": 0 },
+        "target_to_offtarget_mean_ratio": { "type": "number", "minimum": 0 },
+        "peak_subject_coordinate_mm": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": { "type": "number" }
+        },
+        "peak_distance_to_target_mm": { "type": "number", "minimum": 0 },
+        "peak_distance_definition": { "type": "string", "minLength": 1 },
+        "peak_inside_target_roi": { "type": "boolean" },
+        "peak_location_assessment": {
+          "type": "object",
+          "required": ["statistic", "is_single_element_argmax", "position_stability_assessed", "mesh_convergence_assessed", "conductivity_sensitivity_assessed", "electrode_position_sensitivity_assessed", "run_id", "interpretation_note"],
+          "properties": {
+            "statistic": { "type": "string", "minLength": 1 },
+            "is_single_element_argmax": { "type": "boolean" },
+            "position_stability_assessed": { "type": "boolean" },
+            "mesh_convergence_assessed": { "type": "boolean" },
+            "conductivity_sensitivity_assessed": { "type": "boolean" },
+            "electrode_position_sensitivity_assessed": { "type": "boolean" },
+            "run_id": { "type": "string", "minLength": 1 },
+            "interpretation_note": { "type": "string", "minLength": 1 }
+          }
+        },
+        "suprathreshold_gray_matter_volume_mm3": { "type": "number", "minimum": 0 },
+        "suprathreshold_gray_matter_fraction_pct": { "type": "number", "minimum": 0, "maximum": 100 },
+        "suprathreshold_gray_matter_denominator_volume_mm3": { "type": "number", "exclusiveMinimum": 0 },
+        "suprathreshold_gray_matter_fraction_definition": { "type": "string", "minLength": 1 },
+        "robustness_summary": {
+          "type": "object",
+          "required": ["interpretation_note"],
+          "properties": {
+            "status": { "enum": ["passed", "warning", "not_assessed"] },
+            "mesh_convergence_assessed": { "type": "boolean" },
+            "conductivity_sensitivity_assessed": { "type": "boolean" },
+            "electrode_position_sensitivity_assessed": { "type": "boolean" },
+            "field_solution_recomputed_for_roi_displacements": { "type": "boolean" },
+            "peak_coordinate_reused_from_baseline": { "type": "boolean" },
+            "interpretation_note": { "type": "string", "minLength": 1 },
+            "roi_center_displacements": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "required": ["setting", "offset_subject_mm", "roi_center_subject_coordinate_mm", "peak_distance_to_roi_center_mm", "peak_inside_roi", "run_id"],
+                "properties": {
+                  "setting": { "type": "string", "minLength": 1 },
+                  "offset_subject_mm": { "$ref": "#/$defs/coordinate3d" },
+                  "roi_center_subject_coordinate_mm": { "$ref": "#/$defs/coordinate3d" },
+                  "peak_distance_to_roi_center_mm": { "type": "number", "minimum": 0 },
+                  "peak_inside_roi": { "type": "boolean" },
+                  "run_id": { "type": "string", "minLength": 1 }
+                }
+              }
+            }
+          }
+        },
+        "roi_metrics": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["roi", "role", "definition", "n_tetrahedra", "volume_mm3", "mean", "median", "p95", "max", "suprathreshold_n_tetrahedra", "suprathreshold_volume_mm3", "threshold_coverage_denominator", "threshold_coverage_definition", "threshold_coverage_pct", "run_id"],
+            "properties": {
+              "roi": { "type": "string" },
+              "role": { "type": "string" },
+              "definition": { "type": "string", "minLength": 1 },
+              "n_tetrahedra": { "type": "integer", "minimum": 1 },
+              "volume_mm3": { "type": "number", "exclusiveMinimum": 0 },
+              "mean": { "type": "number" },
+              "median": { "type": "number" },
+              "p95": { "type": "number" },
+              "max": { "type": "number" },
+              "suprathreshold_n_tetrahedra": { "type": "integer", "minimum": 0 },
+              "suprathreshold_volume_mm3": { "type": "number", "minimum": 0 },
+              "threshold_coverage_denominator": { "type": "string", "minLength": 1 },
+              "threshold_coverage_definition": { "type": "string", "minLength": 1 },
+              "threshold_coverage_pct": { "type": "number", "minimum": 0, "maximum": 100 },
+              "threshold_coverage": { "type": "number", "deprecated": true },
+              "run_id": { "type": "string" }
+            }
+          }
+        },
+        "cross_stage_comparison": {
+          "type": "object",
+          "required": ["scope", "comparison_type", "causal_attribution_status", "calibration_error_comparability", "configuration_effect_inference_allowed", "robustness_inference_allowed", "confounding_factors", "interpretation", "metrics"],
+          "properties": {
+            "scope": { "type": "string", "minLength": 1 },
+            "comparison_type": { "const": "cross_stage_descriptive" },
+            "causal_attribution_status": { "const": "not_identifiable" },
+            "calibration_error_comparability": { "const": "not_comparable_search_stage_summary_missing" },
+            "configuration_effect_inference_allowed": { "const": false },
+            "robustness_inference_allowed": { "const": false },
+            "confounding_factors": {
+              "type": "array",
+              "minItems": 3,
+              "uniqueItems": true,
+              "items": { "type": "string", "minLength": 1 }
+            },
+            "interpretation": { "type": "string", "minLength": 1 },
+            "metrics": {
+              "type": "array",
+              "minItems": 3,
+              "maxItems": 3,
+              "items": {
+                "type": "object",
+                "required": ["metric", "search_stage", "four_electrode_recompute", "relative_change_pct"],
+                "properties": {
+                  "metric": { "enum": ["target_roi_mean_v_per_m", "off_target_mean_v_per_m", "target_to_off_target_mean_ratio"] },
+                  "search_stage": { "type": "number" },
+                  "four_electrode_recompute": { "type": "number" },
+                  "relative_change_pct": { "type": "number" }
+                }
+              }
+            }
+          }
+        },
+        "threshold": {
+          "type": "object",
+          "required": ["value_v_per_m", "reference_definition", "anchor_statistic", "anchor_value_v_per_m", "anchor_is_single_element_extreme", "mesh_convergence_assessed", "sensitivity_note", "coverage_unit", "coverage_denominator", "coverage_definition"],
+          "properties": {
+            "value_v_per_m": { "type": "number", "minimum": 0 },
+            "reference_definition": { "type": "string", "minLength": 1 },
+            "anchor_statistic": { "type": "string", "minLength": 1 },
+            "anchor_value_v_per_m": { "type": "number", "minimum": 0 },
+            "anchor_is_single_element_extreme": { "type": "boolean" },
+            "mesh_convergence_assessed": { "type": "boolean" },
+            "sensitivity_note": { "type": "string", "minLength": 1 },
+            "coverage_unit": { "const": "%" },
+            "coverage_denominator": { "type": "string", "minLength": 1 },
+            "coverage_definition": { "type": "string", "minLength": 1 }
+          }
+        }
+      }
+    },
+    "optimization": {
+      "type": "object",
+      "properties": {
+        "four_electrode_recompute_status": { "enum": ["not_run", "failed", "completed"] },
+        "four_electrode_recompute_run_id": { "type": "string" },
+        "search_strategy_provenance": {
+          "type": "object",
+          "required": ["requested_method", "native_attempt_status", "native_attempt_stage", "native_result_produced", "fallback_strategy", "candidate_bipolar_pairs", "candidate_library_scope", "global_optimum_claim_allowed", "interpretation"],
+          "properties": {
+            "requested_method": { "const": "SimNIBS TesFlexOptimization" },
+            "native_attempt_status": { "const": "failed_before_optimization" },
+            "native_attempt_stage": { "type": "string", "minLength": 1 },
+            "native_result_produced": { "const": false },
+            "fallback_strategy": { "const": "manually declared finite candidate library" },
+            "candidate_bipolar_pairs": { "type": "array", "minItems": 3, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+            "candidate_library_scope": { "type": "string", "minLength": 1 },
+            "global_optimum_claim_allowed": { "const": false },
+            "interpretation": { "type": "string", "minLength": 1 }
+          }
+        },
+        "solutions": { "type": "array", "items": { "type": "object" } }
+      }
+    },
+    "robustness": { "type": "array", "items": { "type": "object" } },
+    "quality_gates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "status"],
+        "properties": { "name": { "type": "string" }, "hard_gate": { "type": "boolean" }, "status": { "enum": ["pass", "warning", "fail", "not_assessed"] } }
+      }
+    },
+    "methods": { "type": "array", "items": { "type": "object", "required": ["title", "text"] } },
+    "figures": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "src", "run_id"],
+        "properties": { "id": { "type": "string" }, "src": { "type": "string" }, "alt": { "type": "string" }, "run_id": { "type": "string" }, "color_scale": { "$ref": "#/$defs/colorScale" } }
+      }
+    },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "type", "run_id", "sha256"],
+        "properties": { "path": { "type": "string" }, "type": { "type": "string" }, "purpose": { "type": "string" }, "run_id": { "type": "string" }, "unit_space": { "type": "string" }, "alias_of": { "type": "string" }, "sha256": { "type": "string" } }
+      }
+    }
+  },
+  "$defs": {
+    "coordinate3d": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": { "type": "number" }
+    },
+    "colorScale": {
+      "type": "object",
+      "required": ["vmin_v_per_m", "vmax_v_per_m", "statistic", "reference_population", "reference_data", "shared_by_figure_ids", "clipping_rule", "unit"],
+      "properties": {
+        "vmin_v_per_m": { "type": "number", "minimum": 0 },
+        "vmax_v_per_m": { "type": "number", "exclusiveMinimum": 0 },
+        "statistic": { "type": "string", "minLength": 1 },
+        "reference_population": { "type": "string", "minLength": 1 },
+        "reference_data": { "type": "string", "minLength": 1 },
+        "shared_by_figure_ids": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+        "clipping_rule": { "type": "string", "minLength": 1 },
+        "unit": { "const": "V/m" }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "report": { "properties": { "status": { "const": "ready" } }, "required": ["status"] } } },
+      "then": {
+        "properties": {
+          "quality_gates": {
+            "minItems": 4,
+            "items": {
+              "if": { "properties": { "hard_gate": { "const": true } }, "required": ["hard_gate"] },
+              "then": { "properties": { "status": { "const": "pass" } }, "required": ["status"] }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "analysis_mode": { "const": "inverse_optimization" },
+          "report": { "properties": { "status": { "const": "ready" } }, "required": ["status"] }
+        },
+        "required": ["analysis_mode", "report"]
+      },
+      "then": {
+        "properties": {
+          "optimization": {
+            "properties": { "four_electrode_recompute_status": { "const": "completed" }, "four_electrode_recompute_run_id": { "type": "string", "minLength": 1 } },
+            "required": ["four_electrode_recompute_status", "four_electrode_recompute_run_id", "search_strategy_provenance"]
+          }
+        },
+        "required": ["optimization"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "analysis_mode": { "enum": ["forward_single", "forward_compare"] },
+          "stimulation_modality": { "const": "temporal_interference" },
+          "report": { "properties": { "status": { "const": "ready" } }, "required": ["status"] }
+        },
+        "required": ["analysis_mode", "stimulation_modality", "report"]
+      },
+      "then": {
+        "properties": {
+          "protocol": {
+            "required": ["current_amplitude_convention", "current_amplitude_note", "electrodes"]
+          },
+          "spatial": {
+            "required": ["coordinate_system", "display_convention", "color_scales"]
+          },
+          "results": {
+            "required": ["primary_field", "field_amplitude_convention", "field_amplitude_note", "weighted_quantile", "threshold", "peak_location_assessment", "robustness_summary", "roi_metrics", "suprathreshold_gray_matter_volume_mm3", "suprathreshold_gray_matter_fraction_pct", "suprathreshold_gray_matter_denominator_volume_mm3", "suprathreshold_gray_matter_fraction_definition"]
+          },
+          "figures": {
+            "allOf": [
+              { "contains": { "type": "object", "properties": { "id": { "const": "field_e1" } }, "required": ["id", "color_scale"] }, "minContains": 1 },
+              { "contains": { "type": "object", "properties": { "id": { "const": "field_e2" } }, "required": ["id", "color_scale"] }, "minContains": 1 },
+              { "contains": { "type": "object", "properties": { "id": { "const": "field_primary" } }, "required": ["id", "color_scale"] }, "minContains": 1 },
+              { "contains": { "type": "object", "properties": { "id": { "const": "field_surface" } }, "required": ["id", "color_scale"] }, "minContains": 1 },
+              { "contains": { "type": "object", "properties": { "id": { "const": "field_3d" } }, "required": ["id", "color_scale"] }, "minContains": 1 }
+            ]
+          }
+        },
+        "required": ["spatial", "figures"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "analysis_mode": { "const": "inverse_optimization" },
+          "stimulation_modality": { "const": "temporal_interference" },
+          "report": { "properties": { "status": { "const": "ready" } }, "required": ["status"] }
+        },
+        "required": ["analysis_mode", "stimulation_modality", "report"]
+      },
+      "then": {
+        "properties": {
+          "protocol": {
+            "required": ["current_amplitude_convention", "current_amplitude_note", "electrodes"]
+          },
+          "spatial": {
+            "required": ["coordinate_system", "display_convention", "color_scales"]
+          },
+          "results": {
+            "required": ["primary_field", "value_of_record_status", "numerical_field_validity", "field_amplitude_convention", "field_amplitude_note", "weighted_quantile", "threshold", "peak_location_assessment", "robustness_summary", "roi_metrics", "cross_stage_comparison", "suprathreshold_gray_matter_volume_mm3", "suprathreshold_gray_matter_fraction_pct", "suprathreshold_gray_matter_denominator_volume_mm3", "suprathreshold_gray_matter_fraction_definition"]
+          },
+          "figures": {
+            "allOf": [
+              { "contains": { "type": "object", "properties": { "id": { "const": "model_target_registration" } }, "required": ["id"] }, "minContains": 1 },
+              { "contains": { "type": "object", "properties": { "id": { "const": "stimulation_montage" } }, "required": ["id"] }, "minContains": 1 },
+              { "contains": { "type": "object", "properties": { "id": { "const": "carrier_and_timax_field" } }, "required": ["id", "color_scale"] }, "minContains": 1 },
+              { "contains": { "type": "object", "properties": { "id": { "const": "field_surface" } }, "required": ["id", "color_scale"] }, "minContains": 1 },
+              { "contains": { "type": "object", "properties": { "id": { "const": "four_electrode_quantitative" } }, "required": ["id"] }, "minContains": 1 },
+              { "contains": { "type": "object", "properties": { "id": { "const": "candidate_ranking" } }, "required": ["id"] }, "minContains": 1 },
+              { "contains": { "type": "object", "properties": { "id": { "const": "four_electrode_recompute" } }, "required": ["id"] }, "minContains": 1 }
+            ]
+          }
+        },
+        "required": ["spatial", "figures"]
+      }
+    }
+  ]
+}
