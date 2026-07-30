@@ -37,20 +37,19 @@ def find_edge() -> Path:
     raise FileNotFoundError("Microsoft Edge is required for PDF export")
 
 
-def main() -> None:
-    args = parse_args()
-    payload_path = args.payload.resolve()
+def build_delivery(payload_path: Path, html_path: Path | None = None, export_pdf: bool = False) -> dict:
+    payload_path = payload_path.resolve()
     root = payload_path.parent
     data = json.loads(payload_path.read_text(encoding="utf-8"))
     validate_delivery(data, root=root)
 
-    html_path = (args.html or root / "report.html").resolve()
+    html_path = (html_path or root / "report.html").resolve()
     if html_path.parent != root:
         raise ValueError("The HTML must be written beside the payload so relative artifact links remain valid")
     html_path.write_text(render_report(data, root=root), encoding="utf-8")
 
     generated = [payload_path, html_path]
-    if args.pdf:
+    if export_pdf:
         pdf_path = root / "report.pdf"
         completed = subprocess.run(
             [str(find_edge()), "--headless=new", "--disable-gpu", "--no-pdf-header-footer", f"--print-to-pdf={pdf_path}", html_path.as_uri()],
@@ -63,6 +62,12 @@ def main() -> None:
         generated.append(pdf_path)
 
     publication_index_path = root / "publication_index.json"
+    def indexed_asset(relative_path: str | None) -> dict | None:
+        if not relative_path:
+            return None
+        path = root / relative_path
+        return {"path": relative_path, "bytes": path.stat().st_size, "sha256": sha256(path)}
+
     publication_index = {
         "schema_version": "simnibs.publication-index.v1",
         "project_id": data["project"]["project_id"],
@@ -72,10 +77,12 @@ def main() -> None:
                 "category": item["category"],
                 "title": item["title"],
                 "conclusion": item["conclusion"],
-                "image": item["image"],
-                "vector": item.get("vector"),
-                "pdf": item.get("pdf"),
-                "source_data": item["source_data"],
+                "assets": {
+                    "image": indexed_asset(item["image"]),
+                    "vector": indexed_asset(item.get("vector")),
+                    "pdf": indexed_asset(item.get("pdf")),
+                    "source_data": indexed_asset(item["source_data"]),
+                },
             }
             for item in data["figures"]
         ],
@@ -101,7 +108,13 @@ def main() -> None:
     }
     manifest_path = root / "standard_manifest.json"
     manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(json.dumps({"status": "complete", "html": str(html_path), "files": len(generated)}, ensure_ascii=False))
+    return {"status": "complete", "html": str(html_path), "files": len(generated), "manifest": str(manifest_path)}
+
+
+def main() -> None:
+    args = parse_args()
+    result = build_delivery(args.payload, html_path=args.html, export_pdf=args.pdf)
+    print(json.dumps(result, ensure_ascii=False))
 
 
 if __name__ == "__main__":

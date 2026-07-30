@@ -114,6 +114,16 @@ def main() -> None:
         raise AssertionError("A reference was allowed to define project identity")
 
     manifest = json.loads((output / "standard_manifest.json").read_text(encoding="utf-8"))
+    publication_index = json.loads((output / "publication_index.json").read_text(encoding="utf-8"))
+    if len(publication_index["figures"]) != len(payload["figures"]):
+        raise AssertionError("The publication index does not cover every figure")
+    for figure in publication_index["figures"]:
+        for asset in figure["assets"].values():
+            if asset is None:
+                continue
+            path = output / asset["path"]
+            if path.stat().st_size != asset["bytes"] or sha256(path) != asset["sha256"]:
+                raise AssertionError(f"Publication asset mismatch: {asset['path']}")
     if not any(item["path"] == "publication_index.json" for item in manifest["generated_files"]):
         raise AssertionError("The publication figure index is missing from the standard manifest")
     for item in manifest["generated_files"]:
