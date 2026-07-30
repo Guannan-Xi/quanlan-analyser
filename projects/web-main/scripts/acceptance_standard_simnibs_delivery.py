@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -19,6 +20,14 @@ def expect_failure(payload: dict, expected: str) -> None:
             raise AssertionError(f"Expected {expected!r} in {str(error)!r}") from error
     else:
         raise AssertionError(f"Expected contract failure containing {expected!r}")
+
+
+def sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for block in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest().upper()
 
 
 def main() -> None:
@@ -69,7 +78,20 @@ def main() -> None:
     if "Violante 2023 复现" in report or "论文复现" in report:
         raise AssertionError("The service report is still framed as a paper reproduction")
 
-    print(json.dumps({"status": "passed", "schema": payload["schema_version"], "figures": len(payload["figures"]), "roi_rows": len(payload["results"]["roi_metrics"])}, ensure_ascii=False))
+    manifest = json.loads((output / "standard_manifest.json").read_text(encoding="utf-8"))
+    if not any(item["path"] == "publication_index.json" for item in manifest["generated_files"]):
+        raise AssertionError("The publication figure index is missing from the standard manifest")
+    for item in manifest["generated_files"]:
+        path = output / item["path"]
+        if path.stat().st_size != item["bytes"] or sha256(path) != item["sha256"]:
+            raise AssertionError(f"Generated-file manifest mismatch: {item['path']}")
+    for item in manifest["declared_artifacts"]:
+        if item.get("sha256"):
+            path = output / item["path"]
+            if path.stat().st_size != item["bytes"] or sha256(path) != item["sha256"]:
+                raise AssertionError(f"Artifact manifest mismatch: {item['path']}")
+
+    print(json.dumps({"status": "passed", "schema": payload["schema_version"], "figures": len(payload["figures"]), "roi_rows": len(payload["results"]["roi_metrics"]), "manifest_files": len(manifest["generated_files"]) + len(manifest["declared_artifacts"])}, ensure_ascii=False))
 
 
 if __name__ == "__main__":

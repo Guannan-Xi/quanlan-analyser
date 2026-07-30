@@ -121,10 +121,10 @@ def build_payload(source: Path) -> dict:
             ],
             "interpretation_boundary": "结果仅适用于 ernie 单受试者、当前电极位置、组织电导率和数值设置。",
             "metric_definitions": {
-                "mean": {"label": "平均值", "unit": "V/m", "definition": "按四面体体积加权的区域均值"},
-                "median": {"label": "中位数", "unit": "V/m", "definition": "按四面体体积加权的区域中位数"},
-                "p95": {"label": "P95", "unit": "V/m", "definition": "按四面体体积加权的第 95 百分位数"},
-                "volume": {"label": "体积", "unit": "mm³", "definition": "有效分析单元总体积"},
+                "mean": {"label": "平均值", "unit": "V/m", "definition": "按四面体体积加权的区域均值", "decimals": 4},
+                "median": {"label": "中位数", "unit": "V/m", "definition": "按四面体体积加权的区域中位数", "decimals": 4},
+                "p95": {"label": "P95", "unit": "V/m", "definition": "按四面体体积加权的第 95 百分位数", "decimals": 4},
+                "volume": {"label": "体积", "unit": "mm³", "definition": "有效分析单元总体积", "decimals": 1},
             },
             "roi_metrics": roi_metrics,
             "comparisons": {
@@ -159,7 +159,8 @@ def build_payload(source: Path) -> dict:
             {"path": "packages/figure_support_csv.zip", "label": "图表数据", "purpose": "各图对应的 CSV 文件"},
             {"path": "packages/nifti_fields.zip", "label": "NIfTI 数据", "purpose": "空间场和 ROI 掩膜"},
             {"path": "raw/violante2023_reproduction_fields.h5", "label": "HDF5 数据", "purpose": "逐单元电场与派生指标"},
-            {"path": "manifest.json", "label": "完整文件清单", "purpose": "交付文件大小与 SHA-256"},
+            {"path": "publication_index.json", "label": "发表图件索引", "purpose": "图件、图注与源数据的对应关系", "generated_by_builder": True},
+            {"path": "standard_manifest.json", "label": "标准文件清单", "purpose": "标准报告及客户交付文件的大小与 SHA-256", "generated_by_builder": True},
             {"path": "reproducibility/DATA_AND_CODE_AVAILABILITY.md", "label": "复现说明", "purpose": "冻结脚本、依赖和使用边界"},
         ],
         "modules": {

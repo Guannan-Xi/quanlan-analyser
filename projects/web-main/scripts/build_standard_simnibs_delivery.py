@@ -62,13 +62,42 @@ def main() -> None:
             raise RuntimeError(f"PDF export failed: {completed.stderr[-1000:]}")
         generated.append(pdf_path)
 
+    publication_index_path = root / "publication_index.json"
+    publication_index = {
+        "schema_version": "simnibs.publication-index.v1",
+        "project_id": data["project"]["project_id"],
+        "figures": [
+            {
+                "figure_id": item["figure_id"],
+                "category": item["category"],
+                "title": item["title"],
+                "conclusion": item["conclusion"],
+                "image": item["image"],
+                "vector": item.get("vector"),
+                "pdf": item.get("pdf"),
+                "source_data": item["source_data"],
+            }
+            for item in data["figures"]
+        ],
+    }
+    publication_index_path.write_text(json.dumps(publication_index, ensure_ascii=False, indent=2), encoding="utf-8")
+    generated.append(publication_index_path)
+
+    declared_artifacts = []
+    for item in data["artifacts"]:
+        artifact_path = root / item["path"]
+        entry = dict(item)
+        if artifact_path.is_file() and artifact_path.name != "standard_manifest.json":
+            entry.update({"bytes": artifact_path.stat().st_size, "sha256": sha256(artifact_path)})
+        declared_artifacts.append(entry)
+
     manifest = {
         "schema_version": "simnibs.delivery.manifest.v2",
         "project_id": data["project"]["project_id"],
         "generated_files": [
             {"path": path.name, "bytes": path.stat().st_size, "sha256": sha256(path)} for path in generated
         ],
-        "declared_artifacts": data["artifacts"],
+        "declared_artifacts": declared_artifacts,
     }
     manifest_path = root / "standard_manifest.json"
     manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")

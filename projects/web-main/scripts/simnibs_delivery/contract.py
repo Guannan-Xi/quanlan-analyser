@@ -112,10 +112,17 @@ def validate_delivery(payload: Mapping[str, Any], root: Path | None = None) -> N
             raise ContractError(f"figures[{index}].category is not supported")
         for key in ("title", "conclusion", "image", "source_data"):
             _text(figure.get(key), f"figures[{index}].{key}")
-        if root is not None and not (root / figure["image"]).is_file():
-            raise ContractError(f"figures[{index}].image does not exist: {figure['image']}")
+        if root is not None:
+            for key in ("image", "vector", "pdf", "source_data"):
+                if figure.get(key) and not (root / figure[key]).is_file():
+                    raise ContractError(f"figures[{index}].{key} does not exist: {figure[key]}")
 
-    _sequence(payload.get("artifacts"), "artifacts")
+    for index, artifact_value in enumerate(_sequence(payload.get("artifacts"), "artifacts")):
+        artifact = _mapping(artifact_value, f"artifacts[{index}]")
+        for key in ("path", "label", "purpose"):
+            _text(artifact.get(key), f"artifacts[{index}].{key}")
+        if root is not None and not artifact.get("generated_by_builder", False) and not (root / artifact["path"]).is_file():
+            raise ContractError(f"artifacts[{index}].path does not exist: {artifact['path']}")
     modules = _mapping(payload.get("modules"), "modules")
     try:
         validate_active_module(payload["stimulation_modality"], modules)
