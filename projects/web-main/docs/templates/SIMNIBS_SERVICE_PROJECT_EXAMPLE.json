@@ -1,0 +1,55 @@
+{
+  "schema_version": "simnibs.service-project.v1",
+  "project": {
+    "project_id": "CUSTOMER-PROJECT-001",
+    "title": "个体化脑电场仿真分析",
+    "scientific_question": "比较候选刺激方案在目标脑区的场强、空间分布和非靶区暴露。",
+    "customer_label": "客户项目编号或匿名标签"
+  },
+  "subject": {
+    "subject_id": "SUB-001",
+    "image_source": "客户提供的 T1w MRI；如有 DTI/T2w，请在项目配置中补充",
+    "model_type": "SimNIBS CHARM 个体头模型"
+  },
+  "targets": [
+    {
+      "target_id": "target_primary",
+      "name": "主要靶区",
+      "role": "target",
+      "definition": "由客户确认的个体空间掩膜、图谱标签或坐标球形 ROI",
+      "coordinate_space": "subject conform"
+    }
+  ],
+  "protocol": {
+    "stimulation_modality": "temporal_interference",
+    "analysis_mode": "forward_compare",
+    "conditions": [
+      {
+        "condition_id": "condition_a",
+        "label": "候选方案 A",
+        "channels": []
+      },
+      {
+        "condition_id": "condition_b",
+        "label": "候选方案 B",
+        "channels": []
+      }
+    ]
+  },
+  "requested_deliverables": [
+    "html_report",
+    "pdf_report",
+    "publication_figures",
+    "roi_tables",
+    "nifti_fields",
+    "mesh",
+    "reproducibility"
+  ],
+  "references": [
+    {
+      "citation": "用于确定方法或图件要求的参考文献",
+      "role": "figure_requirements",
+      "defines_project_identity": false
+    }
+  ]
+}
