@@ -9,7 +9,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from simnibs_delivery import ContractError, validate_delivery  # noqa: E402
+from simnibs_delivery import (  # noqa: E402
+    ContractError,
+    ProjectConfigError,
+    render_report,
+    validate_delivery,
+    validate_project_config,
+)
 
 
 def expect_failure(payload: dict, expected: str) -> None:
@@ -55,11 +61,28 @@ def main() -> None:
     tes_payload["stimulation_modality"] = "tes"
     tes_payload["modules"] = {"tes": {"primary_field": "normal", "current_unit": "mA", "field_unit": "V/m"}}
     validate_delivery(tes_payload)
+    if "五、方法、质量控制与交付" not in render_report(tes_payload):
+        raise AssertionError("tES payload did not render with the common report structure")
 
     tms_payload = copy.deepcopy(payload)
     tms_payload["stimulation_modality"] = "tms"
     tms_payload["modules"] = {"tms": {"coil_model": "example-coil", "field_metric": "magnitude", "field_unit": "V/m", "coil_pose": {"center_mm": [0, 0, 0], "direction": [0, 1, 0]}}}
     validate_delivery(tms_payload)
+    if "五、方法、质量控制与交付" not in render_report(tms_payload):
+        raise AssertionError("TMS payload did not render with the common report structure")
+
+    ready_without_gate = copy.deepcopy(payload)
+    ready_without_gate["project"]["service_status"] = "ready"
+    expect_failure(ready_without_gate, "hard quality gate")
+
+    ready_payload = copy.deepcopy(payload)
+    ready_payload["project"]["service_status"] = "ready"
+    ready_payload["quality_control"]["checks"][0]["hard_gate"] = True
+    validate_delivery(ready_payload)
+
+    ready_without_field = copy.deepcopy(ready_payload)
+    ready_without_field["figures"] = [item for item in ready_without_field["figures"] if item["category"] != "field"]
+    expect_failure(ready_without_field, "required figure categories")
 
     missing_figure = copy.deepcopy(payload)
     missing_figure["figures"][0]["image"] = "figures/png/not_found.png"
@@ -77,6 +100,18 @@ def main() -> None:
         raise AssertionError("The five-part report structure is incomplete")
     if "Violante 2023 复现" in report or "论文复现" in report:
         raise AssertionError("The service report is still framed as a paper reproduction")
+
+    project_config = json.loads((ROOT / "docs" / "templates" / "SIMNIBS_SERVICE_PROJECT_EXAMPLE.json").read_text(encoding="utf-8"))
+    validate_project_config(project_config)
+    invalid_reference = copy.deepcopy(project_config)
+    invalid_reference["references"][0]["defines_project_identity"] = True
+    try:
+        validate_project_config(invalid_reference)
+    except ProjectConfigError as error:
+        if "cannot define project identity" not in str(error):
+            raise
+    else:
+        raise AssertionError("A reference was allowed to define project identity")
 
     manifest = json.loads((output / "standard_manifest.json").read_text(encoding="utf-8"))
     if not any(item["path"] == "publication_index.json" for item in manifest["generated_files"]):

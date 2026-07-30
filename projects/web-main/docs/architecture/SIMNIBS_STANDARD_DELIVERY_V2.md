@@ -16,8 +16,10 @@
 - `scripts/simnibs_delivery/modules.py`：TI、tES、TMS 专用字段验证。
 - `scripts/simnibs_delivery/render.py`：不依赖仿真类型的客户报告渲染器。
 - `scripts/build_standard_simnibs_delivery.py`：通用构建入口，生成 HTML、PDF 和标准清单。
+- `scripts/create_simnibs_service_project.py`：从接单配置建立统一项目目录和阻断状态。
 - `scripts/adapt_ernie_ti_example_to_standard.py`：现有 ernie TI 案例适配器，仅负责把旧结果转换为 v2。
 - `frontend/assets/simnibs-delivery-v2.schema.json`：供前端、服务端和外部工具使用的 JSON Schema。
+- `frontend/assets/simnibs-service-project-v1.schema.json`：客户项目接单配置的 JSON Schema。
 
 ## 核心契约
 

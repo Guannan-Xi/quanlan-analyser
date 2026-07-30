@@ -94,7 +94,8 @@ def validate_delivery(payload: Mapping[str, Any], root: Path | None = None) -> N
             raise ContractError(f"results.roi_metrics[{index}] uses unknown metrics: {sorted(unknown_metrics)}")
 
     qc = _mapping(payload.get("quality_control"), "quality_control")
-    for index, check_value in enumerate(_sequence(qc.get("checks"), "quality_control.checks")):
+    checks = _sequence(qc.get("checks"), "quality_control.checks")
+    for index, check_value in enumerate(checks):
         check = _mapping(check_value, f"quality_control.checks[{index}]")
         _text(check.get("name"), f"quality_control.checks[{index}].name")
         if check.get("status") not in QC_STATUSES:
@@ -128,3 +129,16 @@ def validate_delivery(payload: Mapping[str, Any], root: Path | None = None) -> N
         validate_active_module(payload["stimulation_modality"], modules)
     except ModuleContractError as error:
         raise ContractError(str(error)) from error
+
+    if project["service_status"] == "ready":
+        hard_gates = [check for check in checks if check.get("hard_gate", False)]
+        if not hard_gates:
+            raise ContractError("ready deliveries must declare at least one hard quality gate")
+        failed_hard_gates = [check["name"] for check in hard_gates if check.get("status") != "pass"]
+        if failed_hard_gates:
+            raise ContractError(f"ready delivery has incomplete hard quality gates: {failed_hard_gates}")
+        required_categories = {"anatomy", "protocol", "field", "quantitative"}
+        delivered_categories = {figure["category"] for figure in payload["figures"]}
+        missing_categories = required_categories - delivered_categories
+        if missing_categories:
+            raise ContractError(f"ready delivery is missing required figure categories: {sorted(missing_categories)}")

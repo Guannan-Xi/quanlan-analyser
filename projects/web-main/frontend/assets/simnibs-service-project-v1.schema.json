@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://quanlan.example/schemas/simnibs-service-project-v1.schema.json",
+  "title": "QuanLan SimNIBS service project",
+  "type": "object",
+  "required": ["schema_version", "project", "subject", "targets", "protocol", "requested_deliverables", "references"],
+  "properties": {
+    "schema_version": { "const": "simnibs.service-project.v1" },
+    "project": {
+      "type": "object",
+      "required": ["project_id", "title", "scientific_question", "customer_label"],
+      "properties": {
+        "project_id": { "type": "string", "minLength": 1 },
+        "title": { "type": "string", "minLength": 1 },
+        "scientific_question": { "type": "string", "minLength": 1 },
+        "customer_label": { "type": "string", "minLength": 1 }
+      }
+    },
+    "subject": {
+      "type": "object",
+      "required": ["subject_id", "image_source", "model_type"],
+      "properties": {
+        "subject_id": { "type": "string", "minLength": 1 },
+        "image_source": { "type": "string", "minLength": 1 },
+        "model_type": { "type": "string", "minLength": 1 }
+      }
+    },
+    "targets": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["target_id", "name", "role", "definition", "coordinate_space"],
+        "properties": {
+          "target_id": { "type": "string", "minLength": 1 },
+          "name": { "type": "string", "minLength": 1 },
+          "role": { "type": "string", "minLength": 1 },
+          "definition": { "type": "string", "minLength": 1 },
+          "coordinate_space": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "protocol": {
+      "type": "object",
+      "required": ["stimulation_modality", "analysis_mode", "conditions"],
+      "properties": {
+        "stimulation_modality": { "enum": ["tes", "temporal_interference", "tms"] },
+        "analysis_mode": { "enum": ["forward_single", "forward_compare", "inverse_optimization", "group_analysis"] },
+        "conditions": { "type": "array", "minItems": 1, "items": { "type": "object" } }
+      }
+    },
+    "requested_deliverables": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "enum": ["html_report", "pdf_report", "publication_figures", "roi_tables", "nifti_fields", "mesh", "reproducibility"] }
+    },
+    "references": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["citation", "role", "defines_project_identity"],
+        "properties": {
+          "citation": { "type": "string", "minLength": 1 },
+          "role": { "enum": ["method_basis", "figure_requirements", "benchmark", "background"] },
+          "defines_project_identity": { "const": false }
+        }
+      }
+    }
+  }
+}
